@@ -4,10 +4,9 @@ This project owns crawling, document download/resume, text extraction, corpus/li
 graph storage, MongoDB and Kaggle synchronization. Search and indexing live in
 the sibling `lucene/` project. Run the commands below from `data_pipeline/`.
 
-The existing crawler lives in `src/hust_crawler/`; the document pipeline is
-being implemented in `src/ir_data/`. Both belong to the same Python project
-and lockfile. The sections below describe the working crawl commands and the
-new document pipeline commands.
+The existing crawler lives in `src/hust_crawler/`; the document pipeline lives
+in `src/ir_data/`. Both belong to the same Python project and lockfile. The
+sections below describe the crawl and document pipeline commands.
 
 Dependency groups: base for corpus consumers, `crawl` for the crawler,
 `producer` for crawling and document processing, and `dev` for crawler tests.
