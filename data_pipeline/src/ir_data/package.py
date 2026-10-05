@@ -28,19 +28,56 @@ def _sha(path: Path) -> str:
     return h.hexdigest()
 
 
+def _assert_enrichment_complete(db_path: Path) -> None:
+    """Refuse a release while the resumable pipeline still has unresolved work."""
+    import sqlite3
+
+    conn = sqlite3.connect(db_path)
+    try:
+        pending = conn.execute(
+            "select status,count(*) from inventory "
+            "where status in ('pending','retry','in_progress','finalizing') "
+            "group by status"
+        ).fetchall()
+        if pending:
+            details = ", ".join(f"{status}={count}" for status, count in pending)
+            raise ValueError(f"cannot package while downloads are pending: {details}")
+
+        unparsed = conn.execute(
+            "select count(*) from inventory i "
+            "left join parse_results p on p.url=i.url "
+            "where i.status='downloaded' and p.url is null"
+        ).fetchone()[0]
+        if unparsed:
+            raise ValueError(f"cannot package while {unparsed} downloaded files are unparsed")
+
+        blocked = conn.execute(
+            "select status,count(*) from parse_results "
+            "where status in ('quota_blocked','submission_unknown') group by status"
+        ).fetchall()
+        if blocked:
+            details = ", ".join(f"{status}={count}" for status, count in blocked)
+            raise ValueError(f"cannot package while cloud extraction is blocked: {details}")
+    finally:
+        conn.close()
+
+
 def package_corpus(source: Path, enrichment: Path, output: Path) -> Path:
     source_dir = source if source.is_dir() else source.parent
+    state_db = enrichment / "state.sqlite3"
+    if state_db.exists():
+        _assert_enrichment_complete(state_db)
     with tempfile.TemporaryDirectory(prefix="ir-corpus-") as temp:
         staging = Path(temp)
         for name in ("articles.jsonl", "urls.txt", "README.json"):
             src = source_dir / name
             if src.exists():
                 shutil.copy2(src, staging / name)
-        if (enrichment / "state.sqlite3").exists():
+        if state_db.exists():
             # Export uses the same schema without altering the source crawl.
             import sqlite3
 
-            conn = sqlite3.connect(enrichment / "state.sqlite3")
+            conn = sqlite3.connect(state_db)
             conn.row_factory = sqlite3.Row
             rows = conn.execute("select * from inventory where status='downloaded'")
             with (staging / "documents.jsonl").open("w", encoding="utf-8") as doc:

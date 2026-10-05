@@ -57,6 +57,13 @@ def parser() -> argparse.ArgumentParser:
     q = sub.add_parser("pull")
     q.add_argument("--lock", default="config/corpus.lock.json")
     q.add_argument("--destination", default="data/corpus/pulled")
+    q = sub.add_parser("evaluate-extraction")
+    q.add_argument("--fixtures", required=True)
+    q.add_argument("--output", required=True)
+    q = sub.add_parser("reconcile-job")
+    q.add_argument("--work-dir", default="data/enrichment")
+    q.add_argument("--request-id", required=True)
+    q.add_argument("--job-id", required=True)
     return p
 
 
@@ -127,6 +134,23 @@ def main(argv: list[str] | None = None) -> int:
                 root / "data_pipeline" / args.lock, root / "data_pipeline" / args.destination
             )
             print(result)
+            return 0
+        if args.command == "evaluate-extraction":
+            from hust_crawler.crawl.evaluation import evaluate
+
+            print(json.dumps(evaluate(Path(args.fixtures), Path(args.output)), ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "reconcile-job":
+            root = _repo_root()
+            settings = load_settings(root, {"work_dir": Path(args.work_dir)})
+            import sqlite3
+
+            conn = sqlite3.connect(settings.work_path / "state.sqlite3")
+            row = conn.execute("select * from cloud_jobs where request_id=?", (args.request_id,)).fetchone()
+            conn.close()
+            if not row or row[3] != args.job_id:
+                raise ValueError("request/job pair is not present in this work directory")
+            print(json.dumps({"request_id": args.request_id, "job_id": args.job_id, "status": row[6]}, indent=2))
             return 0
         root, settings = _settings(args)
         source = settings.source_path
