@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .cloud.key_pool import KeyPool
@@ -17,9 +18,20 @@ def extract_documents(state: WorkState, settings, repo_root: Path) -> RunSummary
         __import__("ir_data.settings", fromlist=["load_api_keys"]).load_api_keys(repo_root)
     )
     cache_root = state.root / "cache"
-    for file in list(state.pending_parse()):
+    pending = list(state.pending_parse())
+
+    def parse_local_safe(file):
         try:
-            local = parse_local(file)
+            return file, parse_local(file), None
+        except Exception as exc:
+            return file, None, exc
+
+    with ThreadPoolExecutor(max_workers=settings.local_workers) as workers:
+        for file, local, error in workers.map(parse_local_safe, pending):
+            if error is not None:
+                state.record_failure(file.url, "parse", str(error))
+                state.mark_parse(file.url, ParseResult(file.sha256, [], "failed", [str(error)], {}), None)
+                continue
             missing = cloud_part_indices(local) if file.path.suffix.lower() == ".pdf" else []
             if not missing:
                 state.mark_parse(
@@ -48,9 +60,6 @@ def extract_documents(state: WorkState, settings, repo_root: Path) -> RunSummary
                     write_cached(cache_root, key, remote)
             merged = merge_parts(local, remote)
             state.mark_parse(file.url, merged, cache_root / f"{key}.json")
-        except Exception as exc:
-            state.record_failure(file.url, "parse", str(exc))
-            state.mark_parse(file.url, ParseResult(file.sha256, [], "failed", [str(exc)], {}), None)
     return state.summary()
 
 
