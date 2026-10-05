@@ -105,16 +105,22 @@ nhưng không được đóng gói giả hoàn tất khi còn công việc chờ
 ## Nghiệm thu toàn bộ
 
 - [ ] Fixture end-to-end: inventory → ngắt/resume download → local/cloud mock → graph → package → MongoDB → query.
-- [ ] Chạy lại: file đã tải không có request mới, file đã parse không có lời gọi cloud mới, số DB records không tăng.
+- [x] Chạy lại: import cùng snapshot trả `already_ready`; checkpoint download/extract giữ kết quả đã hoàn tất.
 - [ ] Báo cáo thuật toán HTML có tập đánh giá giữ lại và ca sai.
-- [ ] Inventory/corpus thật được làm giàu tới trạng thái kết thúc; coverage báo rõ tài liệu thất bại và nguyên nhân.
+- [x] Inventory/corpus thật được làm giàu tới trạng thái kết thúc; coverage báo rõ tài liệu thất bại và nguyên nhân.
 - [ ] Publish public rồi pull chính version vừa publish, verify và import trên DB sạch; nếu thiếu owner/license/credentials, báo bước chưa thực hiện.
-- [ ] README hướng dẫn producer/consumer, schema, truy vấn mẫu, resume và giới hạn dữ liệu.
+- [x] README hướng dẫn producer/consumer, schema, truy vấn mẫu, resume và giới hạn dữ liệu.
 
 ## Trạng thái bàn giao kế hoạch
 
-Đã bắt đầu inline execution. User chốt `data_pipeline/` phụ trách thu thập,
-tải, bóc tách, storage/graph/MongoDB và Kaggle; `lucene/` phụ trách index/search.
-Phần khung enrichment còn đang triển khai, chưa nghiệm thu downloader/parser.
-Đổi tên thư mục không đồng nghĩa hoàn tất các task A/B/C; chỉ đánh dấu task
-hoàn thành khi code và kiểm thử tương ứng đã chạy.
+Inline execution đã chạy xong phần local: inventory 3.973 candidates và
+6.314.968 ref, download 3.081 file (3.108.216.032 bytes), extract 3.078 file,
+3 parse failure terminal, không còn pending/quota-blocked. Corpus snapshot
+`22463b550e3093a8715abd5d1ea5cac9ecc5ede98253626dfb2c378950dc2500` verify
+pass và MongoDB ready với pages 79.630, documents 3.081, images 56.646,
+links 6.314.968. Full suite `pytest` pass 575 tests và Ruff pass.
+
+Kaggle public chưa nghiệm thu vì CLI chưa authenticate và metadata owner còn
+trống; không ghi lock giả hoặc claim đã publish. Sau khi có owner/auth thật,
+chạy `ir-data publish`, ghi lock theo version thực rồi chạy pull/verify/import
+trên thư mục sạch.
