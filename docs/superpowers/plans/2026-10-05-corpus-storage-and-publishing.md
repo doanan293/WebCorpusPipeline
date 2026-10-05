@@ -10,6 +10,8 @@
 
 ## Global Constraints
 
+- Mọi file path/lệnh tương đối trong plan tính từ project `data_pipeline/`; repository root `.env` giữ vị trí hiện có. Storage, graph, MongoDB và Kaggle đều thuộc dự án này; tìm kiếm thuộc `lucene/`.
+
 - Giữ nguyên source crawl và lỗi/coverage của nó; không biến `complete_with_failures` thành crawl đầy đủ.
 - Không đưa `.env`, key, SQLite nội bộ, cloud job metadata hay binary gốc lên Kaggle.
 - Owner và license phải là giá trị thực được chủ repo xác định; không tự bịa.
@@ -27,7 +29,7 @@
 
 ## C1 — Schema xuất, graph, package và verify
 
-**Files:** Create `scripts/ir_data/{schema,graph,package,verify}.py`,
+**Files:** Create `src/ir_data/{schema,graph,package,verify}.py`,
 `tests/corpus/{test_graph,test_package,test_verify}.py`, `docs/data-schema.md`; extend models/CLI.
 
 **Interfaces:** `build_graph(source: Path, enrichment: Path, output: Path) -> dict`;
@@ -43,7 +45,7 @@
 
 ## C2 — MongoDB Compose, import idempotent và truy vấn
 
-**Files:** Create `compose.yaml`, `scripts/ir_data/{mongo_store,mongo_import,query}.py`,
+**Files:** Create `compose.yaml`, `src/ir_data/{mongo_store,mongo_import,query}.py`,
 `tests/corpus/{test_mongo_import,test_mongo_large_records,test_query}.py`; modify config/CLI/schema docs.
 
 **Interfaces:** `import_corpus(path: Path, settings: Settings) -> dict`;
@@ -59,7 +61,7 @@
 
 ## C3 — Kaggle public publish và pinned pull
 
-**Files:** Create `scripts/ir_data/{kaggle,publish,pull}.py`,
+**Files:** Create `src/ir_data/{kaggle,publish,pull}.py`,
 `config/kaggle-dataset.json`, `config/corpus.lock.json` theo metadata thực khi sẵn sàng,
 `tests/corpus/{test_publish,test_pull}.py`; modify settings/CLI/root README.
 
@@ -82,7 +84,7 @@ add báo cáo nghiệm thu chứa số đo thật, không credentials.
 - [ ] Fixture E2E chạy inventory → download bị ngắt → resume → extract local/cloud fake → graph/package → verify → import/query. Assert source không đổi, SHA file đúng, lần hai không thêm download/cloud calls/DB records. Chạy FAIL trước khi hoàn thiện wiring.
 - [ ] Hoàn thiện CLI exit codes theo master; `--help` hữu ích, producer thiếu dependency báo cách cài, consumer base chạy pull/verify/import được. `.gitignore` phủ work-dir/parts/cache/archive và `.env`, giữ `.env.example` chỉ tên biến/mẫu trống nếu cần.
 - [ ] README có hai luồng: người mới pull bản pinned + Compose + import/query; producer inventory/download/extract/status/package/publish. Ghi disk limits, retry, Range có điều kiện, quota rotation, reconcile-job, cách chạy lại và cách nhận biết còn pending.
-- [ ] Chạy root corpus suite, affected crawler suite, lint và Compose validation. Đo fixture download nhiều host để chứng minh concurrency/per-host cap; không đặt cam kết tăng tốc thiếu số đo. Ghi số request và bytes tiết kiệm khi restart.
+- [ ] Chạy corpus suite và affected crawler suite trong cùng `data_pipeline/`, lint và Compose validation. Đo fixture download nhiều host để chứng minh concurrency/per-host cap; không đặt cam kết tăng tốc thiếu số đo. Ghi số request và bytes tiết kiệm khi restart.
 - [ ] Khi triển khai thực tế, inventory nguồn hiện có trước, chạy enrichment vào work-dir riêng trong giới hạn config và theo dõi coverage. Không sửa/xóa source crawl. Quota hết giữ pending; không đóng gói giả hoàn thành. Kiểm tra thủ công mẫu PDF/Excel/PPT đã có text, scan fallback và tài liệu thất bại.
 - [ ] Với metadata/auth Kaggle đã có, publish public rồi pull chính phiên bản vào thư mục sạch, verify/import trên DB test và chạy truy vấn mẫu. Nếu chưa có metadata/auth hoặc còn blocked jobs, báo đúng phần chưa nghiệm thu và checkpoint để tiếp tục.
 - [ ] Ghi kết quả thực và giới hạn: tổng trang/tài liệu/ảnh/cạnh, trạng thái crawl gốc, extraction coverage, local/cloud pages, lỗi nguồn, kiểm tra resume, version Kaggle. Commit docs/tests bàn giao sau review diff.

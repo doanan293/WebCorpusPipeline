@@ -10,6 +10,23 @@ chữ có nghĩa; chuyển key khi hết quota theo cấu hình `.env`.
 
 ## Mục tiêu và các quyết định đã thống nhất
 
+### Ranh giới dự án
+
+Repository có hai dự án: `data_pipeline/` quản lý crawl, download/resume,
+extract, storage/corpus/graph/MongoDB và sync Kaggle; `lucene/` quản lý lập
+chỉ mục và tìm kiếm. Crawler là một bước của data pipeline. Dùng một
+`data_pipeline/pyproject.toml` và `data_pipeline/uv.lock`; không dựng package
+Python thứ ba ở root. Crawler hiện có giữ namespace `hust_crawler` và CLI;
+công cụ dữ liệu mới đặt trong `data_pipeline/src/ir_data/` cùng wheel.
+Các nhóm download/extract/storage/sync sẽ tách module theo trách nhiệm khi
+triển khai, không yêu cầu dựng đồng loạt các thư mục trống.
+
+Đường dẫn config, Compose, docs bàn giao và `data/...` tương đối trong spec
+tính từ `data_pipeline/`; đường dẫn có tiền tố `data_pipeline/` tính từ repo.
+Lệnh vận hành chạy trong `data_pipeline/`. Secrets vẫn đọc từ repository-root
+`.env`. Đổi tên thư mục giữ nguyên nội dung `data/crawl/`, trạng thái resume
+và namespace Python của crawler. Kế hoạch thực thi đã được chốt inline.
+
 Người mới clone repository có thể tải dữ liệu crawl từ Kaggle để làm các bước
 bóc tách, xây đồ thị liên kết và tìm kiếm mà không phải crawl lại các trang.
 Dataset Kaggle là public. Người vận hành chủ động chạy lệnh publish; crawler
@@ -29,7 +46,7 @@ crawler cung cấp; chuyển sang các file TXT không còn là bước bắt bu
 
 ## Hiện trạng và phạm vi đầy đủ
 
-`crawler/data/crawl/final/README.json` ghi 79.630 bài viết và 79.630 URL,
+`data_pipeline/data/crawl/final/README.json` ghi 79.630 bài viết và 79.630 URL,
 với nguồn crawl kết thúc ngày 2026-09-24. Ba file hiện có là `articles.jsonl`,
 `urls.txt`, `README.json`. Manifest crawl ghi `complete_with_failures`,
 1.074 URL thất bại và không có tệp nhị phân đã tải.
@@ -394,10 +411,11 @@ không được gắn nhãn bản phát hành đáp ứng đầy đủ bài tậ
 
 ## Publish và pull
 
-Công cụ Python trong `scripts/` cung cấp các thao tác `enrich-documents`,
+Công cụ Python trong `src/ir_data/` cung cấp các thao tác `enrich-documents`,
 `build-graph`, `evaluate-extraction`, `package`, `publish`, `pull`, `import-mongo`;
-dùng Kaggle CLI cho giao tiếp Kaggle. Môi trường công cụ
-dữ liệu cài riêng, không buộc người chỉ tải dữ liệu cài Scrapy hoặc Playwright.
+dùng Kaggle CLI cho giao tiếp Kaggle. Dùng chung project và lockfile trong
+`data_pipeline/`, tách dependencies bằng extras; người chỉ tải dữ liệu cài
+base, không phải cài Scrapy hoặc Playwright.
 
 `config/` lưu metadata dataset và file khóa gồm owner/slug, phiên bản Kaggle,
 snapshot ID cùng checksum manifest. Chủ dataset và giấy phép là tham số cấu
@@ -562,7 +580,7 @@ Kiểm chứng cần có:
 ## Dọn repo và bảo toàn dữ liệu
 
 Đã dọn các đầu ra có thể tạo lại `lucene/index/`, `lucene/output/` và phiên
-làm việc cũ `crawler/.superpowers/`. Giữ các skill mới thêm, mã nguồn, seed,
+làm việc cũ `data_pipeline/.superpowers/`. Giữ các skill mới thêm, mã nguồn, seed,
 lịch sử thiết kế đã được theo dõi và toàn bộ dữ liệu crawl/resume/phục hồi.
 Không xóa dữ liệu nguồn chỉ vì đã có bản upload Kaggle.
 

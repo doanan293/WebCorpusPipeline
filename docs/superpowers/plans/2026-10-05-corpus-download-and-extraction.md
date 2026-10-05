@@ -12,7 +12,9 @@
 
 ## Global Constraints
 
-- Giữ nguyên `crawler/data/crawl/`; không request lại HTML để lấy inventory.
+- Đường dẫn file và lệnh trong plan tính từ `data_pipeline/`, trừ đường dẫn đã ghi tiền tố `data_pipeline/` và `.env`/`.env.example` ở repository root. Dùng chung môi trường với crawler; không có package công cụ ở root.
+
+- Giữ nguyên `data_pipeline/data/crawl/`; không request lại HTML để lấy inventory.
 - Download: 64 toàn cục, 2 mỗi host, 0,25 giây giữa lần bắt đầu cùng host; max file `104857600`, max storage `107374182400` bytes; resource threshold 80%.
 - Request timeout đọc 60 giây; retry tối đa 3 sau lần đầu; redirect tối đa 20. Tuning được lưu trong `config/data.yaml` và cho override CLI.
 - Chỉ nối `.part` có strong ETag khi response Range xác nhận cùng bytes nguồn. Server không hỗ trợ thì restart riêng file đó.
@@ -32,7 +34,7 @@
 
 ## File map và hợp đồng dùng chung
 
-`scripts/ir_data/models.py` định nghĩa dataclass có serialization JSON:
+`src/ir_data/models.py` định nghĩa dataclass có serialization JSON:
 
 - `SourceRef(source_url: str, target_url: str, relation: str, anchor_text: str, alt: str, caption: str)`.
 - `Candidate(url: str, mime_hint: str | None)`.
@@ -50,8 +52,8 @@ File khác nhau nhưng cùng SHA và cùng cấu hình dùng chung parse cache.
 
 ## A1 — Package công cụ, cấu hình và hợp đồng dữ liệu
 
-**Files:** Create root `pyproject.toml`, `uv.lock`, `scripts/data.py`,
-`scripts/ir_data/{__init__,models,settings,cli}.py`, `config/data.yaml`,
+**Files:** Extend project `pyproject.toml`, `uv.lock`,
+`src/ir_data/{__init__,models,settings,cli}.py`, `config/data.yaml`,
 `.env.example`, `tests/corpus/test_settings.py`; modify `.gitignore`.
 
 **Interfaces:** `load_settings(repo_root: Path, overrides: dict) -> Settings`;
@@ -61,14 +63,14 @@ và parser settings; secrets không nằm trong repr/serialization của Setting
 
 - [ ] Viết tests: `test_defaults_match_crawler` assert concurrency 64/per_host 2/max_file_bytes 104857600; `test_env_loaded_from_root_not_cwd` assert cùng keys khi đổi cwd; `test_key_order_numeric_dedup_and_env_precedence` assert labels KEY2 đứng trước KEY10 và secret không có trong repr.
 - [ ] Chạy `uv run --extra dev pytest tests/corpus/test_settings.py -q`, xác nhận FAIL vì module/hành vi chưa có.
-- [ ] Tạo package `ir-corpus`, wheel `scripts/ir_data`, entry `ir-data`; base dependencies PyMongo, Kaggle CLI, python-dotenv, PyYAML. Extra producer: aiohttp, PyMuPDF, openpyxl, xlrd, python-pptx, llama-cloud, filelock và local `hust-public-crawler` qua uv path source `crawler`; dev: pytest, pytest-asyncio, Ruff. Khóa các bản tương thích Python 3.13 bằng uv; consumer không cài extra producer.
-- [ ] Implement interfaces và validation positive integers, per_host ≤ global, repo-relative paths. Load dotenv không override biến đã export; tên KEY được sort số và bỏ secret trùng; `.env.example` chỉ có chỗ trống. Ignore generated `/data/` nhưng giữ data fixtures tracked của `lucene/`.
+- [ ] Mở rộng package `hust-data-pipeline`, wheel gồm `src/hust_crawler` và `src/ir_data`, entry `ir-data`; base dependencies PyMongo, Kaggle CLI, python-dotenv, PyYAML. Extra crawl giữ dependency crawler; producer gồm crawl, aiohttp, PyMuPDF, python-docx, openpyxl, xlrd, python-pptx, llama-cloud, filelock; dev: crawl, pytest, pytest-asyncio, Ruff. Một pyproject/uv.lock, không dùng path dependency trỏ sang dự án crawler khác. Consumer không cài extra producer.
+- [ ] Implement interfaces và validation positive integers, per_host ≤ global, project-relative paths. `repo_root` giữ nghĩa repository root để đọc secrets; `project_root = repo_root / "data_pipeline"` dùng cho config/data/work-dir. Load dotenv không override biến đã export; tên KEY được sort số và bỏ secret trùng; root `.env.example` chỉ có chỗ trống. Ignore generated `data_pipeline/data/` nhưng giữ data fixtures tracked của `lucene/`.
 - [ ] Chạy test trên và `uv run ir-data --help`; help base chạy được khi producer deps không cài. Ghi README setup tối thiểu ở task cần nó; chưa thêm subcommand giả hoạt động.
 - [ ] Commit `feat: add corpus tool configuration and data contracts` với đúng files A1, không stage `.env`/skills người dùng.
 
 ## A2 — Inventory và checkpoint SQLite bền vững
 
-**Files:** Create `scripts/ir_data/{inventory,state}.py`,
+**Files:** Create `src/ir_data/{inventory,state}.py`,
 `tests/corpus/{test_inventory,test_state}.py`, `tests/corpus/fixtures/articles.jsonl`.
 
 **Interfaces:** `index_inventory(source: Path, state: WorkState) -> InventorySummary`;
@@ -89,7 +91,7 @@ và parser settings; secrets không nằm trong repr/serialization của Setting
 
 ## A3 — Download streaming và resume byte đúng nội dung
 
-**Files:** Create `scripts/ir_data/{http_transport,download,artifact_store}.py`,
+**Files:** Create `src/ir_data/{http_transport,download,artifact_store}.py`,
 `tests/corpus/{conftest,test_download_resume,test_download_recovery}.py`.
 
 **Interfaces:** `PublicTransport` async context manager dùng aiohttp;
@@ -108,7 +110,7 @@ inject trong tests. `RetryableDownloadError(retry_after: float | None)` khác
 
 ## A4 — Scheduler song song, backoff và shutdown
 
-**Files:** Create `scripts/ir_data/{scheduler,progress}.py`,
+**Files:** Create `src/ir_data/{scheduler,progress}.py`,
 `tests/corpus/{test_scheduler,test_download_interrupt}.py`; modify `cli.py`, `state.py`.
 
 **Interfaces:** `async run_downloads(state: WorkState, settings: Settings, *, transport_factory: Callable, stop: asyncio.Event) -> RunSummary`;
@@ -125,8 +127,8 @@ và lưu errors/retry_at qua WorkState. Chỉ scheduler sở hữu retry/network
 
 ## A5 — PyMuPDF và điều kiện fallback tối thiểu
 
-**Files:** Create `scripts/ir_data/parsers/{__init__,routing,pdf}.py`,
-`scripts/ir_data/parse_cache.py`, `tests/corpus/{test_pdf_parser,test_parse_cache}.py`;
+**Files:** Create `src/ir_data/parsers/{__init__,routing,pdf}.py`,
+`src/ir_data/parse_cache.py`, `tests/corpus/{test_pdf_parser,test_parse_cache}.py`;
 create generated fixture helpers trong `tests/corpus/fixtures/build_documents.py`.
 
 **Interfaces:** `parse_pdf(file: DownloadedFile) -> LocalResult`;
@@ -143,7 +145,7 @@ create generated fixture helpers trong `tests/corpus/fixtures/build_documents.py
 
 ## A6 — Word, Excel và PowerPoint: lấy text local đơn giản
 
-**Files:** Create `scripts/ir_data/parsers/{word,excel,powerpoint,office}.py`,
+**Files:** Create `src/ir_data/parsers/{word,excel,powerpoint,office}.py`,
 `tests/corpus/{test_word_parser,test_excel_parser,test_powerpoint_parser,test_office_conversion}.py`;
 fixtures `.doc/.xls/.ppt` thật có nguồn/giấy phép được ghi trong `tests/corpus/fixtures/README.md`.
 
@@ -164,7 +166,7 @@ fixtures `.doc/.xls/.ppt` thật có nguồn/giấy phép được ghi trong `te
 
 ## A7 — LlamaParse fast, key quota fallback và checkpoint job
 
-**Files:** Create `scripts/ir_data/cloud/{__init__,errors,key_pool,llamaparse}.py`,
+**Files:** Create `src/ir_data/cloud/{__init__,errors,key_pool,llamaparse}.py`,
 `tests/corpus/{test_cloud_errors,test_key_pool,test_llamaparse_jobs}.py`; extend `state.py` cloud_jobs.
 
 **Interfaces:** `classify_cloud_error(status_code: int | None, payload: dict | str) -> str` returns quota/rate_limit/storage_limit/auth/invalid/transient/unknown;
@@ -181,7 +183,7 @@ fixtures `.doc/.xls/.ppt` thật có nguồn/giấy phép được ghi trong `te
 
 ## A8 — Orchestrate download → parse, status và xuất enrichment
 
-**Files:** Create `scripts/ir_data/{pipeline,enrichment_export}.py`,
+**Files:** Create `src/ir_data/{pipeline,enrichment_export}.py`,
 `tests/corpus/{test_pipeline_resume,test_enrichment_export}.py`, `docs/document-pipeline.md`;
 modify `cli.py`, `state.py`, `config/data.yaml`.
 
@@ -193,7 +195,7 @@ modify `cli.py`, `state.py`, `config/data.yaml`.
 - [ ] Chạy `uv run --extra producer --extra dev pytest tests/corpus/test_pipeline_resume.py tests/corpus/test_enrichment_export.py -q`, xác nhận FAIL.
 - [ ] Implement bounded stages (download async; local parse mặc định 2 process workers; cloud 1 job mặc định). Không chia sẻ PyMuPDF document giữa threads/processes. Mỗi stage đọc/ghi checkpoint, parse cache atomic và metadata; source URL aliases cùng bytes lấy cùng parse output. Inventory hoàn tất mới bắt đầu run có thể tiếp tục ở stage nào cần.
 - [ ] Wire CLI inventory/download/extract/enrich-documents/status/reconcile-job; default resume cùng work-dir, explicit retry-failed, explicit converter/retry config. Export loại bỏ local path/key/job scope; provenance công khai gồm URL/hash/parser/status/referrers, không lộ credentials. Report format counts/coverage/page routes/source-crawl status, phân biệt terminal failure với công việc blocked.
-- [ ] Run tests A1–A8: `uv run --extra producer --extra dev pytest tests/corpus -q`; run Ruff trên scripts/tests. Demo restart fixture bằng CLI, assert source checksum giữ nguyên. Viết docs về Range có điều kiện, file restart riêng, quota resume và cách đọc status.
+- [ ] Run tests A1–A8: `uv run --extra producer --extra dev pytest tests/corpus -q`; run Ruff trên src/tests. Demo restart fixture bằng CLI, assert source checksum giữ nguyên. Viết docs về Range có điều kiện, file restart riêng, quota resume và cách đọc status.
 - [ ] Commit `feat: complete resumable document enrichment workflow`.
 
 ## Acceptance riêng cho download/resume

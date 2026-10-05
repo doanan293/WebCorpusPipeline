@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Không crawl lại HTML chỉ để tải tài liệu; nguồn `crawler/data/crawl/` giữ nguyên.
+- Không crawl lại HTML chỉ để tải tài liệu; nguồn `data_pipeline/data/crawl/` giữ nguyên.
 - Download mặc định 64 toàn cục, 2 mỗi host, khoảng cách khởi đầu 0,25 giây/host; cho cấu hình lại.
 - File hoàn tất được kiểm tra local và bỏ qua trên mạng; file dở chỉ nối khi server trả Range hợp lệ cho cùng nội dung.
 - PDF dùng PyMuPDF. XLSX/XLS/PPTX dùng parser native local; PPT cũ chuyển local sang PPTX.
@@ -44,36 +44,44 @@
 | C | [Corpus, MongoDB và Kaggle](2026-10-05-corpus-storage-and-publishing.md) | Graph, corpus kiểm chứng được, DB local, publish/pull và demo bàn giao |
 
 Thực hiện A1 trước để chốt hợp đồng, ưu tiên A2–A3 vì download/resume là nhu cầu
-hiện tại. Hoàn thành A4–A8, B1–B2 rồi C1–C4. B có thể phát triển độc lập sau A1
-nếu phương thức thực thi được chọn có delegation; không tự giả định đã được chọn.
+hiện tại. Hoàn thành A4–A8, B1–B2 rồi C1–C4. User đã chọn inline execution:
+thực thi tuần tự trong phiên chính, không giao cho agent phụ.
 
 ## Cấu trúc file chung
 
-- `scripts/data.py`: entry point mỏng gọi `ir_data.cli.main`; không chứa logic nghiệp vụ.
-- `scripts/ir_data/`: các module tập trung theo nhiệm vụ ở từng plan A/C.
-- Root `pyproject.toml`, `uv.lock`: môi trường công cụ dữ liệu độc lập với crawler.
+Mọi đường dẫn tương đối trong phần này và plan A/C tính từ `data_pipeline/`;
+plan B ghi rõ đường dẫn từ repository root cho code crawler hiện có.
+Các lệnh `uv run` và Docker Compose chạy trong `data_pipeline/`.
+
+- `src/ir_data/cli.py`: entry point `ir-data`; chỉ đăng ký khi có CLI chạy được.
+- `src/ir_data/`: các module tập trung theo nhiệm vụ ở từng plan A/C.
+- `src/hust_crawler/`: crawler hiện có; giữ import và các lệnh `hust-crawl`/`hust-discover`.
+- `pyproject.toml`, `uv.lock`: một môi trường Python chung cho toàn bộ data pipeline; không tạo package riêng ở repository root.
 - `config/data.yaml`: tuning downloader, parser và DB; không chứa secrets.
 - `config/kaggle-dataset.json`, `config/corpus.lock.json`: metadata và phiên bản phát hành, được điền giá trị thực trước publish.
-- `tests/corpus/`: unit/integration tests của công cụ dữ liệu; không thay pytest root của crawler.
+- `tests/corpus/`: unit/integration tests của công cụ dữ liệu, bên cạnh tests crawler trong cùng dự án.
 - `compose.yaml`: MongoDB local. Không thêm Tika/Tesseract.
 - `docs/data-schema.md`, `docs/document-pipeline.md`, `docs/content-extraction.md`: tài liệu bàn giao.
 - `data/enrichment/`: SQLite checkpoint, parts, files, parse cache và báo cáo local; Git bỏ qua.
 - `data/corpus/<snapshot_id>/`: bản corpus đã verify; Git bỏ qua.
 
-Root package có base dependencies cho `pull`, `verify`, `import-mongo`; extras
-`producer` chứa downloader/parsers/llama-cloud và nguồn local crawler. Base
+Package `hust-data-pipeline` có base dependencies cho `pull`, `verify`, `import-mongo`;
+extra `crawl` chứa crawler, `producer` thêm downloader/parsers/llama-cloud;
+extra `dev` chứa công cụ test và crawler. Hai namespace thuộc cùng wheel. Base
 install không kéo Scrapy/Playwright hoặc LibreOffice vào máy consumer.
 Khóa versions thực tế tương thích Python 3.13 trong `uv.lock`, không đoán số
 version trong plan. Trước khi khóa phải kiểm tra API SDK LlamaParse thật.
 
 ## Hợp đồng CLI và mã thoát
 
-Entry point `ir-data`, chạy từ repo bằng `uv run ir-data ...` sau cài base;
+Entry point `ir-data`, chạy từ `data_pipeline/` bằng `uv run ir-data ...` sau cài base;
 producer dùng `uv run --extra producer ir-data ...`.
+Đường dẫn dữ liệu/config tương đối được resolve từ project `data_pipeline/`;
+secrets tiếp tục đọc từ `.env` ở repository root.
 
 | Lệnh | Hợp đồng |
 | --- | --- |
-| `inventory --source crawler/data/crawl/final --work-dir data/enrichment` | Quét JSONL có cursor; gộp URL, giữ mọi referrer |
+| `inventory --source data/crawl/final --work-dir data/enrichment` | Quét JSONL có cursor; gộp URL, giữ mọi referrer |
 | `download --work-dir data/enrichment [--retry-failed]` | Resume mặc định; chỉ tải tài liệu chưa hoàn tất |
 | `extract --work-dir data/enrichment [--retry-failed]` | Resume parser, áp dụng local-first và quota fallback |
 | `enrich-documents --source ... --work-dir ...` | Inventory → download → extract; dùng cùng checkpoints như chạy riêng |
@@ -105,7 +113,8 @@ nhưng không được đóng gói giả hoàn tất khi còn công việc chờ
 
 ## Trạng thái bàn giao kế hoạch
 
-Đây là kế hoạch, chưa phải code triển khai. User đã yêu cầu lập plan và thêm
-download/resume bắt buộc. Trước thực thi, review các plan và chọn cách thực thi.
-Đề xuất native/inline vì các thành phần phụ thuộc chặt vào cùng schema và
-checkpoint; subagent-driven là lựa chọn nếu muốn review độc lập từng task.
+Đã bắt đầu inline execution. User chốt `data_pipeline/` phụ trách thu thập,
+tải, bóc tách, storage/graph/MongoDB và Kaggle; `lucene/` phụ trách index/search.
+Phần khung enrichment còn đang triển khai, chưa nghiệm thu downloader/parser.
+Đổi tên thư mục không đồng nghĩa hoàn tất các task A/B/C; chỉ đánh dấu task
+hoàn thành khi code và kiểm thử tương ứng đã chạy.

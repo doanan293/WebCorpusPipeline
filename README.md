@@ -4,20 +4,26 @@ Kho mã này gồm hai dự án độc lập:
 
 | Thư mục | Dự án | Công cụ |
 | --- | --- | --- |
-| [`crawler/`](crawler/README.md) | Thu thập nội dung công khai từ các website HUST | Python 3.13, `uv` |
+| [`data_pipeline/`](data_pipeline/README.md) | Thu thập, tải tài liệu, bóc tách văn bản, lưu trữ và chia sẻ corpus | Python 3.13, `uv` |
 | [`lucene/`](lucene/README.md) | Lập chỉ mục và tìm kiếm tài liệu với Apache Lucene | JDK 17+, Maven 3.9+ |
 
 Chạy lệnh trong thư mục của từng dự án để các đường dẫn tương đối, cấu hình và dữ liệu đầu ra hoạt động đúng.
 
-## Crawler
+## Data pipeline
 
 ```bash
-cd crawler
+cd data_pipeline
 uv sync --extra dev
 uv run pytest -q
 ```
 
-Xem [hướng dẫn crawler](crawler/README.md) để cấu hình và chạy crawl.
+Xem [hướng dẫn data pipeline](data_pipeline/README.md) để cấu hình và chạy crawl.
+Các bước download/extract, MongoDB và Kaggle đang được triển khai trong cùng
+dự án này. `lucene/` nhận corpus đã xử lý để lập chỉ mục và tìm kiếm.
+
+`data_pipeline/` dùng một `pyproject.toml` và một `uv.lock`. Extra `crawl`
+cài crawler, `producer` cài các công cụ tạo corpus, còn base dành cho consumer.
+Extra `dev` bao gồm crawler để chạy bộ test hiện có.
 
 ## Lucene
 

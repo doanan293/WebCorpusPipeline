@@ -1,6 +1,18 @@
-# HUST Public Web Crawler
+# HUST Data Pipeline
 
-Discover and extract public content from HUST hostnames and URLs using a unified single-pass hybrid crawl workflow.
+This project owns crawling, document download/resume, text extraction, corpus/link
+graph storage, MongoDB and Kaggle synchronization. Search and indexing live in
+the sibling `lucene/` project. Run the commands below from `data_pipeline/`.
+
+The existing crawler lives in `src/hust_crawler/`; the document pipeline is
+being implemented in `src/ir_data/`. Both belong to the same Python project
+and lockfile. The sections below describe the working crawl commands;
+the new document pipeline is not yet ready for production runs.
+
+Dependency groups: base for corpus consumers, `crawl` for the crawler,
+`producer` for crawling and document processing, and `dev` for crawler tests.
+The document pipeline reads LlamaParse keys from the repository-root `.env`,
+one directory above this project. Generated data stays under `data/`.
 
 ## Installation
 
