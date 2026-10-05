@@ -11,8 +11,9 @@ new document pipeline commands.
 
 Dependency groups: base for corpus consumers, `crawl` for the crawler,
 `producer` for crawling and document processing, and `dev` for crawler tests.
-The document pipeline reads LlamaParse keys from the repository-root `.env`,
-one directory above this project. Generated data stays under `data/`.
+The document pipeline reads LlamaParse and Kaggle credentials from the
+repository-root `.env`, one directory above this project. Generated data stays
+under `data/`.
 
 ## Installation
 
@@ -27,8 +28,9 @@ working directory. An environment variable already exported by the shell takes
 precedence over the value in `.env`.
 
 All crawler policy and performance settings live in `config/crawler.yaml`; the
-file is validated strictly and must contain the complete schema. `.env` is only
-for `CRAWLER_CONTACT`. Supported CLI tuning flags override YAML for that run:
+file is validated strictly and must contain the complete schema. The
+project-local `.env` is only for `CRAWLER_CONTACT`; keep API keys in the
+repository-root `.env` and never commit either file. Supported CLI tuning flags override YAML for that run:
 `--assets`, frontier/file limits, `--concurrency`, `--max-per-host`, and
 `--resource-limit-percent`. The checked-in defaults use two requests per host,
 AutoThrottle target `2.0`, and a five-second maximum delay. A process already
