@@ -11,6 +11,7 @@ dependencies = [
     "python-dotenv==1.1.1",
     "PyYAML==6.0.2",
     "pymongo>=4.10,<5",
+    "kaggle>=1.7,<2",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +40,7 @@ dev = [
 ]
 
 [project.scripts]
+ir-data = "ir_data.cli:main"
 hust-discover = "hust_crawler.crawl.discovery_cli:main"
 hust-crawl = "hust_crawler.crawl.cli:main"
 hust-domain-audit = "hust_crawler.domain_audit:main"

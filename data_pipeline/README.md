@@ -6,8 +6,8 @@ the sibling `lucene/` project. Run the commands below from `data_pipeline/`.
 
 The existing crawler lives in `src/hust_crawler/`; the document pipeline is
 being implemented in `src/ir_data/`. Both belong to the same Python project
-and lockfile. The sections below describe the working crawl commands;
-the new document pipeline is not yet ready for production runs.
+and lockfile. The sections below describe the working crawl commands and the
+new document pipeline commands.
 
 Dependency groups: base for corpus consumers, `crawl` for the crawler,
 `producer` for crawling and document processing, and `dev` for crawler tests.
@@ -34,6 +34,22 @@ for `CRAWLER_CONTACT`. Supported CLI tuning flags override YAML for that run:
 AutoThrottle target `2.0`, and a five-second maximum delay. A process already
 running in tmux must be stopped and restarted before changed code or YAML is
 loaded.
+
+## Document enrichment, MongoDB and Kaggle
+
+```bash
+uv sync --extra producer
+uv run ir-data inventory --source data/crawl/final --work-dir data/enrichment
+uv run ir-data download --work-dir data/enrichment
+uv run ir-data extract --work-dir data/enrichment
+uv run ir-data package --source data/crawl/final --work-dir data/enrichment --output data/corpus/latest
+docker compose up -d mongodb
+uv run ir-data import-mongo --corpus data/corpus/latest
+```
+
+Download and extraction resume from SQLite checkpoints. The published corpus
+contains processed text and provenance; binary downloads and credentials stay
+local. `lucene/` consumes the resulting corpus for indexing and search.
 
 ## Unified Hybrid Crawl Workflow
 

@@ -55,7 +55,9 @@ def load_api_keys(repo_root: Path) -> list[tuple[str, str]]:
     values = {**dotenv_values(repo_root / ".env"), **os.environ}
     result: list[tuple[str, str]] = []
     seen: set[str] = set()
-    for name in sorted((k for k in values if re.fullmatch(r"LLAMAPARSE_KEY\d+", k)), key=_numbered_key):
+    for name in sorted(
+        (k for k in values if re.fullmatch(r"LLAMAPARSE_KEY\d+", k)), key=_numbered_key
+    ):
         value = str(values[name] or "").strip()
         if value and value not in seen:
             result.append((name, value))
@@ -78,15 +80,20 @@ def load_settings(repo_root: Path, overrides: dict[str, Any] | None = None) -> S
     d = {**config.get("download", {}), **config.get("parser", {})}
     db = config.get("database", {})
     values: dict[str, Any] = {
-        "work_dir": "data/enrichment", "source": "data/crawl/final",
-        "concurrency": d.get("concurrency", 64), "per_host": d.get("per_host", 2),
-        "host_delay_seconds": d.get("host_delay_seconds", .25),
+        "work_dir": "data/enrichment",
+        "source": "data/crawl/final",
+        "concurrency": d.get("concurrency", 64),
+        "per_host": d.get("per_host", 2),
+        "host_delay_seconds": d.get("host_delay_seconds", 0.25),
         "max_file_bytes": d.get("max_file_bytes", 104857600),
         "max_storage_bytes": d.get("max_storage_bytes", 107374182400),
         "timeout_seconds": d.get("request_timeout_seconds", 60),
-        "retries": d.get("retries", 3), "max_redirects": d.get("max_redirects", 20),
-        "chunk_bytes": d.get("chunk_bytes", 262144), "checkpoint_bytes": d.get("checkpoint_bytes", 1048576),
-        "local_workers": d.get("local_workers", 2), "cloud_workers": d.get("cloud_workers", 1),
+        "retries": d.get("retries", 3),
+        "max_redirects": d.get("max_redirects", 20),
+        "chunk_bytes": d.get("chunk_bytes", 262144),
+        "checkpoint_bytes": d.get("checkpoint_bytes", 1048576),
+        "local_workers": d.get("local_workers", 2),
+        "cloud_workers": d.get("cloud_workers", 1),
         "cloud_poll_seconds": d.get("cloud_poll_seconds", 5),
         "cloud_timeout_seconds": d.get("cloud_timeout_seconds", 1800),
         "mongo_uri": db.get("mongo_uri", "mongodb://127.0.0.1:27017"),
@@ -95,9 +102,25 @@ def load_settings(repo_root: Path, overrides: dict[str, Any] | None = None) -> S
     values.update(overrides or {})
     if values["per_host"] > values["concurrency"]:
         raise ValueError("per_host cannot exceed concurrency")
-    for key in ("concurrency", "per_host", "max_file_bytes", "max_storage_bytes", "retries", "max_redirects", "chunk_bytes", "checkpoint_bytes", "local_workers", "cloud_workers"):
+    for key in (
+        "concurrency",
+        "per_host",
+        "max_file_bytes",
+        "max_storage_bytes",
+        "retries",
+        "max_redirects",
+        "chunk_bytes",
+        "checkpoint_bytes",
+        "local_workers",
+        "cloud_workers",
+    ):
         values[key] = _positive(key, values[key])
-    for key in ("host_delay_seconds", "timeout_seconds", "cloud_poll_seconds", "cloud_timeout_seconds"):
+    for key in (
+        "host_delay_seconds",
+        "timeout_seconds",
+        "cloud_poll_seconds",
+        "cloud_timeout_seconds",
+    ):
         values[key] = _positive(key, values[key], False)
     values["repo_root"] = repo_root
     values["work_dir"] = Path(values["work_dir"])

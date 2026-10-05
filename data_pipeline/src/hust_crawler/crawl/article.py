@@ -705,5 +705,6 @@ def analyze_article(source: bytes | str, url: str, encoding: str | None = None) 
         "warnings": warnings,
     }
     discoveries = _discoveries_from_root(root, base_url)
+    article["observed_refs"] = [dict(item) for item in discoveries]
 
     return ArticleAnalysis(article=article, discoveries=discoveries, assets=assets)
