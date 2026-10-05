@@ -14,15 +14,22 @@ MAX_BATCH_BYTES = 4 * 1024 * 1024
 
 
 def _record_id(value: dict, kind: str) -> str:
-    raw = json.dumps(
+    identity = [
+        kind,
+        value.get("url") or value.get("source_url"),
+        value.get("target_url"),
+    ]
+    if kind == "links":
+        identity.append(value.get("relation"))
+    identity.extend(
         [
-            kind,
-            value.get("url") or value.get("source_url"),
-            value.get("target_url"),
             value.get("anchor_text"),
             value.get("alt"),
             value.get("caption"),
-        ],
+        ]
+    )
+    raw = json.dumps(
+        identity,
         ensure_ascii=False,
         sort_keys=True,
     )
