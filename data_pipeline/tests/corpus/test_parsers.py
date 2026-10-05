@@ -8,6 +8,7 @@ from pptx import Presentation
 from pptx.util import Inches
 
 from ir_data.models import DownloadedFile
+from ir_data.artifact_store import extension_for
 from ir_data.parsers import parse_local
 from ir_data.parsers.pdf import cloud_part_indices, parse_pdf
 
@@ -68,3 +69,11 @@ def test_powerpoint_reads_text_and_marks_image_only_slide(tmp_path):
     result = parse_local(_file(path))
     assert result.parts[0].text == "Hello"
     assert result.parts[1].text == ""
+
+
+def test_download_extension_uses_mime_for_dynamic_document_urls():
+    assert extension_for("application/pdf", "https://example.test/download.aspx?id=7") == ".pdf"
+    assert extension_for(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "https://example.test/file?id=8",
+    ) == ".docx"

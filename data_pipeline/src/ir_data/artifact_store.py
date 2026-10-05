@@ -25,9 +25,29 @@ def verify_file(file: DownloadedFile) -> bool:
 
 def extension_for(mime: str, url: str) -> str:
     suffix = Path(url.split("?", 1)[0]).suffix.lower()
-    if suffix and len(suffix) <= 10:
+    known = {
+        ".pdf", ".doc", ".docx", ".odt", ".xls", ".xlsx", ".ods",
+        ".ppt", ".pptx", ".odp", ".txt", ".csv", ".rtf",
+    }
+    if suffix in known:
         return suffix
-    return mimetypes.guess_extension(mime.split(";", 1)[0].strip()) or ".bin"
+    normalized = mime.split(";", 1)[0].strip().lower()
+    by_mime = {
+        "application/pdf": ".pdf",
+        "application/msword": ".doc",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+        "application/vnd.oasis.opendocument.text": ".odt",
+        "application/vnd.ms-excel": ".xls",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+        "application/vnd.oasis.opendocument.spreadsheet": ".ods",
+        "application/vnd.ms-powerpoint": ".ppt",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+        "application/vnd.oasis.opendocument.presentation": ".odp",
+        "text/plain": ".txt",
+        "text/csv": ".csv",
+        "application/rtf": ".rtf",
+    }
+    return by_mime.get(normalized) or mimetypes.guess_extension(normalized) or ".bin"
 
 
 def looks_like_document(path: Path, mime: str) -> bool:
