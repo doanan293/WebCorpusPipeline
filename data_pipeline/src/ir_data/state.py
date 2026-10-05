@@ -243,6 +243,14 @@ class WorkState:
             "SELECT count(*) FROM inventory WHERE status IN ('pending','retry','in_progress','finalizing')"
         ).fetchone()[0]
 
+    def next_retry_delay(self) -> float | None:
+        row = self.conn.execute(
+            "SELECT min(retry_at) FROM inventory WHERE status='retry' AND retry_at IS NOT NULL"
+        ).fetchone()
+        if not row or row[0] is None:
+            return None
+        return max(0.0, float(row[0]) - time.time())
+
     def pending_parse(self) -> Iterator[DownloadedFile]:
         rows = self.conn.execute(
             "SELECT i.* FROM inventory i LEFT JOIN parse_results p ON i.url=p.url WHERE i.status='downloaded' AND p.url IS NULL ORDER BY i.url"

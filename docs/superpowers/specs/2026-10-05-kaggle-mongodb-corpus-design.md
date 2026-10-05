@@ -417,7 +417,7 @@ dùng Kaggle CLI cho giao tiếp Kaggle. Dùng chung project và lockfile trong
 `data_pipeline/`, tách dependencies bằng extras; người chỉ tải dữ liệu cài
 base, không phải cài Scrapy hoặc Playwright.
 
-`config/` lưu metadata dataset và file khóa gồm owner/slug, phiên bản Kaggle,
+`data_pipeline/config/` lưu metadata dataset và file khóa gồm owner/slug, phiên bản Kaggle,
 snapshot ID cùng checksum manifest. Chủ dataset và giấy phép là tham số cấu
 hình bắt buộc trước lần publish đầu; không tự suy ra quyền cấp phép từ việc
 nội dung nguồn có thể truy cập công khai. Giá trị thực sẽ được điền khi cấu

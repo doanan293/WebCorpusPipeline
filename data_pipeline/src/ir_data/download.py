@@ -169,7 +169,11 @@ async def run_downloads(
             task = asyncio.create_task(worker(job))
             active[task] = job
         if not active:
-            break
+            delay = state.next_retry_delay()
+            if delay is None:
+                break
+            await asyncio.sleep(min(delay, 2.0))
+            continue
         done, _ = await asyncio.wait(active, return_when=asyncio.FIRST_COMPLETED)
         for task in done:
             job = active.pop(task)
@@ -186,7 +190,12 @@ async def run_downloads(
                 else:
                     state.record_failure(job.url, "download", str(exc))
             except Exception as exc:
-                state.record_failure(job.url, "download", str(exc))
+                if job.attempts <= settings.retries:
+                    state.record_failure(
+                        job.url, "download", str(exc), time.time() + 2**job.attempts
+                    )
+                else:
+                    state.record_failure(job.url, "download", str(exc))
     for task in active:
         task.cancel()
     return state.summary()

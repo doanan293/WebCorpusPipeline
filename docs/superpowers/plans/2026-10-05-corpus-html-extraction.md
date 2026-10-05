@@ -25,9 +25,9 @@
 
 ## B1 — Chọn khối nội dung và metadata
 
-**Files:** Create `data_pipeline/src/hust_crawler/crawl/content_selection.py`, `article_metadata.py`,
-`data_pipeline/tests/unit/crawl/test_content_selection.py`, `test_article_metadata.py`;
-modify `data_pipeline/src/hust_crawler/crawl/content.py`, `article.py`, existing unit tests.
+**Files:** Create `src/hust_crawler/crawl/content_selection.py`, `article_metadata.py`,
+`tests/unit/crawl/test_content_selection.py`, `test_article_metadata.py`;
+modify `src/hust_crawler/crawl/content.py`, `article.py`, existing unit tests.
 
 **Interfaces:** `select_content(selector) -> ContentSelection` chứa selector khối, score và lý do chọn;
 `extract_metadata(selector, page_url: str) -> ArticleMetadata` chứa title, author, published_at, published_raw, date_precision và metadata_sources.
@@ -42,11 +42,11 @@ Giữ API public hiện tại của `content.py`/`article.py`; adapter chuyển 
 
 ## B2 — Provenance, lưu nguồn tùy chọn và đánh giá
 
-**Files:** Create `data_pipeline/src/hust_crawler/crawl/source_archive.py`, `evaluation.py`,
-`data_pipeline/tests/unit/crawl/test_source_archive.py`, `test_evaluation.py`,
-`data_pipeline/tests/fixtures/content_extraction/`, `docs/content-extraction.md`;
+**Files:** Create `src/hust_crawler/crawl/source_archive.py`, `evaluation.py`,
+`tests/unit/crawl/test_source_archive.py`, `test_evaluation.py`,
+`tests/fixtures/content_extraction/`, `docs/content-extraction.md`;
 modify `article.py`, `assets.py`, `options.py`, `cli.py`, `runner.py`, `spider.py`, `writer.py` khi đường gọi thực tế cần;
-add CLI adapter `data_pipeline/src/ir_data/evaluate.py` và tests trong cùng project.
+add CLI adapter `src/ir_data/evaluate.py` và tests trong cùng project.
 
 **Interfaces:** `collect_observed_refs(selector, page_url) -> list[dict]`;
 `save_source(root, page_url, content: bytes, kind: str) -> dict` trả hash, relative_path, kind;
