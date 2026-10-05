@@ -6,7 +6,7 @@
 
 **Architecture:** Inventory/checkpoint SQLite riêng cho enrichment; downloader streaming có kiểm chứng HTTP Range và hàng đợi theo host. Parser có cache theo nội dung/cấu hình, lưu kết quả theo từng trang/sheet/slide; cloud chỉ xử lý phần không ra chữ.
 
-**Tech Stack:** Python 3.13, uv, SQLite, aiohttp, PyMuPDF, openpyxl, xlrd, python-pptx, LibreOffice, llama-cloud, pytest.
+**Tech Stack:** Python 3.13, uv, SQLite, aiohttp, PyMuPDF, python-docx, openpyxl, xlrd, python-pptx, LibreOffice, llama-cloud, pytest.
 
 **Spec:** [Design](../specs/2026-10-05-kaggle-mongodb-corpus-design.md). [Master plan và CLI](2026-10-05-corpus-pipeline.md).
 
@@ -17,6 +17,7 @@
 - Request timeout đọc 60 giây; retry tối đa 3 sau lần đầu; redirect tối đa 20. Tuning được lưu trong `config/data.yaml` và cho override CLI.
 - Chỉ nối `.part` có strong ETag khi response Range xác nhận cùng bytes nguồn. Server không hỗ trợ thì restart riêng file đó.
 - PDF local PyMuPDF; XLSX/openpyxl, XLS/xlrd, PPTX/python-pptx. Không OCR local.
+- DOCX/python-docx lấy đoạn và bảng; DOC chuyển local sang DOCX. Text chính và thứ tự cơ bản là đủ; không tái dựng layout, tọa độ ô/shape hoặc bảng đẹp.
 - Chỉ LlamaParse `fast`/`latest` khi không ra chữ/số hữu ích; không nâng tier. Key quota fallback theo thứ tự số trong `.env`.
 - Mọi giới hạn/chưa hoàn tất phải xuất trạng thái; không âm thầm bỏ tài liệu hoặc tính phí lại sau timeout.
 - Consumers chỉ pull/import không cần producer extras hoặc LibreOffice.
@@ -37,7 +38,7 @@
 - `Candidate(url: str, mime_hint: str | None)`.
 - `DownloadJob(url: str, part_path: Path, durable_offset: int, strong_etag: str | None, final_url: str | None, expected_size: int | None, attempts: int)`.
 - `DownloadedFile(url: str, path: Path, sha256: str, size: int, mime_type: str, final_url: str)`.
-- `ExtractedPart(index: int, kind: str, text: str, has_visual_content: bool, structured: list[dict], notes: str, parser: str)`; index bắt đầu từ 1, kind là page/sheet/slide.
+- `ExtractedPart(index: int, kind: str, text: str, has_visual_content: bool, parser: str)`; index bắt đầu từ 1, kind là page/sheet/slide/document. Word native là một phần document; không giả lập số trang. Bỏ structured/notes khỏi đầu ra bắt buộc.
 - `LocalResult(source_sha256: str, parts: list[ExtractedPart], warnings: list[str], parser_version: str)`.
 - `ParseResult(source_sha256: str, parts: list[ExtractedPart], status: str, warnings: list[str], parser_versions: dict[str, str])`.
 - `RunSummary(downloaded: int, parsed: int, failed: int, pending: int, quota_blocked: int, transferred_bytes: int, exit_code: int)`.
@@ -140,24 +141,26 @@ create generated fixture helpers trong `tests/corpus/fixtures/build_documents.py
 - [ ] Tách đúng subset, giữ original page mapping. Password-protected/corrupt/configuration failures có typed errors. Cache atomic JSON kèm checksum và cấu hình; ghi provenance parser version thật. Không coi output null/empty unknown là extracted. Test mixed pages ghép có đủ thứ tự và cache survives restart.
 - [ ] Chạy lại tests A5; test encrypted PDF và page không chữ nhưng chỉ có vector vẽ. Commit `feat: extract PDF locally with conservative cloud fallback`.
 
-## A6 — Excel, PowerPoint và Office local adapters
+## A6 — Word, Excel và PowerPoint: lấy text local đơn giản
 
-**Files:** Create `scripts/ir_data/parsers/{excel,powerpoint,office}.py`,
-`tests/corpus/{test_excel_parser,test_powerpoint_parser,test_office_conversion}.py`;
-fixtures `.xls/.ppt` thật có nguồn/giấy phép được ghi trong `tests/corpus/fixtures/README.md`.
+**Files:** Create `scripts/ir_data/parsers/{word,excel,powerpoint,office}.py`,
+`tests/corpus/{test_word_parser,test_excel_parser,test_powerpoint_parser,test_office_conversion}.py`;
+fixtures `.doc/.xls/.ppt` thật có nguồn/giấy phép được ghi trong `tests/corpus/fixtures/README.md`.
 
 **Interfaces:** `parse_excel(file: DownloadedFile) -> LocalResult`;
+`parse_word(file: DownloadedFile) -> LocalResult`;
 `parse_powerpoint(file: DownloadedFile) -> LocalResult`;
 `convert_office(source: Path, destination_dir: Path, target: str) -> Path`;
 `render_office_subset(source: Path, indices: list[int], destination: Path) -> dict[int, int]`;
 `parse_local(file: DownloadedFile) -> LocalResult` dispatcher trong `parsers/__init__.py`.
 
-- [ ] Viết tests XLSX sheet có 0, công thức không cache, hidden sheet và merged cells: assert structured cell giữ tọa độ/kiểu/formula, 0 không thành empty, cloud candidates rỗng. PPTX có text/table trong group, notes, slide trắng và ảnh-only: assert nội dung/notes không trộn và chỉ slide ảnh-only được chọn.
-- [ ] Chạy `uv run --extra producer --extra dev pytest tests/corpus/test_excel_parser.py tests/corpus/test_powerpoint_parser.py tests/corpus/test_office_conversion.py -q`, xác nhận FAIL.
-- [ ] Implement openpyxl read_only data/formula passes, xlrd cho XLS, python-pptx duyệt group đệ quy/text/table/notes. XLS legacy chỉ ghi những formula/value có thể đọc, không giả lập công thức thiếu. Trích title/labels có sẵn ở chart/diagram bằng adapter XML khi API high-level không lộ; không suy luận nội dung từ hình ảnh đã có local text.
-- [ ] LibreOffice headless cho PPT→PPTX; DOC/DOCX/ODT/ODS/ODP theo spec. Subprocess timeout và profile temp riêng mỗi worker; lỗi dependency không kích hoạt cloud. Không ghi đè nguồn. Converter cho sheet fallback chỉ render sheet được chọn với phạm vi cần thiết, không giới hạn theo print area; slide fallback chỉ export slide được chọn. Chạy parser local trên bản convert trước khi quyết định cloud.
-- [ ] Tests kiểm tra công thức giữ raw/cache riêng, XLS fixture, PPT fixture, XLSX chỉ nhúng ảnh, charts/notes không làm mất thứ tự, timeout converter không gửi API. `render_office_subset` có image-only fixture và original mapping. Chạy lại tests, ghi hướng dẫn cài LibreOffice producer.
-- [ ] Commit `feat: extract Excel and PowerPoint content with local adapters`.
+- [ ] Viết tests DOCX đoạn/bảng xen kẽ, DOC cũ, Word trắng và image-only. XLSX có 0, công thức không cache, hidden sheet và merged cells: assert text giữ dữ liệu, 0 không thành empty và ô gộp không nhân bản. PPTX có text/table trong group, slide trắng và image-only: giữ thứ tự slide, chỉ slide image-only là cloud candidate.
+- [ ] Chạy `uv run --extra producer --extra dev pytest tests/corpus/test_word_parser.py tests/corpus/test_excel_parser.py tests/corpus/test_powerpoint_parser.py tests/corpus/test_office_conversion.py -q`, xác nhận FAIL.
+- [ ] Implement python-docx đọc đoạn/bảng theo thứ tự thân tài liệu. Xuất plain text; không bắt buộc header/footer, notes, tọa độ hoặc XML adapter cho textbox/shape phức tạp. Word đã có chữ hữu ích thì giữ local. Nếu không ra chữ nhưng có nội dung hiển thị, chuyển PDF và chạy PyMuPDF; chuyển LocalResult sang kind=page với chỉ số trang PDF trước khi chọn cloud candidates. Không gửi index document như số trang. File trắng không gọi API.
+- [ ] Implement openpyxl read_only data/formula passes: ưu tiên cache, thiếu cache giữ công thức dạng text; xlrd lấy giá trị đọc được, không giả lập công thức. Xuất sheet theo thứ tự, ô phân cách tab, hàng newline; không lưu raw/cache song song hay schema tọa độ. python-pptx duyệt text/table và group cơ bản, không bắt buộc notes hoặc chart/diagram XML. Chỉ kiểm chứng text và thứ tự, không layout.
+- [ ] LibreOffice headless cho DOC→DOCX và PPT→PPTX; ODT/ODS/ODP theo spec. Subprocess timeout và profile temp riêng mỗi worker; lỗi dependency không kích hoạt cloud. Không ghi đè nguồn. Converter cho sheet fallback chỉ render sheet được chọn với phạm vi cần thiết, không giới hạn theo print area; slide fallback chỉ export slide được chọn. Chạy parser local trên bản convert trước khi quyết định cloud.
+- [ ] Tests Word image-only thử PDF local trước cloud, Word có chữ và ảnh không gọi API; cache phân biệt parser/converter mới. XLS/PPT legacy và XLSX image-only có fixtures; timeout converter không gửi API. `render_office_subset` giữ original mapping. Chạy lại tests, ghi hướng dẫn cài LibreOffice và giới hạn thành phần không bóc tách vào docs.
+- [ ] Commit `feat: extract plain text from Word Excel and PowerPoint locally`.
 
 ## A7 — LlamaParse fast, key quota fallback và checkpoint job
 

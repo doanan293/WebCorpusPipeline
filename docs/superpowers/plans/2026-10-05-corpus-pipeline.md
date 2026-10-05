@@ -6,7 +6,7 @@
 
 **Architecture:** Tái sử dụng dữ liệu crawl hiện có làm đầu vào bất biến. Pipeline làm giàu tài liệu dùng inventory và checkpoint SQLite riêng, download streaming song song, parser local trước và LlamaParse `fast` khi không ra chữ. Corpus JSONL độc lập là đầu vào chung của MongoDB và Kaggle.
 
-**Tech Stack:** Python 3.13, uv, SQLite, aiohttp, PyMuPDF, openpyxl, xlrd, python-pptx, LibreOffice headless, llama-cloud, PyMongo/GridFS, Docker Compose, Kaggle CLI; crawler Python hiện có.
+**Tech Stack:** Python 3.13, uv, SQLite, aiohttp, PyMuPDF, python-docx, openpyxl, xlrd, python-pptx, LibreOffice headless, llama-cloud, PyMongo/GridFS, Docker Compose, Kaggle CLI; crawler Python hiện có.
 
 **Spec:** [Bản thiết kế đầy đủ](../specs/2026-10-05-kaggle-mongodb-corpus-design.md).
 
@@ -16,6 +16,9 @@
 - Download mặc định 64 toàn cục, 2 mỗi host, khoảng cách khởi đầu 0,25 giây/host; cho cấu hình lại.
 - File hoàn tất được kiểm tra local và bỏ qua trên mạng; file dở chỉ nối khi server trả Range hợp lệ cho cùng nội dung.
 - PDF dùng PyMuPDF. XLSX/XLS/PPTX dùng parser native local; PPT cũ chuyển local sang PPTX.
+- DOCX dùng python-docx đọc đoạn/bảng; DOC chuyển local sang DOCX bằng LibreOffice.
+- Mục tiêu là text chính với thứ tự cơ bản, không tái dựng layout hay schema tọa độ ô/shape. Header/footer Word, notes PowerPoint và adapter XML cho thành phần phức tạp không bắt buộc.
+- Word không có text hữu ích thì thử chuyển PDF và đọc PyMuPDF trước khi fallback theo trang; native Word dùng phần document, không gán số trang giả.
 - Có chữ/số đọc được thì giữ local, dù ngắn hoặc định dạng xấu. Trang/sheet/slide trắng không gọi API.
 - Chỉ fallback phần không ra chữ có nghĩa sang `tier="fast"`, `version="latest"`; không tự nâng tier.
 - Đọc `LLAMAPARSE_KEY1`, `LLAMAPARSE_KEY2`, `LLAMAPARSE_KEY3` từ root `.env`; lỗi quota đổi key, rate limit backoff; không log/commit key.

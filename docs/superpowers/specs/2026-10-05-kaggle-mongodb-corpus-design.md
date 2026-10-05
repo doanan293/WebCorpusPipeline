@@ -2,8 +2,10 @@
 
 Ngày: 2026-10-05 — sửa phạm vi theo yêu cầu thực hiện đầy đủ bài tập.
 
-Cập nhật lựa chọn parser: PDF local bằng PyMuPDF; Excel/PowerPoint ưu tiên
-đọc trực tiếp cấu trúc native. LlamaParse `fast` chỉ dùng khi local không ra
+Cập nhật phạm vi: chỉ lấy văn bản chính phục vụ tìm kiếm, giữ thứ tự đọc cơ bản;
+không tái dựng layout, font, màu, vị trí hoặc bảng trình bày đẹp. PDF local bằng
+PyMuPDF; Word/Excel/PowerPoint ưu tiên đọc trực tiếp nội dung native.
+LlamaParse `fast` chỉ dùng khi local không ra
 chữ có nghĩa; chuyển key khi hết quota theo cấu hình `.env`.
 
 ## Mục tiêu và các quyết định đã thống nhất
@@ -186,27 +188,43 @@ thành PDF tạm để gửi LlamaParse, giữ bảng ánh xạ số trang gốc
 đúng thứ tự. Trang local đã có chữ không bị parse cloud lại. Cache theo hash
 nội dung nguồn, tập trang, parser và cấu hình; không phụ thuộc key đang dùng.
 
-### Excel và PowerPoint đọc trực tiếp ở local
+### Word, Excel và PowerPoint lấy văn bản đơn giản ở local
 
 PyMuPDF phụ trách PDF, không dùng làm parser trực tiếp cho mọi tệp Office.
-Các adapter sau giữ cấu trúc nguồn và sinh text cùng metadata vị trí:
+Đầu ra chính là plain text, giữ ranh giới đoạn/hàng/sheet/slide để đọc được.
+Chỉ lưu metadata cần cho nguồn, parser và checkpoint; không xây schema layout
+hoặc bắt buộc lưu tọa độ, kiểu ô, vùng gộp, font và vị trí shape.
 
 | Định dạng | Adapter local | Đầu ra cần giữ |
 | --- | --- | --- |
-| XLSX | `openpyxl` | Tên/thứ tự sheet, tọa độ ô, kiểu và giá trị ô, công thức và giá trị cache nếu có |
-| XLS | `xlrd` | Tên/thứ tự sheet, tọa độ ô, kiểu và giá trị ô đọc được |
-| PPTX | `python-pptx` | Thứ tự slide, tiêu đề, nội dung text box và bảng, ghi chú thuyết trình riêng |
+| DOCX | `python-docx` | Văn bản đoạn và bảng trong thân tài liệu, theo thứ tự xuất hiện |
+| DOC | LibreOffice headless chuyển local sang DOCX, sau đó `python-docx` | Văn bản đoạn và bảng; giữ tệp nguồn |
+| XLSX | `openpyxl` | Tên/thứ tự sheet, giá trị ô theo hàng; dùng công thức khi thiếu giá trị cache |
+| XLS | `xlrd` | Tên/thứ tự sheet, giá trị ô đọc được theo hàng |
+| PPTX | `python-pptx` | Thứ tự slide, chữ trong text box và bảng |
 | PPT | LibreOffice headless chuyển local sang PPTX, sau đó `python-pptx` | Giữ ánh xạ slide sang tệp PPT gốc và nội dung đọc được |
 
-Excel đọc toàn bộ sheet có dữ liệu, kể cả sheet ẩn với metadata trạng thái ẩn;
+Word đọc đoạn và bảng xen kẽ đúng thứ tự cơ bản, nối thành text. Không yêu cầu
+bóc tách header/footer, ghi chú hoặc tự viết XML adapter cho textbox/shape phức
+tạp. DOCX native không có phân trang đáng tin cậy: coi kết quả là một phần
+`document`, không tự gán số trang. Nếu không có chữ hữu ích nhưng có nội dung
+hiển thị, chuyển local sang PDF và thử PyMuPDF trước; chỉ những trang vẫn
+không ra chữ mới gửi LlamaParse `fast`. File trắng không gọi API. Word đã có
+text chính thì giữ local dù còn ảnh hoặc thành phần đặc biệt chưa đọc được;
+ghi giới hạn parser trong tài liệu bàn giao.
+
+Excel đọc toàn bộ sheet có dữ liệu, kể cả sheet ẩn;
 không phụ thuộc print area. Số, ngày và công thức là dữ liệu hợp lệ, không phải
 text rỗng. Với XLSX, đọc công thức và giá trị cache riêng; không tự tính lại
 công thức, không xem ô công thức chưa có cache là sheet không có dữ liệu.
-Giữ tọa độ vùng gộp và giá trị ô chủ để không nhân bản nội dung. Text xuất ra
-giữ ranh giới hàng/cột; bản ghi có cấu trúc bảo toàn kiểu và vị trí.
+Xuất giá trị cache nếu có, nếu không thì giữ công thức dạng chữ; không cần
+xuất hai bản raw/cache hay tọa độ ô. Ô gộp chỉ xuất giá trị ô chủ một lần.
+Nối ô bằng tab, hàng bằng newline; không tái dựng bảng hoặc định dạng Excel.
 
 PPTX duyệt text và bảng trong các shape, kể cả shape lồng trong group. Giữ
-ranh giới slide và ghi chú riêng khỏi nội dung hiển thị. Khi chuyển PPT cũ,
+ranh giới slide; ghi chú thuyết trình và chữ trong chart/diagram phức tạp
+không thuộc đầu ra bắt buộc. Không viết adapter XML chuyên biệt để phục dựng
+các thành phần này. Khi chuyển PPT cũ,
 giữ tệp gốc và ghi converter/version; không ghi đè đầu vào.
 
 Sheet đã có dữ liệu đọc được hoặc slide đã có chữ thì giữ local, kể cả bố cục
@@ -216,7 +234,7 @@ PDF và gửi LlamaParse `fast`. Giữ ánh xạ sheet/slide gốc; không gửi
 hoặc deck vì một phần không đọc được. Sheet/slide trắng không phát sinh request.
 Không dùng LlamaParse để tính công thức hoặc làm đẹp bảng đã đọc được.
 
-DOC/DOCX và ODT/ODS/ODP tiếp tục dùng adapter LibreOffice headless local để
+ODT/ODS/ODP tiếp tục dùng adapter LibreOffice headless local để
 chuyển sang PDF, rồi đọc bằng PyMuPDF theo điều kiện fallback đã chốt.
 Kiểm chứng adapter giữ đầy đủ nội dung, sheet/slide và không bỏ dữ liệu do
 print area. Thiếu thư viện/converter là lỗi cấu hình local, không phải lý do
@@ -526,8 +544,12 @@ Kiểm chứng cần có:
    riêng với kiểm chứng live trên tài liệu mẫu nhỏ.
    Excel có fixture nhiều sheet, sheet ẩn, ô gộp, ô số bằng 0 và công thức không
    có giá trị cache; dữ liệu này không được mất hoặc kích hoạt cloud. PowerPoint
-   có fixture text/bảng trong group, ghi chú riêng, slide trắng, slide chỉ có
+   có fixture text/bảng trong group, slide trắng, slide chỉ có
    ảnh và chuyển PPT cũ; xác nhận thứ tự slide và chỉ fallback phần cần thiết.
+   Word có fixture đoạn/bảng xen kẽ, DOC chuyển DOCX, file trắng và file chỉ
+   chứa ảnh: giữ text/thứ tự cơ bản, không cloud khi đã có chữ; trường hợp
+   không ra chữ thử PDF local trước rồi mới fallback trang cần thiết.
+   Không nghiệm thu độ giống layout hoặc yêu cầu tái dựng bảng/shape.
 9. Test nội dung vượt giới hạn BSON: import và đọc lại nguyên vẹn qua GridFS,
    import lần hai không tăng số blob. Không gọi `ready` khi blob thiếu.
 10. Workflow làm giàu chạy trên inventory tài liệu corpus thật và xuất báo cáo
