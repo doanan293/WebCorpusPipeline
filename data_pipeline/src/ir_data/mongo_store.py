@@ -4,12 +4,13 @@ import hashlib
 import json
 from pathlib import Path
 
-from pymongo import ASCENDING, MongoClient, UpdateOne
+from pymongo import ASCENDING, MongoClient, ReplaceOne
 
 from .package import verify_corpus
 
 
 COLLECTIONS = ("datasets", "pages", "documents", "images", "links")
+MAX_BATCH_BYTES = 4 * 1024 * 1024
 
 
 def _record_id(value: dict, kind: str) -> str:
@@ -28,6 +29,46 @@ def _record_id(value: dict, kind: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def _page_value(value: dict) -> dict:
+    """Keep Mongo page records focused on searchable metadata and plain text."""
+    fields = (
+        "url",
+        "final_url",
+        "title",
+        "author",
+        "published_at",
+        "modified_at",
+        "summary",
+        "text",
+        "language",
+        "canonical_url",
+        "page_role",
+        "status",
+        "content_type",
+        "content_id",
+        "warnings",
+    )
+    return {key: value[key] for key in fields if key in value}
+
+
+def _replace_batches(collection, values) -> None:
+    operations = []
+    batch_bytes = 0
+    for value in values:
+        operation_value = dict(value)
+        approx = len(json.dumps(operation_value, ensure_ascii=False).encode()) + 1024
+        if operations and (
+            len(operations) >= 100 or batch_bytes + approx > MAX_BATCH_BYTES
+        ):
+            collection.bulk_write(operations, ordered=False)
+            operations = []
+            batch_bytes = 0
+        operations.append(ReplaceOne({"_id": operation_value["_id"]}, operation_value, upsert=True))
+        batch_bytes += approx
+    if operations:
+        collection.bulk_write(operations, ordered=False)
+
+
 def import_corpus(path: Path, settings) -> dict:
     report = verify_corpus(path)
     if not report["valid"]:
@@ -44,31 +85,36 @@ def import_corpus(path: Path, settings) -> dict:
         {"_id": sid, "snapshot_id": sid, "status": "importing", "manifest": snapshot},
         upsert=True,
     )
-    for collection in COLLECTIONS[1:]:
-        db[collection].create_index([("snapshot_id", ASCENDING)])
-    db.links.create_index([("snapshot_id", ASCENDING), ("source_url", ASCENDING)])
-    db.links.create_index([("snapshot_id", ASCENDING), ("target_url", ASCENDING)])
-    for name, collection in (
-        ("articles.jsonl", "pages"),
-        ("documents.jsonl", "documents"),
-        ("images.jsonl", "images"),
-        ("links.jsonl", "links"),
-    ):
-        file = path / name
-        if not file.exists():
-            continue
-        operations = []
-        with file.open(encoding="utf-8") as stream:
-            for line in stream:
-                value = json.loads(line)
-                value["snapshot_id"] = sid
-                value["_id"] = _record_id(value, collection) + ":" + sid
-                operations.append(UpdateOne({"_id": value["_id"]}, {"$set": value}, upsert=True))
-                if len(operations) >= 500:
-                    db[collection].bulk_write(operations, ordered=False)
-                    operations = []
-        if operations:
-            db[collection].bulk_write(operations, ordered=False)
-    db.datasets.update_one({"_id": sid}, {"$set": {"status": "ready"}})
-    client.close()
-    return {"snapshot_id": sid, "status": "ready"}
+    try:
+        for collection in COLLECTIONS[1:]:
+            db[collection].create_index([("snapshot_id", ASCENDING)])
+        db.links.create_index([("snapshot_id", ASCENDING), ("source_url", ASCENDING)])
+        db.links.create_index([("snapshot_id", ASCENDING), ("target_url", ASCENDING)])
+        for name, collection in (
+            ("articles.jsonl", "pages"),
+            ("documents.jsonl", "documents"),
+            ("images.jsonl", "images"),
+            ("links.jsonl", "links"),
+        ):
+            file = path / name
+            if not file.exists():
+                continue
+
+            def values():
+                with file.open(encoding="utf-8") as stream:
+                    for line in stream:
+                        value = json.loads(line)
+                        if collection == "pages":
+                            value = _page_value(value)
+                        value["snapshot_id"] = sid
+                        value["_id"] = _record_id(value, collection) + ":" + sid
+                        yield value
+
+            _replace_batches(db[collection], values())
+        db.datasets.update_one({"_id": sid}, {"$set": {"status": "ready", "error": None}})
+        return {"snapshot_id": sid, "status": "ready"}
+    except Exception as exc:
+        db.datasets.update_one({"_id": sid}, {"$set": {"status": "failed", "error": str(exc)[:1000]}})
+        raise
+    finally:
+        client.close()
