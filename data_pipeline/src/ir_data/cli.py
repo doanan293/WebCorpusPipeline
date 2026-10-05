@@ -119,8 +119,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "publish":
             from .kaggle_io import publish_corpus
+            from dotenv import load_dotenv
 
             root = _repo_root()
+            load_dotenv(root / ".env", override=False)
             result = publish_corpus(
                 Path(args.corpus), root / "data_pipeline" / args.config, args.update, args.message
             )
@@ -128,8 +130,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "pull":
             from .kaggle_io import pull_corpus
+            from dotenv import load_dotenv
 
             root = _repo_root()
+            load_dotenv(root / ".env", override=False)
             result = pull_corpus(
                 root / "data_pipeline" / args.lock, root / "data_pipeline" / args.destination
             )
