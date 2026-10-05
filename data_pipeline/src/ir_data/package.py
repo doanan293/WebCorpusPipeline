@@ -116,7 +116,35 @@ def package_corpus(source: Path, enrichment: Path, output: Path) -> Path:
         if exported_report.exists():
             shutil.copy2(exported_report, report)
         elif not report.exists():
-            report.write_text(json.dumps({"status": "not_run"}, indent=2) + "\n")
+            if state_db.exists():
+                import sqlite3
+
+                conn = sqlite3.connect(state_db)
+                value = {
+                    "downloaded": conn.execute(
+                        "select count(*) from inventory where status='downloaded'"
+                    ).fetchone()[0],
+                    "parsed": conn.execute(
+                        "select count(*) from parse_results where status='extracted'"
+                    ).fetchone()[0],
+                    "failed": conn.execute(
+                        "select count(*) from failures where retry_at is null"
+                    ).fetchone()[0],
+                    "pending": conn.execute(
+                        "select count(*) from inventory where status in "
+                        "('pending','retry','in_progress','finalizing')"
+                    ).fetchone()[0],
+                    "quota_blocked": conn.execute(
+                        "select count(*) from parse_results where status='quota_blocked'"
+                    ).fetchone()[0],
+                    "transferred_bytes": conn.execute(
+                        "select coalesce(sum(size),0) from inventory where status='downloaded'"
+                    ).fetchone()[0],
+                }
+                conn.close()
+            else:
+                value = {"status": "not_run"}
+            report.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n")
         files = {
             name: {"sha256": _sha(staging / name), "size": (staging / name).stat().st_size}
             for name in PAYLOAD
