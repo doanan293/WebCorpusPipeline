@@ -111,6 +111,60 @@ XLS/XLSX, PPT/PPTX, ODT/ODS/ODP. MIME kiểm chứng từ phản hồi và nội
 không chỉ từ đuôi URL. Tệp đã tải lưu local theo SHA-256; nhiều URL có cùng
 bytes dùng chung kết quả parse nhưng vẫn giữ từng URL và nguồn giới thiệu.
 
+### Download song song và tiếp tục sau gián đoạn — bắt buộc
+
+Đọc `final/articles.jsonl` theo luồng để lập inventory tài liệu từ assets và
+hyperlink nhận diện được. Mỗi URL chuẩn hóa có một công việc tải, với bảng
+nguồn giới thiệu riêng giữ mọi trang/anchor text. Không request lại HTML chỉ
+để lập inventory và không tải ảnh/media không thuộc yêu cầu.
+
+Checkpoint riêng tại `data/enrichment/state.sqlite3`, tách khỏi SQLite resume
+của crawler. Lưu fingerprint corpus đầu vào, trạng thái inventory, download và
+parse riêng biệt, byte offset đã ghi bền, ETag, URL cuối, kích thước, hash,
+đường dẫn file, số lần thử, lần retry kế tiếp và lỗi. Inventory có cursor để
+tiếp tục quét JSONL sau gián đoạn; mỗi batch cùng cursor được commit nguyên tử.
+Corpus đổi fingerprint phải dùng workspace mới hoặc báo lỗi, không trộn dữ liệu.
+
+Download dùng kết nối tái sử dụng, đọc streaming theo chunk thay vì giữ cả file
+trong RAM. Mặc định 64 download toàn cục, 2 trên mỗi host và khoảng cách khởi
+đầu request cùng host 0,25 giây, cho điều chỉnh qua config/CLI. Điều tiết theo
+429/Retry-After và áp lực CPU/RAM, để host chậm không chặn hàng đợi host khác.
+Giữ các quy tắc public URL, kiểm tra DNS/redirect, quota và contact của crawler.
+Không dùng cách tắt TLS verification để tăng tốc.
+
+File tạm `.part` lưu theo ID URL; checkpoint offset chỉ tăng sau khi bytes đã
+được flush/fsync. Resume dùng `Range` và `If-Range` với strong ETag đã lưu,
+chỉ nối khi `206`, `Content-Range`, validator và kích thước nhất quán. Nếu
+server trả `200`, thiếu validator tin cậy hoặc đổi nội dung thì tải lại riêng
+file đó. Không nối dữ liệu mới vào phần cũ trong các trường hợp này. `416`
+được đối chiếu độ dài/validator; chỉ hoàn tất khi có bằng chứng file đã đủ,
+còn lại restart file hoặc ghi lỗi rõ ràng. Không hứa byte-resume cho mọi server.
+
+Hoàn tất file: kiểm tra độ dài, MIME, hash → ghi ý định finalize vào SQLite →
+atomic rename sang kho file theo SHA-256 → đánh dấu downloaded. Khôi phục được
+cả ca chết tiến trình giữa rename và commit DB. File đã hoàn tất được kiểm
+tra ở local rồi bỏ qua trên mạng; file mất/hỏng chỉ bị đưa lại vào hàng đợi
+của chính nó. Tên file từ URL/Content-Disposition không được dùng làm đường
+dẫn tùy ý; hai URL trả cùng bytes dùng chung file vật lý.
+
+Retry lỗi mạng/408/425/429/5xx hữu hạn với backoff và jitter, giữ thời điểm retry
+qua restart; 404/410 kết thúc riêng file đó. Hết dung lượng/quota local dừng
+nhận công việc mới và giữ checkpoint. Ctrl+C/SIGTERM dừng nhận job, lưu tiến
+độ và thoát; crash đột ngột được phục hồi từ checkpoint và file tạm. Không
+cho hai tiến trình cùng sửa một workspace enrichment.
+
+Các stage download, local parse và cloud parse dùng hàng đợi/bộ đếm riêng.
+File đã downloaded nhưng chưa parsed chỉ chạy parser; file đã parsed đúng
+checksum và cấu hình được tái sử dụng. Cache cloud được giữ khi đổi key hoặc
+restart. Có lệnh status báo completed/pending/retry/failed, bytes đã tải và
+tiến độ parse. Tốc độ được đo bằng bytes thực truyền, không tính file cache.
+
+Tiêu chí nghiệm thu bắt buộc: ngắt một đợt có file hoàn tất và file dở, chạy
+lại, xác nhận file hoàn tất không có request mới, file dở dùng Range hợp lệ,
+server không hỗ trợ Range chỉ tải lại file dở, rồi verify checksum toàn bộ.
+Ngắt tiếp ở bước parse, chạy lại và xác nhận không download lại hoặc gọi
+LlamaParse lại cho kết quả đã hoàn tất.
+
 ### PyMuPDF local trước; điều kiện fallback nghiêm ngặt
 
 PDF được đọc bằng PyMuPDF, lấy text theo từng trang, giữ số trang và thứ tự
@@ -298,7 +352,10 @@ Payload gồm dữ liệu trang, kết quả làm giàu và manifest:
   SHA-256 + kích thước của tất cả file payload bên trên.
 
 `snapshot_id` là SHA-256 của danh sách tên file và checksum được serialize theo
-quy tắc cố định. Số phiên bản Kaggle được ghi trong cấu hình khóa của repository
+quy tắc cố định, không bao gồm manifest tự chứa snapshot ID. Payload không nhúng
+snapshot ID; ID bản ghi xuất mới không phụ thuộc snapshot. MongoDB bổ sung
+snapshot ID và ID document khi import; `articles.jsonl` vẫn giữ nguyên nguồn.
+Số phiên bản Kaggle được ghi trong cấu hình khóa của repository
 sau khi publish thành công, không ghi ngược vào payload đã upload.
 
 Thư mục đóng gói chỉ chứa các file trong danh sách trên cùng metadata cần cho
@@ -382,7 +439,8 @@ có thể đọc text từ pages/documents theo hợp đồng schema.
   làm giàu. Liên kết không có
   bằng chứng về loại đích giữ `target_type = unknown`; không coi mọi đích là trang.
 - Cạnh cùng nguồn, đích, relation và nội dung mô tả được gộp; các mô tả khác
-  nhau cho cùng cặp URL được giữ. ID cạnh là hash của bộ trường này và snapshot.
+  nhau cho cùng cặp URL được giữ. `record_id` cạnh xuất là hash của bộ trường
+  quan hệ; `_id` trong MongoDB kết hợp thêm snapshot để phân lập các phiên bản.
 - Giữ cạnh tới URL ngoài corpus hoặc ngoài host; không yêu cầu đích phải có
   bản ghi `pages`. Crawl thành công một trang không có nghĩa mọi đích đã tải.
 - Nguồn giới thiệu của đối tượng X là các cạnh có `target_url = X` trong cùng
@@ -497,6 +555,7 @@ Không xóa dữ liệu nguồn chỉ vì đã có bản upload Kaggle.
 - openpyxl: https://openpyxl.readthedocs.io/en/3.1/tutorial.html
 - xlrd: https://xlrd.readthedocs.io/en/latest/
 - python-pptx: https://python-pptx.readthedocs.io/en/latest/api/shapes.html
+- HTTP Range/If-Range: https://www.rfc-editor.org/rfc/rfc9110.html#name-range-requests
 - LibreOffice CLI: https://help.libreoffice.org/latest/en-US/text/shared/guide/start_parameters.html
 - LlamaParse Parse: https://developers.llamaindex.ai/llamaparse/parse/
 - LlamaParse tiers: https://developers.llamaindex.ai/llamaparse/parse/guides/tiers/
