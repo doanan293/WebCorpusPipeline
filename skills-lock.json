@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "kaggle-cli": {
+      "source": "kaggle/kaggle-cli",
+      "sourceType": "github",
+      "skillPath": "skills/SKILL.md",
+      "computedHash": "9297b116a4aca5aa1392551e0065f17c2d437e56fe3397a7ea1819c494863b0a"
+    }
+  }
+}
