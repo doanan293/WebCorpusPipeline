@@ -18,8 +18,8 @@ uv run pytest -q
 ```
 
 Xem [hướng dẫn data pipeline](data_pipeline/README.md) để cấu hình và chạy crawl.
-Các bước download/extract, MongoDB và Kaggle đang được triển khai trong cùng
-dự án này. `lucene/` nhận corpus đã xử lý để lập chỉ mục và tìm kiếm.
+Các bước download/extract, MongoDB và Kaggle nằm trong cùng dự án này.
+`lucene/` nhận corpus đã xử lý để lập chỉ mục và tìm kiếm.
 
 `data_pipeline/` dùng một `pyproject.toml` và một `uv.lock`. Extra `crawl`
 cài crawler, `producer` cài các công cụ tạo corpus, còn base dành cho consumer.

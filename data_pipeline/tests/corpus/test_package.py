@@ -4,6 +4,7 @@ import sqlite3
 import pytest
 
 from ir_data.package import package_corpus, verify_corpus
+from ir_data.mongo_store import _page_value, _record_id
 
 
 def test_package_and_verify(tmp_path):
@@ -38,3 +39,19 @@ def test_package_refuses_unresolved_enrichment(tmp_path):
     conn.close()
     with pytest.raises(ValueError, match="downloads are pending"):
         package_corpus(source, work, tmp_path / "corpus")
+
+
+def test_mongo_page_projection_and_edge_ids_are_bounded_and_distinct():
+    page = _page_value(
+        {
+            "url": "https://example.test/page",
+            "text": "plain text",
+            "content_html": "x" * 20_000_000,
+            "content_blocks": ["layout"],
+        }
+    )
+    assert page == {"url": "https://example.test/page", "text": "plain text"}
+    base = {"source_url": "a", "target_url": "b", "anchor_text": "x"}
+    assert _record_id({**base, "relation": "hyperlink"}, "links") != _record_id(
+        {**base, "relation": "image"}, "links"
+    )
