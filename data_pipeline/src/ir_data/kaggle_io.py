@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 import shutil
 import subprocess
@@ -29,6 +31,20 @@ def _metadata(config: dict, folder: Path) -> Path:
     path = folder / "dataset-metadata.json"
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n")
     return path
+
+
+def _dataset_files(dataset: str) -> list[str]:
+    result = _run(["kaggle", "datasets", "files", dataset, "-v", "--page-size", "200"])
+    lines = result.stdout.splitlines()
+    try:
+        header = next(index for index, line in enumerate(lines) if line.strip() == "name,size,creationDate")
+    except StopIteration as exc:
+        raise ValueError("Kaggle did not return a file listing") from exc
+    rows = csv.DictReader(io.StringIO("\n".join(lines[header:])))
+    names = [str(row["name"]).strip() for row in rows if row.get("name")]
+    if not names:
+        raise ValueError("Kaggle dataset file listing is empty")
+    return names
 
 
 def publish_corpus(
@@ -82,7 +98,14 @@ def pull_corpus(lock_path: Path, destination: Path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="ir-kaggle-pull-") as temp:
         staging = Path(temp)
-        _run(["kaggle", "datasets", "download", f"{owner}/{slug}", "-p", str(staging), "--unzip"])
+        dataset = f"{owner}/{slug}"
+        try:
+            _run(["kaggle", "datasets", "download", dataset, "-p", str(staging), "--unzip"])
+        except subprocess.CalledProcessError:
+            # Kaggle can expose individual files while its bulk archive endpoint
+            # still returns 404 for large datasets. Download each file instead.
+            for name in _dataset_files(dataset):
+                _run(["kaggle", "datasets", "download", dataset, "-f", name, "-p", str(staging), "--unzip"])
         # Kaggle wraps a multi-file dataset in an archive; locate the manifest safely.
         manifests = list(staging.rglob("manifest.json"))
         if len(manifests) != 1:

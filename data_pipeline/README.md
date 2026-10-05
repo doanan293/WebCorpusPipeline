@@ -50,16 +50,16 @@ uv run ir-data import-mongo --corpus data/corpus/latest
 
 Download and extraction resume from SQLite checkpoints. The published corpus
 contains processed text and provenance; binary downloads and credentials stay
-local. To publish a verified snapshot after filling the real Kaggle owner in
-`config/kaggle-dataset.json`, authenticate the Kaggle CLI and run:
+local. The dataset metadata is configured in `config/kaggle-dataset.json`; after
+authenticating the Kaggle CLI, publish a verified snapshot with:
 
 ```bash
 uv run ir-data publish --corpus data/corpus/latest
 ```
 
-After the command returns, record the actual owner, slug, version and snapshot
-ID in `config/corpus.lock.json`. A new clone can then pull that pinned release
-and import it without rerunning the crawl:
+`config/corpus.lock.json` pins the currently published owner, slug, version and
+snapshot ID. Update it whenever a new version is published. A new clone can
+then pull that pinned release and import it without rerunning the crawl:
 
 ```bash
 uv run ir-data pull --lock config/corpus.lock.json --destination data/corpus/pulled
@@ -68,8 +68,9 @@ uv run ir-data import-mongo --corpus data/corpus/pulled
 ```
 
 `lucene/` consumes the resulting corpus for indexing and search. Kaggle
-metadata is intentionally not guessed: publishing remains blocked until an
-owner and authenticated account are supplied.
+pull first tries Kaggle's bulk archive and automatically falls back to
+per-file downloads when the archive endpoint is unavailable for a large
+dataset.
 
 ## Unified Hybrid Crawl Workflow
 

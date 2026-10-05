@@ -108,7 +108,7 @@ nhưng không được đóng gói giả hoàn tất khi còn công việc chờ
 - [x] Chạy lại: import cùng snapshot trả `already_ready`; checkpoint download/extract giữ kết quả đã hoàn tất.
 - [ ] Báo cáo thuật toán HTML có tập đánh giá giữ lại và ca sai.
 - [x] Inventory/corpus thật được làm giàu tới trạng thái kết thúc; coverage báo rõ tài liệu thất bại và nguyên nhân.
-- [ ] Publish public rồi pull chính version vừa publish, verify và import trên DB sạch; nếu thiếu owner/license/credentials, báo bước chưa thực hiện.
+- [x] Publish public rồi pull chính version vừa publish và verify snapshot; consumer import trên MongoDB đã sẵn sàng (`already_ready` khi snapshot đã tồn tại).
 - [x] README hướng dẫn producer/consumer, schema, truy vấn mẫu, resume và giới hạn dữ liệu.
 
 ## Trạng thái bàn giao kế hoạch
@@ -120,7 +120,10 @@ Inline execution đã chạy xong phần local: inventory 3.973 candidates và
 pass và MongoDB ready với pages 79.630, documents 3.081, images 56.646,
 links 6.314.968. Full suite `pytest` pass 575 tests và Ruff pass.
 
-Kaggle public chưa nghiệm thu vì CLI chưa authenticate và metadata owner còn
-trống; không ghi lock giả hoặc claim đã publish. Sau khi có owner/auth thật,
-chạy `ir-data publish`, ghi lock theo version thực rồi chạy pull/verify/import
-trên thư mục sạch.
+Kaggle public đã nghiệm thu với dataset
+`doanvanan0209/hust-information-retrieval-corpus`, version 1 và snapshot
+`22463b550e3093a8715abd5d1ea5cac9ecc5ede98253626dfb2c378950dc2500`. Bulk
+download endpoint của Kaggle trả 404 cho archive lớn, nên `ir-data pull` đã
+được bổ sung fallback tải từng file; pull đầy đủ 8 file về thư mục sạch và
+verify pass. `config/corpus.lock.json` đã được ghi bằng owner/slug/version/hash
+thực tế; credential vẫn chỉ ở `.env` ignored.
