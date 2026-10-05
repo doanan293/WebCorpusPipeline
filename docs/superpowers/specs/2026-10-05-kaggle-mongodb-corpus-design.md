@@ -2,6 +2,9 @@
 
 Ngày: 2026-10-05 — sửa phạm vi theo yêu cầu thực hiện đầy đủ bài tập.
 
+Cập nhật lựa chọn parser: local bằng PyMuPDF, LlamaParse `fast` chỉ dùng khi
+local không ra chữ có nghĩa; chuyển key khi hết quota theo cấu hình `.env`.
+
 ## Mục tiêu và các quyết định đã thống nhất
 
 Người mới clone repository có thể tải dữ liệu crawl từ Kaggle để làm các bước
@@ -107,25 +110,109 @@ XLS/XLSX, PPT/PPTX, ODT/ODS/ODP. MIME kiểm chứng từ phản hồi và nội
 không chỉ từ đuôi URL. Tệp đã tải lưu local theo SHA-256; nhiều URL có cùng
 bytes dùng chung kết quả parse nhưng vẫn giữ từng URL và nguồn giới thiệu.
 
-Dùng Apache Tika cho parser tài liệu. Chạy bằng service Compose `tika` trong
-profile `extraction`, từ image `apache/tika:3.3.0.0-full`, bổ sung Tesseract
-tiếng Việt cùng tiếng Anh trong image dẫn xuất. Cổng host chỉ loopback,
-mặc định 9998; consumer chỉ import corpus không cần chạy service này.
-Client gửi bytes tệp local; không yêu cầu parser tự truy cập URL nguồn.
+### PyMuPDF local trước; điều kiện fallback nghiêm ngặt
 
-Bóc tách text theo thứ tự tài liệu, giữ ranh giới đoạn/trang/sheet/slide khi
-parser cung cấp. PDF scan có fallback OCR `vie+eng`; kiểm thử cả PDF trộn trang
-có text và trang scan. Ghi rõ nội dung từ parser hay OCR cùng phiên bản công cụ.
-Tệp mã hóa, hỏng, hết thời gian, không hỗ trợ hoặc không có văn bản phải có
-trạng thái và lỗi riêng; không coi chuỗi rỗng là thành công. Tệp cố ý trống
-được ghi `empty`, phân biệt với lỗi parser hoặc chưa chạy OCR.
+PDF được đọc bằng PyMuPDF, lấy text theo từng trang, giữ số trang và thứ tự
+nội dung. Dùng `get_text("text", sort=True)` và thông tin block khi cần kiểm
+chứng thứ tự đọc. Không gọi chức năng OCR local của PyMuPDF.
+
+Local đã có chữ đọc được thì giữ kết quả, kể cả văn bản ngắn, bố cục nhiều
+cột, bảng bị lệch hoặc định dạng chưa đẹp. Các yếu tố đó không phải điều kiện
+để gọi API. Không dùng ngưỡng tối thiểu số ký tự để đẩy trang ít chữ lên cloud.
+
+Một trang chỉ là ứng viên cloud khi kết quả local rỗng hoặc chỉ còn whitespace,
+control/replacement characters và không có chữ/số hữu ích, đồng thời trang có
+nội dung hiển thị cần nhận dạng. Trang trắng thực sự giữ `empty`, không gửi đi.
+Ký tự hợp lệ nhưng nghi ngờ chất lượng được đánh dấu trong báo cáo để kiểm tra;
+không tự coi văn bản đó là thất bại và phát sinh request.
+
+PDF trộn text/scan được xử lý theo từng trang: chỉ tách các trang ứng viên
+thành PDF tạm để gửi LlamaParse, giữ bảng ánh xạ số trang gốc và ghép kết quả
+đúng thứ tự. Trang local đã có chữ không bị parse cloud lại. Cache theo hash
+nội dung nguồn, tập trang, parser và cấu hình; không phụ thuộc key đang dùng.
+
+PyMuPDF không phải parser Office phổ quát. Với DOC/DOCX, XLS/XLSX, PPT/PPTX,
+ODT/ODS/ODP, adapter local dùng LibreOffice headless chuyển sang PDF rồi đi qua
+cùng pipeline PyMuPDF. Kiểm chứng việc giữ toàn bộ sheet/slide/nội dung, không
+bỏ dữ liệu do print area. Thiếu converter là lỗi cấu hình local, không phải
+lý do gửi toàn bộ file lên API. Chỉ cài converter cho môi trường làm giàu;
+consumer tải corpus đã xử lý không cần cài.
+
+Tệp mã hóa, hỏng, hết thời gian hoặc không hỗ trợ có trạng thái riêng. Lỗi
+local do thiếu dependency hoặc sai cấu hình không tự kích hoạt cloud. Nếu
+local parse lỗi trên một tệp còn đọc được bằng provider, chỉ fallback khi
+không có text sử dụng được và ghi rõ lý do; không cố giải mã tệp có mật khẩu.
+
+### LlamaParse với tier rẻ nhất
+
+Dùng SDK `llama-cloud` (`from llama_cloud import LlamaCloud`), upload qua
+`client.files.create(..., purpose="parse")` và Parse v2 với `tier="fast"`,
+`version="latest"`, lấy text/markdown và thông tin trang. Lưu cả văn bản local
+và cloud cùng provenance parser/version; metadata remote chỉ giữ các trường
+cần thiết cho corpus, không chứa thông tin credentials.
+
+Theo tài liệu đã kiểm tra, `fast` là tier rẻ nhất (1 credit/trang), có OCR cơ
+bản nhưng không chạy mô hình agentic. Không tự nâng sang `cost_effective`,
+`agentic` hoặc `agentic_plus`. Khi `fast` vẫn không ra chữ, ghi `parse_failed`
+hoặc `empty` nếu xác minh được trang trống; giữ file để xử lý lại có chủ đích.
+Không biến đầu ra null thành thành công bằng cách chỉ ghi một file rỗng.
+
+SDK/provider có khác biệt theo phiên bản về `markdown_full`, `text_full` và
+output theo trang. Adapter kiểm tra kiểu response của phiên bản SDK đã khóa,
+lấy kết quả theo trang để ghép, và ghi TXT/Markdown UTF-8; chỉ dùng trường full
+khi được phiên bản đó hỗ trợ. Ghi phiên bản provider thực trả về nếu có;
+`latest` không được mô tả là đảm bảo tái lập parser theo thời gian.
+
+Không còn service Tika hoặc pipeline Tesseract trong thiết kế. Compose MongoDB
+giữ nguyên vai trò lưu dữ liệu; cloud chỉ xử lý các trang không đọc được local.
+
+### Chuyển key khi hết quota, retry và checkpoint
+
+Đọc `.env` tại root repository, độc lập working directory. Các biến hiện có
+là `LLAMAPARSE_KEY1`, `LLAMAPARSE_KEY2`, `LLAMAPARSE_KEY3`; hỗ trợ tiếp các số
+thứ tự theo cách sắp xếp số, bỏ giá trị trống và key trùng. Biến môi trường
+đã export ưu tiên hơn `.env` cùng tên. Không sửa hoặc ghi đè key của người dùng.
+Log chỉ dùng nhãn biến; lọc credentials khỏi exception/request/response trước
+khi log. File `.env` đã được Git bỏ qua; ví dụ cấu hình chỉ chứa giá trị trống.
+
+- Dùng key đầu tiên còn khả dụng, không round-robin mọi request.
+- Chỉ chuyển sang key kế tiếp khi có bằng chứng quota/credits đã hết: HTTP 402
+  kèm lỗi credits/quota được nhận diện, hoặc job thất bại với cùng lỗi đã xác
+  minh. HTTP 402 do giới hạn lưu file không bị nhầm thành hết credits.
+- Key hết quota bị bỏ qua cho các job mới trong lần chạy đó. Mỗi job thử tối
+  đa một lần trên mỗi key đối với lỗi quota; không vòng lặp vô hạn.
+- HTTP 429 giới hạn tốc độ: exponential backoff có jitter, dùng `Retry-After`
+  nếu có; không xoay key để xử lý rate limit. HTTP 5xx/lỗi kết nối đọc kết quả
+  cũng retry hữu hạn. Một lớp quản lý retry để tránh nhân retries của SDK.
+- 401/403, request sai, tệp hỏng hoặc không hỗ trợ được báo theo nguyên nhân;
+  không diễn giải thành quota và không thử cả ba key một cách vô ích.
+- Khi chuyển key thuộc project khác, upload lại file bằng key mới. File ID và
+  job ID đã tạo phải đi kèm đúng nhãn key/phạm vi; không poll job bằng key khác
+  nếu chưa có bằng chứng cùng quyền truy cập.
+- Ghi checkpoint file ID, job ID và nhãn key ngay khi có; tách create → poll →
+  get để resume. Timeout khi poll không tự tạo job mới. Nếu submit mất phản hồi
+  và chưa biết job đã được tạo chưa, ghi `submission_unknown` để đối chiếu;
+  không mù quáng submit lại và có thể tính phí hai lần.
+- Nếu tất cả key hết quota, giữ phần cloud đang chờ với `quota_blocked`, vẫn
+  có thể hoàn thành tài liệu local; báo cách chạy tiếp sau khi quota có lại.
+  Không đánh dấu tài liệu thiếu trang là đã bóc tách hoàn chỉnh.
+
+Ba key khác nhau không đồng nghĩa có ba ngân sách độc lập. Nếu chúng dùng
+chung quota tổ chức thì đổi key không tạo thêm credits. Chỉ dùng keys do người
+dùng cung cấp; không tạo tài khoản hoặc tăng gói/bật overage tự động. Chưa gọi
+API với key thật ở giai đoạn thiết kế; kiểm thử fallback dùng lỗi giả lập,
+không cố tiêu hết quota thật để kiểm tra.
 
 Trạng thái xử lý gồm `pending`, `downloaded`, `extracted`, `empty`,
-`download_failed`, `parse_failed`, `encrypted`, `unsupported`, `limit_exceeded`.
-`pending`/`downloaded` là trạng thái trung gian và phải bằng 0 trước khi đóng
+`download_failed`, `parse_failed`, `encrypted`, `unsupported`, `limit_exceeded`,
+`quota_blocked`, `submission_unknown`.
+`pending`/`downloaded`/`quota_blocked`/`submission_unknown` là trạng thái chưa
+hoàn tất và phải bằng 0 trước khi đóng
 gói bản đầy đủ. Lỗi mạng có retry hữu hạn, timeout và quota được cấu hình.
 Giữ URL gốc/cuối, HTTP status, MIME, checksum, thời gian tải, extractor version,
-OCR mode và lỗi. Chạy lại tiếp tục phần còn thiếu, không tải/parse lại kết quả
+route local/cloud, tập trang fallback, tier, job ID local và lỗi. Job ID và
+nhãn key chỉ nằm trong checkpoint local; không phát hành lên Kaggle.
+Chạy lại tiếp tục phần còn thiếu, không tải/parse lại kết quả
 hợp lệ có cùng checksum và phiên bản extractor.
 
 Lỗi do nguồn thực tế được ghi nhận trong báo cáo coverage theo định dạng và
@@ -195,7 +282,7 @@ README, checksum và tham chiếu `duplicate_of`. Bài trùng phải có nội d
 tiếp hoặc trỏ tới chủ sở hữu hợp lệ có nội dung; tham chiếu thiếu/vòng lặp là lỗi.
 Thiếu tác giả hoặc ngày đăng được giữ là giá trị thiếu, không suy đoán.
 Đồng thời kiểm tra mọi tài liệu ứng viên có bản ghi trạng thái kết thúc,
-không còn `pending`/`downloaded`, số liệu báo cáo khớp payload và mỗi cạnh có
+không còn trạng thái chưa hoàn tất, số liệu báo cáo khớp payload và mỗi cạnh có
 nguồn truy vết. Bản chỉ có ba file final cũ được nhận làm đầu vào làm giàu,
 không được gắn nhãn bản phát hành đáp ứng đầy đủ bài tập.
 
@@ -302,7 +389,8 @@ công/thất bại là số liệu riêng, không bị che bởi trạng thái i
 
 1. Chuẩn hóa hợp đồng dữ liệu, schema MongoDB, Compose và reader chung.
 2. Hoàn thiện thuật toán chọn khối, metadata, lưu nguồn tùy chọn và tập đánh giá.
-3. Tải tài liệu theo inventory, tích hợp Tika/OCR và tiếp tục khi chạy lại.
+3. Tải tài liệu theo inventory, đọc local bằng PyMuPDF, fallback LlamaParse
+   `fast` khi không ra chữ, chuyển key khi hết quota và tiếp tục khi chạy lại.
 4. Tổng hợp ảnh, cạnh liên kết và báo cáo coverage trên corpus thật.
 5. Đóng gói/publish/pull Kaggle, import MongoDB và truy vấn minh họa.
 6. Kiểm thử tích hợp, báo cáo đánh giá và tài liệu bàn giao đủ từng yêu cầu.
@@ -340,6 +428,12 @@ Kiểm chứng cần có:
 8. Parser được kiểm thử bằng tài liệu thật dạng fixture cho từng định dạng đã
    cam kết; có PDF scan tiếng Việt và PDF trộn text/scan. Kiểm chứng text mong
    đợi, nguồn giới thiệu, lỗi tệp hỏng/mã hóa và tiếp tục sau gián đoạn.
+   Bắt buộc kiểm thử không gọi API khi local có chữ (kể cả ngắn, nhiều cột,
+   bảng lệch), không gọi với trang trắng, chỉ gửi trang không đọc được và ghép
+   đúng số trang. Kiểm thử quota key 1 → 2 → 3, hết toàn bộ, 402 storage không
+   bị phân loại sai, 429 backoff không đổi key, timeout không tạo lại job,
+   cache tránh tính phí lại và log không lộ key. Kiểm thử API mock được báo
+   riêng với kiểm chứng live trên tài liệu mẫu nhỏ.
 9. Test nội dung vượt giới hạn BSON: import và đọc lại nguyên vẹn qua GridFS,
    import lần hai không tăng số blob. Không gọi `ready` khi blob thiếu.
 10. Workflow làm giàu chạy trên inventory tài liệu corpus thật và xuất báo cáo
@@ -363,8 +457,14 @@ Không xóa dữ liệu nguồn chỉ vì đã có bản upload Kaggle.
 - Compose volumes: https://docs.docker.com/reference/compose-file/volumes/
 - Kaggle CLI: https://github.com/Kaggle/kaggle-cli/blob/main/docs/datasets.md
 - Download theo phiên bản: https://github.com/Kaggle/kaggle-cli/blob/main/src/kaggle/api/kaggle_api_extended.py
-- Tika Server: https://cwiki.apache.org/confluence/spaces/TIKA/pages/148639291/TikaServer
-- Tika Docker và ngôn ngữ OCR: https://github.com/apache/tika-docker
+- PyMuPDF text/page APIs: https://pymupdf.readthedocs.io/en/latest/page.html
+- LibreOffice CLI: https://help.libreoffice.org/latest/en-US/text/shared/guide/start_parameters.html
+- LlamaParse Parse: https://developers.llamaindex.ai/llamaparse/parse/
+- LlamaParse tiers: https://developers.llamaindex.ai/llamaparse/parse/guides/tiers/
+- LlamaParse OCR: https://developers.llamaindex.ai/llamaparse/parse/features/ocr-and-languages/
+- LlamaParse pricing: https://developers.llamaindex.ai/llamaparse/general/pricing/
+- LlamaParse errors: https://developers.llamaindex.ai/llamaparse/general/troubleshooting/
+- LlamaParse rate limits: https://developers.llamaindex.ai/llamaparse/general/rate_limits/
 - MongoDB GridFS: https://www.mongodb.com/docs/manual/core/gridfs/
 
 ## Trạng thái review
