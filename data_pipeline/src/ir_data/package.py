@@ -112,7 +112,10 @@ def package_corpus(source: Path, enrichment: Path, output: Path) -> Path:
             (staging / "documents.jsonl").write_text("")
         build_graph(source, enrichment, staging)
         report = staging / "extraction-report.json"
-        if not report.exists():
+        exported_report = enrichment / "extraction-report.json"
+        if exported_report.exists():
+            shutil.copy2(exported_report, report)
+        elif not report.exists():
             report.write_text(json.dumps({"status": "not_run"}, indent=2) + "\n")
         files = {
             name: {"sha256": _sha(staging / name), "size": (staging / name).stat().st_size}
