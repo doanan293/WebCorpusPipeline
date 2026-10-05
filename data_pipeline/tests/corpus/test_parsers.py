@@ -1,7 +1,7 @@
 import hashlib
 from pathlib import Path
 
-import fitz
+import pymupdf as fitz
 from docx import Document
 from openpyxl import Workbook
 from pptx import Presentation

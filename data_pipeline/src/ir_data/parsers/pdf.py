@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import fitz
+import pymupdf as fitz
 
 from ..models import DownloadedFile, ExtractedPart, LocalResult
 from .common import result, useful_text
