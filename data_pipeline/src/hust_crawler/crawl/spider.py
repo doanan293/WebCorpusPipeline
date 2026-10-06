@@ -33,6 +33,9 @@ from .writer import CrawlWriter, StorageLimit, content_id_for
 
 class UnifiedSpider(scrapy.Spider):
     name = "hust_crawl"
+    # Subclasses that skip __init__ (ReusedAssetSpider) never run in refresh mode.
+    refresh: RefreshSession | None = None
+    refresh_targets: tuple[tuple[str, str], ...] = ()
 
     def __init__(
         self,
