@@ -92,6 +92,10 @@ class CrawlerConfig:
     journal_batch_size: int = 500
     journal_flush_seconds: float = 2.0
     progress_interval_seconds: float = 10.0
+    refresh_pagination_empty_pages: int = 1
+    refresh_recent_days: int = 60
+    refresh_recent_runs: int = 4
+    refresh_recheck_limit: int = 5000
 
     @classmethod
     def load(
@@ -122,6 +126,8 @@ class CrawlerConfig:
             "max_file_bytes", "max_total_file_bytes", "max_query_variants_per_path",
             "pagination_empty_pages", "max_urls_per_host", "max_total_urls", "journal_batch_size",
             "journal_flush_seconds", "progress_interval_seconds",
+            "refresh_pagination_empty_pages", "refresh_recent_days",
+            "refresh_recent_runs", "refresh_recheck_limit",
         )
         missing = sorted(name for name in required if name not in raw)
         if "contact" not in raw and not environment.get("CRAWLER_CONTACT", "").strip():
@@ -155,6 +161,10 @@ class CrawlerConfig:
             "max_urls_per_host": int(raw["max_urls_per_host"]), "max_total_urls": int(raw["max_total_urls"]),
             "journal_batch_size": int(raw["journal_batch_size"]), "journal_flush_seconds": float(raw["journal_flush_seconds"]),
             "progress_interval_seconds": float(raw["progress_interval_seconds"]),
+            "refresh_pagination_empty_pages": int(raw["refresh_pagination_empty_pages"]),
+            "refresh_recent_days": int(raw["refresh_recent_days"]),
+            "refresh_recent_runs": int(raw["refresh_recent_runs"]),
+            "refresh_recheck_limit": int(raw["refresh_recheck_limit"]),
         }
         positive = tuple(name for name in required if name not in {"user_agent_name", "user_agent_version", "browser_user_agent", "robots_txt_obey", "cookies_enabled", "autothrottle_enabled", "assets", "retry_statuses"})
         for name in positive:
@@ -186,6 +196,8 @@ _RUNTIME_CONFIG_KEYS = {
     "retry_times", "retry_backoff_base_seconds", "retry_max_delay_seconds",
     "playwright_max_pages", "resource_limit_percent", "journal_batch_size",
     "journal_flush_seconds", "progress_interval_seconds",
+    "refresh_pagination_empty_pages", "refresh_recent_days",
+    "refresh_recent_runs", "refresh_recheck_limit",
 }
 
 

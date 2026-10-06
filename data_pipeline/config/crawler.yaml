@@ -31,3 +31,7 @@ max_total_urls: 1000000
 journal_batch_size: 500
 journal_flush_seconds: 2.0
 progress_interval_seconds: 10.0
+refresh_pagination_empty_pages: 1
+refresh_recent_days: 60
+refresh_recent_runs: 4
+refresh_recheck_limit: 5000

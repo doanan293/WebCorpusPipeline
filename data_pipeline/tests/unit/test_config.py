@@ -9,6 +9,7 @@ from hust_crawler.config import (
     load_hostnames,
     validate_network_contact,
     runtime_config_snapshot,
+    semantic_config_snapshot,
 )
 from hust_crawler.crawl.profiles import RuntimeTuning
 
@@ -217,3 +218,42 @@ def test_config_rejects_invalid_cross_field_limits(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="autothrottle_target_concurrency"):
         CrawlerConfig.load(raw, hostnames=frozenset({"a.test"}))
+
+
+def test_config_loads_refresh_settings(tmp_path: Path) -> None:
+    raw = complete_yaml(tmp_path, contact="ops@example.org", refresh_recent_days=30)
+    config = CrawlerConfig.load(raw, hostnames=frozenset({"a.test"}))
+
+    assert config.refresh_pagination_empty_pages == 1
+    assert config.refresh_recent_days == 30
+    assert config.refresh_recent_runs == 4
+    assert config.refresh_recheck_limit == 5000
+
+
+def test_config_requires_refresh_settings(tmp_path: Path) -> None:
+    path = complete_yaml(tmp_path, contact="ops@example.org")
+    values = yaml.safe_load(path.read_text(encoding="utf-8"))
+    del values["refresh_recheck_limit"]
+    path.write_text(yaml.safe_dump(values), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="refresh_recheck_limit"):
+        CrawlerConfig.load(path, hostnames=frozenset({"a.test"}))
+
+
+def test_config_rejects_non_positive_refresh_settings(tmp_path: Path) -> None:
+    path = complete_yaml(tmp_path, contact="ops@example.org", refresh_recent_runs=0)
+
+    with pytest.raises(ValueError, match="refresh_recent_runs must be positive"):
+        CrawlerConfig.load(path, hostnames=frozenset({"a.test"}))
+
+
+def test_refresh_settings_do_not_change_crawl_identity(tmp_path: Path) -> None:
+    base = CrawlerConfig.load(
+        complete_yaml(tmp_path, contact="ops@example.org"), hostnames=frozenset({"a.test"})
+    )
+    changed = CrawlerConfig.load(
+        complete_yaml(tmp_path, contact="ops@example.org", refresh_recent_days=7),
+        hostnames=frozenset({"a.test"}),
+    )
+
+    assert semantic_config_snapshot(base) == semantic_config_snapshot(changed)
