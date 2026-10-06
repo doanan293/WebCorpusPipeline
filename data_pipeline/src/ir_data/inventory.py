@@ -40,11 +40,34 @@ def _is_doc(url: str) -> bool:
     return Path(urlsplit(url).path.lower()).suffix in DOC_EXT
 
 
+def source_key(source: Path) -> str:
+    articles = source / "articles.jsonl" if source.is_dir() else source
+    return str(articles.resolve())
+
+
+def _modified_pages(changes_path: Path) -> set[str]:
+    if not changes_path.exists():
+        return set()
+    pages: set[str] = set()
+    for line in changes_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        change = json.loads(line)
+        if change.get("change") == "modified" and change.get("url"):
+            pages.add(_clean(str(change["url"])))
+    return pages
+
+
 def index_inventory(source: Path, state: WorkState, batch_size: int = 500) -> InventorySummary:
     articles = source / "articles.jsonl" if source.is_dir() else source
     if not articles.exists():
         raise FileNotFoundError(articles)
-    offset = state.cursor()
+    key = source_key(source)
+    offset = state.cursor(key)
+    if offset == 0 and not state.inventory_done(key):
+        modified = _modified_pages(articles.parent / "changes.jsonl")
+        if modified:
+            state.delete_refs_from(modified)
     candidates: dict[str, Candidate] = {}
     refs: list[SourceRef] = []
     with articles.open("rb") as stream:
@@ -85,11 +108,15 @@ def index_inventory(source: Path, state: WorkState, batch_size: int = 500) -> In
                 if _is_doc(target):
                     candidates.setdefault(target, Candidate(target, _hint(target)))
             if stream.tell() - offset >= batch_size * 1024:
-                state.add_inventory_batch(list(candidates.values()), refs, stream.tell())
+                state.add_inventory_batch(
+                    list(candidates.values()), refs, stream.tell(), source_key=key
+                )
                 candidates.clear()
                 refs.clear()
                 offset = stream.tell()
-        state.add_inventory_batch(list(candidates.values()), refs, stream.tell(), done=True)
+        state.add_inventory_batch(
+            list(candidates.values()), refs, stream.tell(), done=True, source_key=key
+        )
     return InventorySummary(
         state.conn.execute("SELECT count(*) FROM inventory").fetchone()[0],
         state.conn.execute("SELECT count(*) FROM refs").fetchone()[0],

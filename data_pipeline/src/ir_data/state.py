@@ -7,7 +7,7 @@ import sqlite3
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Iterable, Iterator
 
 from .models import (
     Candidate,
@@ -32,6 +32,21 @@ def fingerprint_source(source: Path) -> str:
     return h.hexdigest()
 
 
+def read_crawl_id(source: Path) -> str | None:
+    folder = source if source.is_dir() else source.parent
+    for name in ("README.json", "summary.json"):
+        path = folder / name
+        if not path.exists():
+            continue
+        try:
+            value = json.loads(path.read_text(encoding="utf-8")).get("crawl_id")
+        except (json.JSONDecodeError, AttributeError):
+            continue
+        if value:
+            return str(value)
+    return None
+
+
 class WorkState:
     def __init__(self, root: Path, conn: sqlite3.Connection, lock_fd, source_fingerprint: str):
         self.root, self.conn, self._lock_fd = root, conn, lock_fd
@@ -39,7 +54,14 @@ class WorkState:
 
     @classmethod
     @contextmanager
-    def open(cls, root: Path, source_fingerprint: str) -> Iterator["WorkState"]:
+    def open(
+        cls,
+        root: Path,
+        source_fingerprint: str,
+        *,
+        crawl_id: str | None = None,
+        rebind: bool = False,
+    ) -> Iterator["WorkState"]:
         root.mkdir(parents=True, exist_ok=True)
         lock_path = root / ".writer.lock"
         lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
@@ -57,10 +79,16 @@ class WorkState:
         obj = cls(root, conn, lock_fd, source_fingerprint)
         obj._init_schema()
         old = obj._meta("source_fingerprint")
-        if old and old != source_fingerprint:
+        same_crawl = crawl_id is not None and obj._meta("crawl_id") == crawl_id
+        if old and old != source_fingerprint and not (same_crawl or rebind):
             obj.close()
-            raise ValueError("source fingerprint changed; use a new work directory")
+            raise ValueError(
+                "source fingerprint changed; use a new work directory, "
+                "or pass --rebind-source if the source is a refresh of the same crawl"
+            )
         obj._set_meta("source_fingerprint", source_fingerprint)
+        if crawl_id is not None:
+            obj._set_meta("crawl_id", crawl_id)
         try:
             yield obj
         finally:
@@ -110,6 +138,7 @@ class WorkState:
         );
         CREATE TABLE IF NOT EXISTS inventory_cursor (id INTEGER PRIMARY KEY CHECK(id=1), cursor INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0);
         INSERT OR IGNORE INTO inventory_cursor(id) VALUES (1);
+        CREATE TABLE IF NOT EXISTS inventory_sources (path TEXT PRIMARY KEY, cursor INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0);
         """)
         self.conn.commit()
 
@@ -124,13 +153,20 @@ class WorkState:
         )
         self.conn.commit()
 
-    def cursor(self) -> int:
-        return int(
-            self.conn.execute("SELECT cursor FROM inventory_cursor WHERE id=1").fetchone()[0]
-        )
+    def cursor(self, source_key: str) -> int:
+        row = self.conn.execute(
+            "SELECT cursor FROM inventory_sources WHERE path=?", (source_key,)
+        ).fetchone()
+        return int(row[0]) if row else 0
 
     def add_inventory_batch(
-        self, candidates: list[Candidate], refs: list[SourceRef], cursor: int, done: bool = False
+        self,
+        candidates: list[Candidate],
+        refs: list[SourceRef],
+        cursor: int,
+        done: bool = False,
+        *,
+        source_key: str,
     ) -> None:
         now = time.time()
         with self.conn:
@@ -146,11 +182,33 @@ class WorkState:
                 ],
             )
             self.conn.execute(
-                "UPDATE inventory_cursor SET cursor=?,done=? WHERE id=1", (cursor, int(done))
+                "INSERT INTO inventory_sources(path,cursor,done) VALUES(?,?,?) "
+                "ON CONFLICT(path) DO UPDATE SET cursor=excluded.cursor,done=excluded.done",
+                (source_key, cursor, int(done)),
             )
 
-    def inventory_done(self) -> bool:
-        return bool(self.conn.execute("SELECT done FROM inventory_cursor WHERE id=1").fetchone()[0])
+    def inventory_done(self, source_key: str) -> bool:
+        row = self.conn.execute(
+            "SELECT done FROM inventory_sources WHERE path=?", (source_key,)
+        ).fetchone()
+        return bool(row and row[0])
+
+    def migrate_legacy_cursor(self, source_key: str) -> None:
+        if self.conn.execute("SELECT 1 FROM inventory_sources LIMIT 1").fetchone():
+            return
+        row = self.conn.execute("SELECT cursor, done FROM inventory_cursor WHERE id=1").fetchone()
+        if row and (row[0] or row[1]):
+            with self.conn:
+                self.conn.execute(
+                    "INSERT INTO inventory_sources(path,cursor,done) VALUES(?,?,?)",
+                    (source_key, row[0], row[1]),
+                )
+
+    def delete_refs_from(self, source_urls: Iterable[str]) -> None:
+        with self.conn:
+            self.conn.executemany(
+                "DELETE FROM refs WHERE source_url=?", [(url,) for url in source_urls]
+            )
 
     def claim_download(self) -> DownloadJob | None:
         now = time.time()

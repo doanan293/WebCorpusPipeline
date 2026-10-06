@@ -8,10 +8,16 @@ from pathlib import Path
 
 from .enrichment import extract_documents_sync
 from .enrichment_export import export_enrichment
-from .inventory import index_inventory
+from .inventory import index_inventory, source_key
 from .models import jsonable
 from .settings import load_settings
-from .state import WorkState, fingerprint_source
+from .state import WorkState, fingerprint_source, read_crawl_id
+
+
+REBIND_HELP = (
+    "accept a changed source for this work directory (needed once after upgrading, "
+    "or when the source is not a refresh of the same crawl)"
+)
 
 
 def _repo_root() -> Path:
@@ -28,18 +34,22 @@ def parser() -> argparse.ArgumentParser:
         q.add_argument("--source", default="data/crawl/final")
         q.add_argument("--work-dir", default="data/enrichment")
         q.add_argument("--json", action="store_true")
+        q.add_argument("--rebind-source", action="store_true", help=REBIND_HELP)
     q = sub.add_parser("export")
     q.add_argument("--source", default="data/crawl/final")
     q.add_argument("--work-dir", default="data/enrichment")
     q.add_argument("--output", required=True)
+    q.add_argument("--rebind-source", action="store_true", help=REBIND_HELP)
     q = sub.add_parser("build-graph")
     q.add_argument("--source", default="data/crawl/final")
     q.add_argument("--work-dir", default="data/enrichment")
     q.add_argument("--output", required=True)
+    q.add_argument("--rebind-source", action="store_true", help=REBIND_HELP)
     q = sub.add_parser("package")
     q.add_argument("--source", default="data/crawl/final")
     q.add_argument("--work-dir", default="data/enrichment")
     q.add_argument("--output", required=True)
+    q.add_argument("--rebind-source", action="store_true", help=REBIND_HELP)
     q = sub.add_parser("verify")
     q.add_argument("--corpus", required=True)
     q = sub.add_parser("import-mongo")
@@ -160,8 +170,11 @@ def main(argv: list[str] | None = None) -> int:
         source = settings.source_path
         work = settings.work_path
         fp = fingerprint_source(source)
-        with WorkState.open(work, fp) as state:
+        with WorkState.open(
+            work, fp, crawl_id=read_crawl_id(source), rebind=args.rebind_source
+        ) as state:
             state.recover()
+            state.migrate_legacy_cursor(source_key(settings.project_root / "data" / "crawl" / "final"))
             if args.command == "inventory":
                 summary = index_inventory(source, state)
                 print(json.dumps(jsonable(summary), ensure_ascii=False, indent=2))
@@ -178,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
                     extract_documents_sync(state, settings, root), getattr(args, "json", False)
                 )
             if args.command == "enrich-documents":
-                if not state.inventory_done():
+                if not state.inventory_done(source_key(source)):
                     index_inventory(source, state)
                 from .download import run_downloads
 
