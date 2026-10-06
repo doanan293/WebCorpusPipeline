@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from scrapy.http import HtmlResponse, Request
@@ -10,6 +12,8 @@ from hust_crawler.crawl.article import analyze_article
 from hust_crawler.crawl.assets import AssetPolicy
 from hust_crawler.crawl.frontier import FrontierPolicy
 from hust_crawler.crawl.options import CrawlOptions
+from hust_crawler.crawl.refresh import RefreshSession, RefreshSettings
+from hust_crawler.crawl.refresh_store import RefreshStore
 from hust_crawler.crawl.seeds import SeedSet
 from hust_crawler.crawl.sitemaps import SitemapDiscoveryCoordinator
 from hust_crawler.crawl.spider import UnifiedSpider
@@ -99,12 +103,6 @@ def test_html_response_stores_http_validators(tmp_path: Path) -> None:
     assert record["last_modified"] == "Tue, 06 Oct 2026 00:00:00 GMT"
     writer.close()
 
-
-import json
-from types import SimpleNamespace
-
-from hust_crawler.crawl.refresh import RefreshSession, RefreshSettings
-from hust_crawler.crawl.refresh_store import RefreshStore
 
 RUN_ID = "20261006T000000Z"
 ARTICLE_1 = "<main><h1>Bài một</h1><p>Nội dung bài một của khoa, đủ dài để trích xuất.</p></main>"
