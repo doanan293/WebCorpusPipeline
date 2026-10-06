@@ -71,7 +71,10 @@ Logic riêng của refresh đặt trong module mới `src/hust_crawler/crawl/ref
    - trang chủ của mọi hostname seed đệ quy;
    - robots/sitemap đã đăng ký thành công của host có sitemap;
    - mọi URL `extracted` có `page_role = navigation`;
-   - URL đầu (ordinal nhỏ nhất đã thấy) của mỗi route family `pagination`;
+   - đầu của mỗi route family `pagination`: trong `url_records` lấy bản ghi
+     `extracted` có `family_key` đó và `ordinal` nhỏ nhất, rồi chọn trang
+     `discovered_from` của nó (trang đã dẫn tới trang 2) nếu trang đó
+     `extracted`; nếu không, chọn chính bản ghi ordinal nhỏ nhất;
    - tập bài gần đây (mục "Kiểm tra lại bài gần đây").
 5. **Crawl:** URL trong `refresh_targets` được đưa vào hàng đợi với cờ
    `refresh=True`, cho phép fetch lại dù đã `completed`. Mọi link khác đi qua
@@ -82,11 +85,14 @@ Logic riêng của refresh đặt trong module mới `src/hust_crawler/crawl/ref
 
 ### Phân trang khi refresh
 
-Trạng thái đóng của route family từ các lần trước không áp dụng trong run
-refresh; frontier giữ trạng thái family riêng cho run. Trang đầu luôn được
-fetch; trang kế tiếp chỉ được lên lịch khi trang hiện tại có ít nhất một link
-nội dung chưa có trong `url_records`. Số trang trống liên tiếp trước khi dừng
-là `refresh_pagination_empty_pages` (mặc định `1`).
+Trong run refresh, frontier khởi tạo không có route family nào và không gọi
+`observe_family`/`observe_pagination`; bảng `route_families` của crawl gốc
+không bị ghi đè. Trang đầu luôn được fetch; trang kế tiếp chỉ được lên lịch
+khi trang hiện tại có ít nhất một link nội dung chưa có trong `url_records`.
+Nếu trang kế tiếp đã có trong `url_records`, nó được fetch lại như một mục
+refresh (`reason = pagination_next`, thêm vào `refresh_targets`). Số trang
+trống liên tiếp trước khi dừng là `refresh_pagination_empty_pages` (mặc định
+`1`).
 
 ### Kiểm tra lại bài gần đây
 
@@ -108,7 +114,10 @@ Sau khi fetch lại một URL trong tập refresh và trích xuất thành công
 - `content_id` mới bằng cũ → không đổi; chỉ ghi `last_checked_run`.
 - Khác → ghi đè bản ghi trong `articles`, cập nhật `content_id` (qua
   `claim_content`, nên trùng nội dung vẫn sinh `duplicate_of` như cũ), ghi một
-  dòng `modified`.
+  dòng `modified`. Nếu URL này đang là chủ của `content_id` cũ và có bài khác
+  `duplicate_of` nó với cùng `content_id` cũ, quyền chủ chuyển cho bài trùng có
+  URL nhỏ nhất (bài đó nhận lại `text` cũ, bỏ `duplicate_of`); các bài trùng
+  còn lại trỏ `duplicate_of` sang chủ mới.
 
 Kết quả trích xuất rỗng hoặc bị phân loại là shell page (soft-404, login,
 CAPTCHA) không được tính là thay đổi.
@@ -116,14 +125,17 @@ CAPTCHA) không được tính là thay đổi.
 ### Request có điều kiện
 
 Khi fetch trang HTML, lưu header `ETag` và `Last-Modified` vào payload
-`url_records` (`etag`, `last_modified`). Khi fetch lại URL trong tập refresh,
+`url_records` (`etag`, `last_modified`). `PlaywrightFallbackMiddleware` bỏ qua
+response `304` để không render lại trang rỗng bằng trình duyệt. Khi fetch lại URL trong tập refresh,
 gửi `If-None-Match`/`If-Modified-Since` nếu có. Phản hồi `304` → coi như không
 đổi, không trích xuất, không xét link. Lần refresh đầu chưa có header nên chưa
 có lợi ích này.
 
 ### Cấu hình
 
-Thêm vào `config/crawler.yaml` (schema kiểm tra chặt, phải có đủ khoá):
+Thêm vào `config/crawler.yaml` (schema kiểm tra chặt, phải có đủ khoá). Các
+khoá này là cấu hình runtime (thuộc `_RUNTIME_CONFIG_KEYS`), không thuộc
+semantic config, để state crawl gốc vẫn mở được:
 
 ```yaml
 refresh_pagination_empty_pages: 1
@@ -146,7 +158,11 @@ refresh_recheck_limit: 5000
   `modified`, số lỗi theo lý do, thời gian bắt đầu/kết thúc.
 
 `final/` được làm mới toàn bộ như hiện nay; `README.json` thêm
-`last_refresh_run_id`.
+`last_refresh_run_id` và `crawl_id`.
+
+`crawl_id` là định danh dòng crawl, ổn định qua mọi lần refresh:
+16 ký tự hex đầu của `sha256(input_sha256 + ":" + repr(started_at))` lấy từ
+manifest state. `summary.json` của mỗi run cũng ghi `crawl_id`.
 
 ## Nối vào pipeline enrichment
 
@@ -154,6 +170,13 @@ refresh_recheck_limit: 5000
   khoá theo đường dẫn tuyệt đối của file `articles.jsonl`. Migration: nếu
   `inventory_cursor` còn tồn tại, chuyển giá trị thành một dòng cho nguồn đã
   ghi trong `meta`, hoặc `data/crawl/final/articles.jsonl` nếu không có.
+- Kiểm tra fingerprint của `WorkState` chuyển sang theo dòng crawl: đọc
+  `crawl_id` từ `README.json` hoặc `summary.json` trong thư mục nguồn. Nếu
+  work dir đã lưu `crawl_id` và trùng → chấp nhận fingerprint mới. Nếu
+  fingerprint khớp như cũ → chấp nhận và lưu `crawl_id` (nếu nguồn có). Còn lại
+  báo lỗi như hiện nay, kèm gợi ý cờ `--rebind-source`; cờ này (có trên mọi
+  lệnh mở work dir) chấp nhận nguồn hiện tại và ghi lại fingerprint, `crawl_id`.
+  Work dir có sẵn trước tính năng này cần chạy một lần với `--rebind-source`.
 - `ir-data inventory --source data/crawl/changes/<run_id>` đọc nguồn mới với
   con trỏ riêng. Với trang có `change = modified` (đọc từ `changes.jsonl` cùng
   thư mục), xoá các dòng `refs` có `source_url` là trang đó trước khi ghi refs mới.
@@ -177,9 +200,14 @@ uv run ir-data import-mongo --corpus data/corpus/latest
 - Bài cũ không bao giờ bị xoá hoặc hạ trạng thái trong refresh. Khi URL đã
   `extracted` được fetch lại mà gặp 404, 5xx, timeout, login/CAPTCHA,
   soft-404 hoặc chuyển hướng ra ngoài scope: giữ nguyên `status`, `articles` và
-  `content_id`; ghi lỗi vào `errors` với `run_id` và vào `summary.json`.
+  `content_id`; ghi kết quả lỗi vào cột `outcome`/`error` của
+  `refresh_targets` và vào `summary.json`. Bảng `errors` không bị ghi, vì nó
+  là chỉ mục lỗi cuối cùng theo URL của crawl.
 - URL mới bị lỗi được ghi `failed`/`skipped` như crawl thường.
-- Exit code giống crawl thường: `0`, `3` (có lỗi URL), `130` (bị ngắt), `1`, `2`.
+- Exit code giống crawl thường (`0`, `3`, `4`, `130`, `1`, `2`), nhưng chỉ tính
+  trên run hiện tại: lỗi = mục refresh có lỗi + URL có `first_seen_run` của run
+  ở trạng thái `failed`; truncation = URL có `first_seen_run` của run bị loại vì
+  lý do truncation.
 
 ## Ngắt giữa chừng và chạy tiếp
 
