@@ -10,6 +10,7 @@ from scrapy.exceptions import IgnoreRequest
 from scrapy.http import Response
 
 from hust_crawler.config import CrawlerConfig
+from hust_crawler.policies.url import canonicalize_url
 from hust_crawler.policies.access import classify_page_gate
 from .article import analyze_article
 from .assets import (
@@ -22,12 +23,12 @@ from .content import normalize_url, resource_kind
 from .frontier import Candidate, DiscoverySource, FrontierDecision, FrontierPolicy, Purpose
 from .link_policy import ClassifiedLink, classify_link, select_semantic_next
 from .options import CrawlOptions
-from .refresh import response_validators
+from .refresh import RefreshSession, classify_refetch, conditional_headers, response_validators
 from .routing import route_response
 from .seeds import SeedSet
 from .sitemaps import SitemapDiscoveryCoordinator, SitemapParseError, parse_sitemap
 from .state import FamilyObservation
-from .writer import CrawlWriter, StorageLimit
+from .writer import CrawlWriter, StorageLimit, content_id_for
 
 
 class UnifiedSpider(scrapy.Spider):
@@ -44,6 +45,8 @@ class UnifiedSpider(scrapy.Spider):
         policy: AssetPolicy,
         coordinator: SitemapDiscoveryCoordinator,
         resume_records: Iterable[Mapping[str, object]] = (),
+        refresh: RefreshSession | None = None,
+        refresh_targets: Iterable[tuple[str, str]] = (),
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -55,6 +58,8 @@ class UnifiedSpider(scrapy.Spider):
         self.policy = policy
         self.coordinator = coordinator
         self.resume_records = tuple(resume_records)
+        self.refresh = refresh
+        self.refresh_targets = tuple(refresh_targets)
 
         exact_hosts = frozenset(
             (urlsplit(u).hostname or "").lower().rstrip(".")
@@ -264,6 +269,10 @@ class UnifiedSpider(scrapy.Spider):
 
     def start_requests(self) -> Iterator[scrapy.Request]:
         yield from self._resume_requests()
+        if self.refresh is not None:
+            for url, reason in self.refresh_targets:
+                yield self._refresh_request(url, reason)
+            return
 
         # Recursive hostname seeds (schedule robots, 3 sitemaps, and homepage)
         for hostname in sorted(self.seeds.recursive_hostnames):
@@ -509,7 +518,7 @@ class UnifiedSpider(scrapy.Spider):
                     if cl.family_key:
                         pagination_by_family[cl.family_key].append(cl)
 
-            if current_family_key:
+            if current_family_key and self.refresh is None:
                 content_fingerprint = str(stored_article.get("content_id") or "")
                 content_targets = tuple(sorted(set(accepted_content_urls)))
                 target_fingerprint = hashlib.sha256(
@@ -529,32 +538,148 @@ class UnifiedSpider(scrapy.Spider):
                 self.frontier.observe_pagination(response.url, new_scheduled_content_count)
 
             for f_key, links in pagination_by_family.items():
-                if not self.frontier.family_is_closed(f_key):
-                    next_link = select_semantic_next(
-                        links,
-                        current_ordinal=current_ordinal if f_key == current_family_key else None,
-                    )
-                    if next_link is not None:
-                        cand = Candidate(
-                            url=next_link.url,
-                            source_mode="recursive",
-                            discovered_from=response.url,
-                            kind="html",
-                            purpose="page",
-                            explicit=False,
-                            discovery_source="html_link",
-                            link_kind=next_link.kind,
-                            family_key=next_link.family_key,
-                            ordinal=next_link.ordinal,
-                        )
-                        req = self._candidate_request(cand)
-                        if req is not None:
-                            yield req
+                if self.refresh is not None:
+                    if not self.refresh.follow_pagination(f_key, new_scheduled_content_count):
+                        continue
+                elif self.frontier.family_is_closed(f_key):
+                    continue
+                next_link = select_semantic_next(
+                    links,
+                    current_ordinal=current_ordinal if f_key == current_family_key else None,
+                )
+                if next_link is None:
+                    continue
+                cand = Candidate(
+                    url=next_link.url,
+                    source_mode="recursive",
+                    discovered_from=response.url,
+                    kind="html",
+                    purpose="page",
+                    explicit=False,
+                    discovery_source="html_link",
+                    link_kind=next_link.kind,
+                    family_key=next_link.family_key,
+                    ordinal=next_link.ordinal,
+                )
+                req = self._candidate_request(cand)
+                if req is None and self.refresh is not None:
+                    req = self._refresh_pagination_request(next_link.url)
+                if req is not None:
+                    yield req
 
         self.writer.checkpoint(input_url)
 
+    def _refresh_request(self, url: str, reason: str) -> scrapy.Request:
+        record = self.writer.state.url_record(url) or {}
+        hostname = (urlsplit(url).hostname or "").lower().rstrip(".")
+        meta: dict[str, Any] = {
+            "allowed_hostnames": frozenset({hostname}),
+            "input_url": url,
+            "seed_mode": "exact" if record.get("seed_type") == "exact" else "recursive",
+            "explicit": bool(record.get("explicit", False)),
+            "response_purpose": str(record.get("response_purpose") or "page"),
+            "discovery_source": record.get("discovery_source") or "seed",
+            "discovered_from": record.get("discovered_from"),
+            "handle_httpstatus_all": True,
+            "request_scope": "page",
+            "asset_mode": self.options.assets,
+            "link_kind": record.get("link_kind"),
+            "family_key": record.get("family_key"),
+            "ordinal": record.get("ordinal"),
+            "refresh_reason": reason,
+            "previous_content_id": (
+                record.get("content_id") if record.get("status") == "extracted" else None
+            ),
+            "previous_duplicate_of": record.get("duplicate_of"),
+        }
+        return scrapy.Request(
+            url,
+            callback=self.parse_response,
+            errback=self.on_request_error,
+            priority=500,
+            headers=conditional_headers(record),
+            meta=meta,
+            dont_filter=True,
+        )
+
+    def _refresh_pagination_request(self, url: str) -> scrapy.Request | None:
+        assert self.refresh is not None
+        canonical, _, _ = canonicalize_url(url)
+        if not canonical:
+            return None
+        record = self.writer.state.url_record(canonical)
+        if record is None or record.get("status") != "extracted":
+            return None
+        if not self.refresh.add_pagination_target(canonical):
+            return None
+        return self._refresh_request(canonical, "pagination_next")
+
+    def _parse_refresh_response(self, response: Response) -> Iterator[scrapy.Request]:
+        assert self.refresh is not None
+        url = str(response.meta.get("input_url", response.url))
+        if response.status == 304:
+            self.refresh.finish_target(url, "not_modified")
+            return
+        if response.status >= 300:
+            self.refresh.finish_target(url, f"http_{response.status}")
+            return
+        if response.meta.get("response_purpose") in {"robots", "sitemap"}:
+            yield from self._parse_crawl_response(response)
+            self.refresh.finish_target(url, "fetched")
+            return
+        content_type = response.headers.get(b"Content-Type", b"").decode("latin1", errors="replace")
+        mime = content_type.partition(";")[0].strip().lower()
+        if (
+            "download_stopped" in getattr(response, "flags", [])
+            or response.meta.get("header_stop_reason")
+            or (mime and mime not in {"text/html", "application/xhtml+xml"})
+        ):
+            self.refresh.finish_target(url, "non_html")
+            return
+        analysis = analyze_article(response.body, response.url, getattr(response, "encoding", None))
+        text = str(analysis.article.get("text") or "")
+        gate = classify_page_gate(
+            status=response.status, url=response.url, html=response.text, text=text
+        )
+        previous = response.meta.get("previous_content_id")
+        outcome = classify_refetch(
+            previous, content_id_for(text), None if gate.expandable else gate.reason
+        )
+        if outcome.startswith("gate_"):
+            self.refresh.finish_target(url, outcome)
+            return
+        state = self.writer.state
+        if outcome == "unchanged":
+            stored_article: dict[str, Any] = {
+                "url": url,
+                "text": text,
+                "content_id": previous,
+                "duplicate_of": response.meta.get("previous_duplicate_of"),
+            }
+        else:
+            if outcome == "modified":
+                state.release_content_owner(url, str(previous))
+                state.update_url_fields(url, {"duplicate_of": None})
+            article_data = self._article_record(response, analysis, url, content_type)
+            stored_article = self.writer.write_article(article_data)
+            self.refresh.record_change(
+                url,
+                outcome,
+                page_role=str(article_data["page_role"]),
+                content_id=str(stored_article["content_id"]),
+                previous_content_id=previous,
+            )
+        self._store_validators(url, response, last_checked_run=self.refresh.run_id)
+        self.refresh.finish_target(url, outcome)
+        yield from self._expand_html(
+            response, analysis, stored_article, url, str(response.meta.get("seed_mode", "recursive"))
+        )
+
     def parse_response(self, response: Response) -> Iterator[scrapy.Request]:
-        yield from self._parse_crawl_response(response)
+        if self.refresh is not None and response.meta.get("refresh_reason"):
+            yield from self._parse_refresh_response(response)
+        else:
+            yield from self._parse_crawl_response(response)
 
     def _parse_crawl_response(self, response: Response) -> Iterator[scrapy.Request]:
         input_url = response.meta.get("input_url", response.url)
@@ -718,6 +843,13 @@ class UnifiedSpider(scrapy.Spider):
             else:
                 stored_article = article_data
             self._store_validators(input_url, response)
+            if self.refresh is not None:
+                self.refresh.record_change(
+                    input_url,
+                    "new",
+                    page_role=str(article_data["page_role"]),
+                    content_id=str(stored_article["content_id"]),
+                )
             yield from self._expand_html(response, analysis, stored_article, input_url, seed_mode)
 
         elif route.action == "robots":
@@ -902,6 +1034,11 @@ class UnifiedSpider(scrapy.Spider):
 
         error_str = str(failure.value)
         error_name = getattr(failure.type, "__name__", "")
+
+        if self.refresh is not None and request.meta.get("refresh_reason"):
+            outcome = "access_gate" if isinstance(failure.value, IgnoreRequest) else "request_failed"
+            self.refresh.finish_target(input_url, outcome, error=error_str[:500])
+            return None
 
         # 1. robots_disallowed
         if isinstance(failure.value, IgnoreRequest) and "robots.txt" in error_str.lower():
