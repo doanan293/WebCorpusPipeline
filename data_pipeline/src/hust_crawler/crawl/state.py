@@ -8,7 +8,7 @@ import sqlite3
 import time
 from pathlib import Path
 from typing import Any, Iterator, Literal, TYPE_CHECKING
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from collections import Counter, defaultdict
 from urllib.parse import urlsplit
 
@@ -103,6 +103,7 @@ class CrawlState:
         self.lock_path = root / "run.lock"
         self.connection = connection
         self._lock_acquired = True
+        self.refresh_run_id: str | None = None
 
     @classmethod
     def open(
@@ -278,6 +279,8 @@ class CrawlState:
             return json.loads(existing_row[0])
 
         merged = self._merged_record(record)
+        if existing_row is None and self.refresh_run_id is not None:
+            merged.setdefault("first_seen_run", self.refresh_run_id)
         url = str(merged["url"])
         payload = json.dumps(merged, ensure_ascii=False)
         status = str(merged.get("status", "discovered"))
@@ -348,6 +351,97 @@ class CrawlState:
     def checkpoint(self, url: str) -> None:
         self.connection.execute("UPDATE url_records SET completed = 1 WHERE url = ?;", (url,))
         self.connection.commit()
+
+    @property
+    def crawl_id(self) -> str:
+        seed = f"{self.manifest['input_sha256']}:{self.manifest['started_at']!r}"
+        return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+
+    def url_record(self, url: str) -> dict[str, object] | None:
+        row = self.connection.execute(
+            "SELECT payload FROM url_records WHERE url = ?;", (url,)
+        ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def update_url_fields(self, url: str, fields: Mapping[str, object]) -> None:
+        record = self.url_record(url)
+        if record is None:
+            return
+        record.update(fields)
+        self.connection.execute(
+            "UPDATE url_records SET payload = ? WHERE url = ?;",
+            (json.dumps(record, ensure_ascii=False), url),
+        )
+
+    def release_content_owner(self, url: str, content_id: str) -> None:
+        """Hand ownership of content_id from url to its first duplicate, if any."""
+        owner = self.connection.execute(
+            "SELECT url FROM content_owner WHERE content_id = ?;", (content_id,)
+        ).fetchone()
+        if owner is None or owner[0] != url:
+            return
+        article_row = self.connection.execute(
+            "SELECT payload FROM articles WHERE url = ?;", (url,)
+        ).fetchone()
+        old_text = json.loads(article_row[0]).get("text") if article_row else None
+        dependents = [
+            str(row[0])
+            for row in self.connection.execute(
+                """
+                SELECT a.url FROM articles AS a JOIN url_records AS r ON r.url = a.url
+                WHERE json_extract(a.payload, '$.duplicate_of') = ?
+                  AND json_extract(r.payload, '$.content_id') = ?
+                ORDER BY a.url;
+                """,
+                (url, content_id),
+            )
+        ]
+        self.connection.execute("BEGIN IMMEDIATE;")
+        try:
+            if not dependents:
+                self.connection.execute(
+                    "DELETE FROM content_owner WHERE content_id = ?;", (content_id,)
+                )
+            else:
+                new_owner = dependents[0]
+                self.connection.execute(
+                    "UPDATE content_owner SET url = ? WHERE content_id = ?;",
+                    (new_owner, content_id),
+                )
+                for dependent in dependents:
+                    article = json.loads(
+                        self.connection.execute(
+                            "SELECT payload FROM articles WHERE url = ?;", (dependent,)
+                        ).fetchone()[0]
+                    )
+                    record = self.url_record(dependent) or {"url": dependent}
+                    if dependent == new_owner:
+                        article.pop("duplicate_of", None)
+                        article["text"] = old_text
+                        record["duplicate_of"] = None
+                    else:
+                        article["duplicate_of"] = new_owner
+                        record["duplicate_of"] = new_owner
+                    self.connection.execute(
+                        "UPDATE articles SET payload = ? WHERE url = ?;",
+                        (json.dumps(article, ensure_ascii=False), dependent),
+                    )
+                    self.connection.execute(
+                        "UPDATE url_records SET payload = ? WHERE url = ?;",
+                        (json.dumps(record, ensure_ascii=False), dependent),
+                    )
+            self.connection.execute("COMMIT;")
+        except Exception:
+            self.connection.execute("ROLLBACK;")
+            raise
+
+    def backup_to(self, destination: Path) -> None:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        target = sqlite3.connect(str(destination))
+        try:
+            self.connection.backup(target)
+        finally:
+            target.close()
 
     def claim_content(self, content_id: str, url: str) -> str:
         self.connection.execute(
@@ -819,6 +913,52 @@ class CrawlState:
     def export(self, output: Path) -> None:
         self.export_crawl(output)
 
+    def iter_final_articles(
+        self, urls: Iterable[str] | None = None
+    ) -> Iterator[tuple[str, str]]:
+        """Yield (url, payload) for extracted articles, inlining excluded owner text."""
+        query = """
+            SELECT a.url, a.payload
+            FROM articles AS a
+            JOIN url_records AS r ON r.url = a.url
+            WHERE r.status = 'extracted'
+        """
+        if urls is None:
+            rows: Iterable[tuple[str, str]] = self.connection.execute(query + " ORDER BY a.url;")
+        else:
+
+            def selected() -> Iterator[tuple[str, str]]:
+                for url in sorted(set(urls)):
+                    row = self.connection.execute(query + " AND a.url = ?;", (url,)).fetchone()
+                    if row is not None:
+                        yield row
+
+            rows = selected()
+        owner_text: dict[str, str] = {}
+        for url, payload in rows:
+            if '"duplicate_of"' in payload:
+                article = json.loads(payload)
+                owner_url = article.get("duplicate_of")
+                if owner_url:
+                    owner_status = self.connection.execute(
+                        "SELECT status FROM url_records WHERE url = ?", (owner_url,)
+                    ).fetchone()
+                    if owner_status is None or owner_status[0] != "extracted":
+                        if owner_url not in owner_text:
+                            owner_row = self.connection.execute(
+                                "SELECT payload FROM articles WHERE url = ?", (owner_url,)
+                            ).fetchone()
+                            if owner_row is None:
+                                raise ValueError(f"missing duplicate owner article: {owner_url}")
+                            text = json.loads(owner_row[0]).get("text")
+                            if text is None:
+                                raise ValueError(f"duplicate owner has no text: {owner_url}")
+                            owner_text[owner_url] = str(text)
+                        article["text"] = owner_text[owner_url]
+                        article.pop("duplicate_of", None)
+                        payload = json.dumps(article, ensure_ascii=False)
+            yield url, payload
+
     def export_final(self, output: Path) -> None:
         final = output / "final"
         final.mkdir(parents=True, exist_ok=True)
@@ -827,42 +967,11 @@ class CrawlState:
         tmp_articles = final / "articles.jsonl.tmp"
         tmp_urls = final / "urls.txt.tmp"
 
-        cursor = self.connection.execute(
-            """
-            SELECT a.url, a.payload
-            FROM articles AS a
-            JOIN url_records AS r ON r.url = a.url
-            WHERE r.status = 'extracted'
-            ORDER BY a.url;
-            """
-        )
         count = 0
-        owner_text: dict[str, str] = {}
         with tmp_articles.open("w", encoding="utf-8") as articles_file, tmp_urls.open(
             "w", encoding="utf-8"
         ) as urls_file:
-            for url, payload in cursor:
-                if '"duplicate_of"' in payload:
-                    article = json.loads(payload)
-                    owner_url = article.get("duplicate_of")
-                    if owner_url:
-                        owner_status = self.connection.execute(
-                            "SELECT status FROM url_records WHERE url = ?", (owner_url,)
-                        ).fetchone()
-                        if owner_status is None or owner_status[0] != "extracted":
-                            if owner_url not in owner_text:
-                                owner_row = self.connection.execute(
-                                    "SELECT payload FROM articles WHERE url = ?", (owner_url,)
-                                ).fetchone()
-                                if owner_row is None:
-                                    raise ValueError(f"missing duplicate owner article: {owner_url}")
-                                text = json.loads(owner_row[0]).get("text")
-                                if text is None:
-                                    raise ValueError(f"duplicate owner has no text: {owner_url}")
-                                owner_text[owner_url] = str(text)
-                            article["text"] = owner_text[owner_url]
-                            article.pop("duplicate_of", None)
-                            payload = json.dumps(article, ensure_ascii=False)
+            for url, payload in self.iter_final_articles():
                 articles_file.write(f"{payload}\n")
                 urls_file.write(f"{url}\n")
                 count += 1
@@ -871,6 +980,7 @@ class CrawlState:
 
         summary = {
             "description": "Bộ dữ liệu bài viết đã lọc theo URL crawl thành công",
+            "crawl_id": self.crawl_id,
             "source_crawl_finished_at_utc": time.strftime(
                 "%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.manifest["finished_at"])
             ),
@@ -883,6 +993,8 @@ class CrawlState:
             "crawl_failed_url_count": self.manifest["counts"].get("url_status_failed", 0),
             "note": "Các URL crawl thất bại không nằm trong bộ dữ liệu này.",
         }
+        if self.manifest.get("last_refresh_run_id"):
+            summary["last_refresh_run_id"] = self.manifest["last_refresh_run_id"]
         tmp_summary = final / "README.json.tmp"
         tmp_summary.write_text(
             json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

@@ -1,9 +1,12 @@
 import json
 from pathlib import Path
+import sqlite3
 from typing import Literal
 
 import pytest
 
+from hust_crawler.crawl.options import CrawlOptions
+from hust_crawler.crawl.writer import CrawlWriter
 from hust_crawler.crawl.state import (
     CrawlState,
     RouteFamilyState,
@@ -807,4 +810,105 @@ def test_asset_referrers_persists_and_updates_file_payload(tmp_path: Path) -> No
     cursor = state.connection.execute("SELECT payload FROM files WHERE url = ?;", ("https://cdn.test/a.png",))
     updated_payload = json.loads(cursor.fetchone()[0])
     assert updated_payload["referring_pages"] == ["https://a.test/p1", "https://a.test/p2", "https://a.test/p3"]
+    state.close()
+
+
+def test_new_records_are_stamped_with_refresh_run(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    state.upsert_url({"url": "https://a.test/old", "status": "extracted"})
+    state.refresh_run_id = "20261006T000000Z"
+    state.upsert_url({"url": "https://a.test/old", "status": "extracted", "etag": '"x"'})
+    state.upsert_url({"url": "https://a.test/new", "status": "scheduled"})
+
+    assert "first_seen_run" not in state.url_record("https://a.test/old")
+    assert state.url_record("https://a.test/new")["first_seen_run"] == "20261006T000000Z"
+    state.close()
+
+
+def test_update_url_fields_keeps_status_and_completion(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    url = "https://a.test/page"
+    state.upsert_url({"url": url, "status": "extracted", "completed": True, "duplicate_of": "x"})
+    state.update_url_fields(url, {"etag": '"v1"', "duplicate_of": None})
+    state.update_url_fields("https://a.test/missing", {"etag": '"v1"'})
+
+    record = state.url_record(url)
+    assert record["status"] == "extracted"
+    assert record["etag"] == '"v1"'
+    assert record["duplicate_of"] is None
+    assert state.is_complete(url)
+    assert state.url_record("https://a.test/missing") is None
+    state.close()
+
+
+def test_release_content_owner_promotes_first_duplicate(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    writer = CrawlWriter(tmp_path / "output", state, CrawlOptions())
+    for url in ("https://a.test/owner", "https://a.test/b", "https://a.test/c"):
+        writer.write_article({"url": url, "final_url": url, "text": "Shared text"})
+    old_id = state.url_record("https://a.test/owner")["content_id"]
+
+    state.release_content_owner("https://a.test/owner", old_id)
+
+    articles = {
+        url: json.loads(payload)
+        for url, payload in state.connection.execute("SELECT url, payload FROM articles")
+    }
+    assert articles["https://a.test/b"]["text"] == "Shared text"
+    assert "duplicate_of" not in articles["https://a.test/b"]
+    assert articles["https://a.test/c"]["duplicate_of"] == "https://a.test/b"
+    assert state.url_record("https://a.test/b")["duplicate_of"] is None
+    assert state.url_record("https://a.test/c")["duplicate_of"] == "https://a.test/b"
+    assert state.claim_content(old_id, "https://a.test/z") == "https://a.test/b"
+    state.close()
+
+
+def test_release_content_owner_without_duplicates_frees_content(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    writer = CrawlWriter(tmp_path / "output", state, CrawlOptions())
+    writer.write_article({"url": "https://a.test/a", "final_url": "https://a.test/a", "text": "Only"})
+    old_id = state.url_record("https://a.test/a")["content_id"]
+
+    state.release_content_owner("https://a.test/a", old_id)
+
+    assert state.claim_content(old_id, "https://a.test/z") == "https://a.test/z"
+    state.close()
+
+
+def test_iter_final_articles_limits_to_requested_urls(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    writer = CrawlWriter(tmp_path / "output", state, CrawlOptions())
+    for url, text in (("https://a.test/a", "A"), ("https://a.test/b", "B")):
+        writer.write_article({"url": url, "final_url": url, "text": text})
+
+    rows = list(state.iter_final_articles(["https://a.test/b", "https://a.test/missing"]))
+
+    assert [url for url, _ in rows] == ["https://a.test/b"]
+    assert json.loads(rows[0][1])["text"] == "B"
+    state.close()
+
+
+def test_final_readme_records_crawl_lineage(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    state.manifest["last_refresh_run_id"] = "20261006T000000Z"
+    output = tmp_path / "public"
+    state.finish("complete", exit_code=0, counts={}, metrics={}, public_output=output)
+
+    readme = json.loads((output / "final" / "README.json").read_text(encoding="utf-8"))
+    assert len(state.crawl_id) == 16
+    assert readme["crawl_id"] == state.crawl_id
+    assert readme["last_refresh_run_id"] == "20261006T000000Z"
+    state.close()
+
+
+def test_backup_to_copies_the_index(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    state.upsert_url({"url": "https://a.test/", "status": "extracted"})
+    target = tmp_path / "archive" / "pre-refresh-x" / "index.sqlite3"
+
+    state.backup_to(target)
+
+    copy = sqlite3.connect(target)
+    assert copy.execute("SELECT count(*) FROM url_records").fetchone()[0] == 1
+    copy.close()
     state.close()

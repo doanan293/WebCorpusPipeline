@@ -52,6 +52,11 @@ _MIME_TO_EXT = {
 }
 
 
+def content_id_for(text: str) -> str:
+    """Return the content hash stored for extracted article text."""
+    return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+
+
 class StorageLimit(Exception):
     def __init__(self, reason: Literal["file_size_limit", "storage_budget"]) -> None:
         super().__init__(reason)
@@ -87,8 +92,7 @@ class CrawlWriter:
         self.state.complete_url(record)
 
     def write_article(self, record: dict[str, object]) -> dict[str, object]:
-        text = str(record.get("text") or "").strip()
-        content_id = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        content_id = content_id_for(str(record.get("text") or ""))
         url = str(record["url"])
         record_copy = dict(record)
         record_copy["content_id"] = content_id

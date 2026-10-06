@@ -149,3 +149,13 @@ def test_content_only_export_has_empty_files_jsonl(tmp_path: Path) -> None:
     assert files_jsonl.read_text(encoding="utf-8") == ""
     assert not (tmp_path / "output" / "files").exists()
     writer.close()
+
+
+def test_content_id_for_matches_written_article(tmp_path: Path) -> None:
+    from hust_crawler.crawl.writer import content_id_for
+
+    writer = make_writer(tmp_path)
+    stored = writer.write_article({"url": "https://a.test/a", "final_url": "https://a.test/a", "text": "  Body \n"})
+
+    assert stored["content_id"] == content_id_for("  Body \n") == content_id_for("Body")
+    writer.close()
