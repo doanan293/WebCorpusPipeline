@@ -98,14 +98,20 @@ def preflight(state_dir: Path) -> str | None:
 
 
 def _homepages(connection: sqlite3.Connection, recursive_hostnames: Iterable[str]) -> list[str]:
+    def status(url: str) -> str | None:
+        row = connection.execute("SELECT status FROM url_records WHERE url = ?;", (url,)).fetchone()
+        return str(row[0]) if row else None
+
     urls: list[str] = []
     for hostname in sorted(recursive_hostnames):
-        urls.append(f"https://{hostname}/")
-        row = connection.execute(
-            "SELECT status FROM url_records WHERE url = ?;", (f"http://{hostname}/",)
-        ).fetchone()
-        if row is not None and row[0] == "extracted":
-            urls.append(f"http://{hostname}/")
+        https_url, http_url = f"https://{hostname}/", f"http://{hostname}/"
+        http_ok = status(http_url) == "extracted"
+        # A host whose HTTPS homepage never worked was crawled over the HTTP
+        # fallback; probing HTTPS again would fail on every refresh.
+        if status(https_url) == "extracted" or not http_ok:
+            urls.append(https_url)
+        if http_ok:
+            urls.append(http_url)
     return urls
 
 
@@ -309,16 +315,20 @@ def prepare_refresh_run(
     while latest is not None and run_id <= str(latest["run_id"]):
         now += 1
         run_id = new_run_id(now)
-    state.backup_to(output / "archive" / f"pre-refresh-{run_id}" / "index.sqlite3")
-    targets = select_targets(
-        state.connection,
-        recursive_hostnames,
-        settings,
-        store.completed_run_ids(settings.recent_runs),
-        now,
-    )
-    store.start_run(run_id)
-    store.add_targets(run_id, targets)
+    try:
+        state.backup_to(output / "archive" / f"pre-refresh-{run_id}" / "index.sqlite3")
+        targets = select_targets(
+            state.connection,
+            recursive_hostnames,
+            settings,
+            store.completed_run_ids(settings.recent_runs),
+            now,
+        )
+        store.start_run(run_id)
+        store.add_targets(run_id, targets)
+    except Exception:
+        state.restore_status()
+        raise
     state.refresh_run_id = run_id
     return run_id, store.pending_targets(run_id)
 

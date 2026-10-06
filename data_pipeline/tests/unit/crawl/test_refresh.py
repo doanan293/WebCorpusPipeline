@@ -251,3 +251,36 @@ def test_interrupted_refresh_run_exports_nothing(tmp_path: Path) -> None:
     assert "last_refresh_run_id" not in state.manifest
     assert store.latest_run()["status"] == "interrupted"
     state.close()
+
+
+def test_failed_prepare_restores_finished_crawl_status(tmp_path: Path, monkeypatch) -> None:
+    state = open_state(tmp_path)
+    state.finish("complete", exit_code=0, counts={}, metrics={})
+    state.close()
+    state = open_state(tmp_path, resume=True)
+    assert state.manifest["status"] == "running"
+
+    def disk_full(destination: Path) -> None:
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(state, "backup_to", disk_full)
+    with pytest.raises(OSError):
+        prepare_refresh_run(
+            state, RefreshStore(state.connection), tmp_path / "out",
+            frozenset({"a.test"}), RefreshSettings(), None, now=NOW,
+        )
+    state.close()
+
+    assert preflight(tmp_path / "out" / "state") is None
+
+
+def test_homepage_target_skips_https_when_only_http_homepage_works(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    state.upsert_url({"url": "https://a.test/", "status": "failed", "completed": True})
+    put_page(state, "http://a.test/")
+
+    targets = select_targets(state.connection, frozenset({"a.test"}), RefreshSettings(), [], NOW)
+
+    assert ("http://a.test/", "homepage") in targets
+    assert ("https://a.test/", "homepage") not in targets
+    state.close()

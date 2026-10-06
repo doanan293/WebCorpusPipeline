@@ -627,6 +627,16 @@ class UnifiedSpider(scrapy.Spider):
             self.refresh.finish_target(url, f"http_{response.status}")
             return
         if response.meta.get("response_purpose") in {"robots", "sitemap"}:
+            if response.meta.get("response_purpose") == "sitemap":
+                try:
+                    parse_sitemap(
+                        response.body,
+                        response.url,
+                        response.headers.get(b"Content-Type", b"").decode("latin1"),
+                    )
+                except SitemapParseError:
+                    self.refresh.finish_target(url, "sitemap_parse_error")
+                    return
             yield from self._parse_crawl_response(response)
             self.refresh.finish_target(url, "fetched")
             return

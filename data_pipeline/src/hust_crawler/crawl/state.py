@@ -175,6 +175,7 @@ class CrawlState:
                 if not history or history[-1] != runtime_config:
                     history.append(runtime_config)
                     manifest["runtime_history"] = history
+                manifest["resumed_from_status"] = manifest.get("status")
                 manifest["status"] = "running"
 
             else:
@@ -434,6 +435,13 @@ class CrawlState:
         except Exception:
             self.connection.execute("ROLLBACK;")
             raise
+
+    def restore_status(self) -> None:
+        """Undo the 'running' mark of a resumed open when the run never started."""
+        previous = self.manifest.get("resumed_from_status")
+        if previous:
+            self.manifest["status"] = previous
+            self._write_manifest(self.manifest)
 
     def backup_to(self, destination: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)

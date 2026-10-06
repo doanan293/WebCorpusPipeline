@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from scrapy.http import HtmlResponse, Request
+from scrapy.http import HtmlResponse, Request, TextResponse
 
 from hust_crawler.config import CrawlerConfig
 from hust_crawler.crawl.article import analyze_article
@@ -272,4 +272,61 @@ def test_pagination_refetches_known_next_page_only_while_new_links_appear(tmp_pa
     assert by_url["https://a.test/tin-tuc?page=2"].meta["refresh_reason"] == "pagination_next"
     assert list(spider.parse_response(page(by_url["https://a.test/tin-tuc?page=2"], page2))) == []
     assert outcome(store, "https://a.test/tin-tuc?page=2") == "unchanged"
+    writer.close()
+
+
+def sitemap_response(request: Request, body: str) -> TextResponse:
+    return TextResponse(
+        url=request.url,
+        status=200,
+        headers={b"Content-Type": b"application/xml"},
+        body=body.encode("utf-8"),
+        encoding="utf-8",
+        request=request,
+    )
+
+
+def known_sitemap(writer: CrawlWriter) -> None:
+    writer.state.merge_url(
+        {
+            "url": "https://a.test/sitemap.xml",
+            "status": "scheduled",
+            "frontier_action": "scheduled",
+            "response_purpose": "sitemap",
+            "discovery_source": "sitemap",
+            "seed_type": "recursive",
+            "completed": True,
+        }
+    )
+
+
+def test_unparsable_sitemap_refetch_is_not_a_crawl_error(tmp_path: Path) -> None:
+    writer = open_writer(tmp_path)
+    known_sitemap(writer)
+    spider, store = refresh_spider(writer, [("https://a.test/sitemap.xml", "sitemap")])
+    [request] = list(spider.start_requests())
+
+    assert list(spider.parse_response(sitemap_response(request, "<urlset><url>"))) == []
+
+    assert outcome(store, "https://a.test/sitemap.xml") == "sitemap_parse_error"
+    assert writer.state.url_record("https://a.test/sitemap.xml")["status"] == "scheduled"
+    assert writer.state.connection.execute("SELECT count(*) FROM errors").fetchone()[0] == 0
+    writer.close()
+
+
+def test_sitemap_refetch_schedules_only_new_pages(tmp_path: Path) -> None:
+    writer = open_writer(tmp_path)
+    known_sitemap(writer)
+    known_page(writer, "https://a.test/bai/1", ARTICLE_1)
+    spider, store = refresh_spider(writer, [("https://a.test/sitemap.xml", "sitemap")])
+    [request] = list(spider.start_requests())
+    xml = (
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        "<url><loc>https://a.test/bai/1</loc></url><url><loc>https://a.test/bai/2</loc></url></urlset>"
+    )
+
+    follow_ups = list(spider.parse_response(sitemap_response(request, xml)))
+
+    assert [r.url for r in follow_ups] == ["https://a.test/bai/2"]
+    assert outcome(store, "https://a.test/sitemap.xml") == "fetched"
     writer.close()
