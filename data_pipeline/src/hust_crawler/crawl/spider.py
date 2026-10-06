@@ -22,6 +22,7 @@ from .content import normalize_url, resource_kind
 from .frontier import Candidate, DiscoverySource, FrontierDecision, FrontierPolicy, Purpose
 from .link_policy import ClassifiedLink, classify_link, select_semantic_next
 from .options import CrawlOptions
+from .refresh import response_validators
 from .routing import route_response
 from .seeds import SeedSet
 from .sitemaps import SitemapDiscoveryCoordinator, SitemapParseError, parse_sitemap
@@ -219,7 +220,7 @@ class UnifiedSpider(scrapy.Spider):
 
         return self._create_request_for_scheduled(candidate, decision)
 
-    def start_requests(self) -> Iterator[scrapy.Request]:
+    def _resume_requests(self) -> Iterator[scrapy.Request]:
         for record in self.resume_records:
             url = str(record["url"])
             purpose_value = str(record.get("response_purpose") or "page")
@@ -260,6 +261,9 @@ class UnifiedSpider(scrapy.Spider):
             request = self._create_request_for_scheduled(candidate, decision)
             if request is not None:
                 yield request
+
+    def start_requests(self) -> Iterator[scrapy.Request]:
+        yield from self._resume_requests()
 
         # Recursive hostname seeds (schedule robots, 3 sitemaps, and homepage)
         for hostname in sorted(self.seeds.recursive_hostnames):
@@ -373,7 +377,186 @@ class UnifiedSpider(scrapy.Spider):
 
         return None
 
+    def _article_record(
+        self, response: Response, analysis: Any, input_url: str, content_type: str
+    ) -> dict[str, Any]:
+        return {
+            "url": input_url,
+            "final_url": response.url,
+            **analysis.article,
+            "page_role": self.frontier.page_role(
+                response.url, cast(Any, response.meta.get("link_kind"))
+            ),
+            "status": response.status,
+            "content_type": content_type,
+        }
+
+    def _store_validators(self, url: str, response: Response, **extra: object) -> None:
+        state = getattr(self.writer, "state", None)
+        if state is None or not hasattr(state, "update_url_fields"):
+            return
+        fields: dict[str, object] = {**response_validators(response.headers), **extra}
+        if fields:
+            state.update_url_fields(url, fields)
+
+    def _expand_html(
+        self,
+        response: Response,
+        analysis: Any,
+        stored_article: dict[str, Any],
+        input_url: str,
+        seed_mode: str,
+    ) -> Iterator[scrapy.Request]:
+        gate_reason = self._expansion_gate_reason(response, stored_article)
+        if gate_reason is not None:
+            if (
+                hasattr(self, "crawler")
+                and self.crawler
+                and hasattr(self.crawler, "stats")
+                and self.crawler.stats
+            ):
+                self.crawler.stats.inc_value(f"frontier/terminal/{gate_reason}")
+            self.writer.checkpoint(input_url)
+            return
+
+        for asset in analysis.assets:
+            if hasattr(self.writer, "state") and hasattr(self.writer.state, "add_asset_referrer"):
+                self.writer.state.add_asset_referrer(asset.url, response.url, asset.role)
+            cand = Candidate(
+                url=asset.url,
+                source_mode=seed_mode,
+                discovered_from=response.url,
+                kind="file",
+                purpose="asset",
+                explicit=False,
+                discovery_source="html_link",
+                asset_role=asset.role,
+                asset_group=classify_asset(url=asset.url, asset_role=asset.role),
+            )
+            req = self._candidate_request(cand)
+            if req is not None:
+                yield req
+
+        if seed_mode == "recursive":
+            cl_self = classify_link(response.url, source_url=response.url)
+            current_family_key = response.meta.get("family_key") or cl_self.family_key
+            current_ordinal = response.meta.get("ordinal") or cl_self.ordinal
+
+            classified_discoveries: list[ClassifiedLink] = []
+            for d in analysis.discoveries:
+                try:
+                    cl = classify_link(
+                        d["url"],
+                        source_url=response.url,
+                        text=d.get("text", ""),
+                        rel=tuple(d.get("rel", ())),
+                        resource_kind_hint=d.get("kind"),
+                    )
+                    classified_discoveries.append(cl)
+                except Exception:
+                    continue
+
+            accepted_content_urls: list[str] = []
+            new_scheduled_content_count = 0
+            pagination_by_family: dict[str, list[ClassifiedLink]] = defaultdict(list)
+
+            for cl in classified_discoveries:
+                if cl.kind == "asset":
+                    continue
+                elif cl.kind in {"search_filter", "calendar_archive", "action_auth"}:
+                    self.writer.record_skipped(
+                        {
+                            "url": cl.url,
+                            "final_url": cl.url,
+                            "status": "skipped",
+                            "reason": cl.kind,
+                            "discovery_source": "html_link",
+                            "response_purpose": "page",
+                        }
+                    )
+                elif cl.kind == "content":
+                    cand = Candidate(
+                        url=cl.url,
+                        source_mode="recursive",
+                        discovered_from=response.url,
+                        kind="html",
+                        purpose="page",
+                        explicit=False,
+                        discovery_source="html_link",
+                        link_kind="content",
+                    )
+                    decision = self.frontier.consider(cand)
+                    if decision.action in {"schedule", "record_only"}:
+                        accepted_content_urls.append(decision.canonical_url or cl.url)
+                    if decision.action == "schedule":
+                        if self.frontier.page_role(cand.url, cand.link_kind) == "content":
+                            new_scheduled_content_count += 1
+                        req = self._create_request_for_scheduled(cand, decision)
+                        if req is not None:
+                            yield req
+                    elif decision.action == "reject" and decision.canonical_url:
+                        self.writer.record_skipped(
+                            {
+                                "url": decision.canonical_url,
+                                "final_url": decision.canonical_url,
+                                "status": "skipped",
+                                "reason": decision.reason,
+                                "discovery_source": cand.discovery_source,
+                                "response_purpose": cand.purpose,
+                            }
+                        )
+                elif cl.kind == "pagination":
+                    if cl.family_key:
+                        pagination_by_family[cl.family_key].append(cl)
+
+            if current_family_key:
+                content_fingerprint = str(stored_article.get("content_id") or "")
+                content_targets = tuple(sorted(set(accepted_content_urls)))
+                target_fingerprint = hashlib.sha256(
+                    "\n".join(content_targets).encode("utf-8")
+                ).hexdigest()
+                observation = FamilyObservation(
+                    family_key=current_family_key,
+                    kind="pagination",
+                    ordinal=current_ordinal,
+                    content_fingerprint=content_fingerprint,
+                    target_fingerprint=target_fingerprint,
+                    content_targets=content_targets,
+                )
+                family_state = self.frontier.observe_family(observation)
+                if hasattr(self.writer, "state") and hasattr(self.writer.state, "put_route_family"):
+                    self.writer.state.put_route_family(family_state)
+                self.frontier.observe_pagination(response.url, new_scheduled_content_count)
+
+            for f_key, links in pagination_by_family.items():
+                if not self.frontier.family_is_closed(f_key):
+                    next_link = select_semantic_next(
+                        links,
+                        current_ordinal=current_ordinal if f_key == current_family_key else None,
+                    )
+                    if next_link is not None:
+                        cand = Candidate(
+                            url=next_link.url,
+                            source_mode="recursive",
+                            discovered_from=response.url,
+                            kind="html",
+                            purpose="page",
+                            explicit=False,
+                            discovery_source="html_link",
+                            link_kind=next_link.kind,
+                            family_key=next_link.family_key,
+                            ordinal=next_link.ordinal,
+                        )
+                        req = self._candidate_request(cand)
+                        if req is not None:
+                            yield req
+
+        self.writer.checkpoint(input_url)
+
     def parse_response(self, response: Response) -> Iterator[scrapy.Request]:
+        yield from self._parse_crawl_response(response)
+
+    def _parse_crawl_response(self, response: Response) -> Iterator[scrapy.Request]:
         input_url = response.meta.get("input_url", response.url)
         purpose = response.meta.get("response_purpose", "page")
         seed_mode = response.meta.get("seed_mode", "exact")
@@ -526,16 +709,7 @@ class UnifiedSpider(scrapy.Spider):
             analysis = analyze_article(
                 response.body, response.url, getattr(response, "encoding", None)
             )
-            article_data = {
-                "url": input_url,
-                "final_url": response.url,
-                **analysis.article,
-                "page_role": self.frontier.page_role(
-                    response.url, cast(Any, response.meta.get("link_kind"))
-                ),
-                "status": response.status,
-                "content_type": content_type,
-            }
+            article_data = self._article_record(response, analysis, input_url, content_type)
             if hasattr(self.writer, "write_article"):
                 stored_article = self.writer.write_article(article_data)
             elif hasattr(self.writer, "put_article"):
@@ -543,152 +717,8 @@ class UnifiedSpider(scrapy.Spider):
                 stored_article = article_data
             else:
                 stored_article = article_data
-
-            gate_reason = self._expansion_gate_reason(response, stored_article)
-            if gate_reason is not None:
-                if (
-                    hasattr(self, "crawler")
-                    and self.crawler
-                    and hasattr(self.crawler, "stats")
-                    and self.crawler.stats
-                ):
-                    self.crawler.stats.inc_value(f"frontier/terminal/{gate_reason}")
-                self.writer.checkpoint(input_url)
-                return
-
-            for asset in analysis.assets:
-                if hasattr(self.writer, "state") and hasattr(self.writer.state, "add_asset_referrer"):
-                    self.writer.state.add_asset_referrer(asset.url, response.url, asset.role)
-                cand = Candidate(
-                    url=asset.url,
-                    source_mode=seed_mode,
-                    discovered_from=response.url,
-                    kind="file",
-                    purpose="asset",
-                    explicit=False,
-                    discovery_source="html_link",
-                    asset_role=asset.role,
-                    asset_group=classify_asset(url=asset.url, asset_role=asset.role),
-                )
-                req = self._candidate_request(cand)
-                if req is not None:
-                    yield req
-
-            if seed_mode == "recursive":
-                cl_self = classify_link(response.url, source_url=response.url)
-                current_family_key = response.meta.get("family_key") or cl_self.family_key
-                current_ordinal = response.meta.get("ordinal") or cl_self.ordinal
-
-                classified_discoveries: list[ClassifiedLink] = []
-                for d in analysis.discoveries:
-                    try:
-                        cl = classify_link(
-                            d["url"],
-                            source_url=response.url,
-                            text=d.get("text", ""),
-                            rel=tuple(d.get("rel", ())),
-                            resource_kind_hint=d.get("kind"),
-                        )
-                        classified_discoveries.append(cl)
-                    except Exception:
-                        continue
-
-                accepted_content_urls: list[str] = []
-                new_scheduled_content_count = 0
-                pagination_by_family: dict[str, list[ClassifiedLink]] = defaultdict(list)
-
-                for cl in classified_discoveries:
-                    if cl.kind == "asset":
-                        continue
-                    elif cl.kind in {"search_filter", "calendar_archive", "action_auth"}:
-                        self.writer.record_skipped(
-                            {
-                                "url": cl.url,
-                                "final_url": cl.url,
-                                "status": "skipped",
-                                "reason": cl.kind,
-                                "discovery_source": "html_link",
-                                "response_purpose": "page",
-                            }
-                        )
-                    elif cl.kind == "content":
-                        cand = Candidate(
-                            url=cl.url,
-                            source_mode="recursive",
-                            discovered_from=response.url,
-                            kind="html",
-                            purpose="page",
-                            explicit=False,
-                            discovery_source="html_link",
-                            link_kind="content",
-                        )
-                        decision = self.frontier.consider(cand)
-                        if decision.action in {"schedule", "record_only"}:
-                            accepted_content_urls.append(decision.canonical_url or cl.url)
-                        if decision.action == "schedule":
-                            if self.frontier.page_role(cand.url, cand.link_kind) == "content":
-                                new_scheduled_content_count += 1
-                            req = self._create_request_for_scheduled(cand, decision)
-                            if req is not None:
-                                yield req
-                        elif decision.action == "reject" and decision.canonical_url:
-                            self.writer.record_skipped(
-                                {
-                                    "url": decision.canonical_url,
-                                    "final_url": decision.canonical_url,
-                                    "status": "skipped",
-                                    "reason": decision.reason,
-                                    "discovery_source": cand.discovery_source,
-                                    "response_purpose": cand.purpose,
-                                }
-                            )
-                    elif cl.kind == "pagination":
-                        if cl.family_key:
-                            pagination_by_family[cl.family_key].append(cl)
-
-                if current_family_key:
-                    content_fingerprint = str(stored_article.get("content_id") or "")
-                    content_targets = tuple(sorted(set(accepted_content_urls)))
-                    target_fingerprint = hashlib.sha256(
-                        "\n".join(content_targets).encode("utf-8")
-                    ).hexdigest()
-                    observation = FamilyObservation(
-                        family_key=current_family_key,
-                        kind="pagination",
-                        ordinal=current_ordinal,
-                        content_fingerprint=content_fingerprint,
-                        target_fingerprint=target_fingerprint,
-                        content_targets=content_targets,
-                    )
-                    family_state = self.frontier.observe_family(observation)
-                    if hasattr(self.writer, "state") and hasattr(self.writer.state, "put_route_family"):
-                        self.writer.state.put_route_family(family_state)
-                    self.frontier.observe_pagination(response.url, new_scheduled_content_count)
-
-                for f_key, links in pagination_by_family.items():
-                    if not self.frontier.family_is_closed(f_key):
-                        next_link = select_semantic_next(
-                            links,
-                            current_ordinal=current_ordinal if f_key == current_family_key else None,
-                        )
-                        if next_link is not None:
-                            cand = Candidate(
-                                url=next_link.url,
-                                source_mode="recursive",
-                                discovered_from=response.url,
-                                kind="html",
-                                purpose="page",
-                                explicit=False,
-                                discovery_source="html_link",
-                                link_kind=next_link.kind,
-                                family_key=next_link.family_key,
-                                ordinal=next_link.ordinal,
-                            )
-                            req = self._candidate_request(cand)
-                            if req is not None:
-                                yield req
-
-            self.writer.checkpoint(input_url)
+            self._store_validators(input_url, response)
+            yield from self._expand_html(response, analysis, stored_article, input_url, seed_mode)
 
         elif route.action == "robots":
             hostname = (urlsplit(response.url).hostname or "").lower().rstrip(".")
