@@ -25,3 +25,11 @@ for text that is merely short or poorly formatted.
 
 If a run stops, repeat the same command. `ir-data status --json` reports
 downloaded, parsed, failed, pending, and quota-blocked work.
+
+Inventory keeps one cursor per source file, so a refreshed crawl can be added
+with `ir-data inventory --source data/crawl/changes/<run_id>`. For pages marked
+`modified` in that folder's `changes.jsonl`, the previous outgoing references
+are replaced by the new ones. A work directory is bound to one crawl through
+the `crawl_id` in the source's `README.json` or `summary.json`; refreshed
+sources of the same crawl are accepted, and `--rebind-source` adopts a changed
+source explicitly.

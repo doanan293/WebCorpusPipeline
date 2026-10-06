@@ -303,6 +303,60 @@ The crawler supports clean interruption and resume:
 - **Retry recoverable truncations:** Add `--retry-truncated` after a crawler policy fix to reclassify and requeue `query_variant_limit` records that are now recognized as content or semantic pagination: `uv run hust-crawl --input docs/domain_active.txt --output data/crawl --resume --retry-truncated`. Other query filters and budget truncations remain skipped.
 - **State isolation:** `--resume` must point to the same crawl output and input inventory; do not resume a discovery output, a different inventory, or an unrelated fixed-inventory run.
 
+### Incremental Refresh
+
+After a crawl has finished, refresh it in place instead of crawling again:
+
+```bash
+uv run hust-crawl --input docs/domain_active.txt --output data/crawl --refresh
+```
+
+A refresh refetches only hub pages (homepages, navigation pages, the first page
+of each paginated listing, successful sitemaps and their robots.txt) plus recent
+articles: those published or modified within `refresh_recent_days`, and those
+first found in the last `refresh_recent_runs` refreshes, capped at
+`refresh_recheck_limit`. Links to URLs already in the crawl index are not
+fetched; new URLs are crawled and expanded normally. A listing advances to its
+next page only while the current page shows a new link
+(`refresh_pagination_empty_pages`). Stored `ETag`/`Last-Modified` values are
+sent as conditional headers, so unchanged hubs answer `304`.
+
+Before a new run, the index is copied to `archive/pre-refresh-<run_id>/`.
+Existing articles are never removed: a hub or article that now fails, redirects
+away or looks like a soft 404 keeps its previous content, and the failure is
+recorded only for that run. `--refresh` cannot be combined with `--resume`,
+`--reuse-content-from` or any `--retry-*` flag. If a refresh is interrupted,
+run the same command again; it continues the same run.
+
+Each finished run writes `changes/<run_id>/`:
+
+- `changes.jsonl`: one line per URL with `change` (`new` or `modified`),
+  `page_role`, `content_id` and, for modified pages, `previous_content_id`.
+- `articles.jsonl`: the full records of those URLs, same schema as
+  `final/articles.jsonl`.
+- `summary.json`: target counts per reason, outcomes (`not_modified`,
+  `unchanged`, `modified`, `http_500`, ...), new and modified counts, and the
+  `crawl_id`.
+
+`final/` is rebuilt as usual; `final/README.json` records `crawl_id` and
+`last_refresh_run_id`. The four `refresh_*` settings in `config/crawler.yaml`
+are runtime settings and do not affect resume compatibility.
+
+Update the corpus after a refresh:
+
+```bash
+uv run ir-data inventory --source data/crawl/changes/<run_id> --work-dir data/enrichment
+uv run ir-data download --work-dir data/enrichment
+uv run ir-data extract --work-dir data/enrichment
+uv run ir-data package --source data/crawl/final --work-dir data/enrichment --output data/corpus/latest
+uv run ir-data import-mongo --corpus data/corpus/latest
+```
+
+A work directory created before this feature must accept the refreshed source
+once with `--rebind-source` (for example
+`uv run ir-data status --rebind-source`); later refreshes of the same crawl are
+accepted automatically through `crawl_id`.
+
 ### Completion / Exit Codes
 
 - `0`: Completed cleanly under configured policy without URL failures.
