@@ -134,6 +134,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Migrate access policy and requeue recoverable policy skips while resuming",
     )
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        default=False,
+        help="Refetch hubs and recent pages of a finished crawl and crawl only new URLs",
+    )
     return parser
 
 
@@ -149,6 +155,19 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return exc.code if isinstance(exc.code, int) else 2
 
+    if args.refresh and (
+        args.resume
+        or args.reuse_content_from is not None
+        or args.retry_failed
+        or args.retry_truncated
+        or args.retry_access_gates
+        or args.retry_policy_skips
+    ):
+        print(
+            "Error: --refresh cannot be combined with --resume, --reuse-content-from or --retry-* flags",
+            file=sys.stderr,
+        )
+        return 2
     if args.reuse_content_from is not None and args.assets not in (None, "all"):
         print("Error: --reuse-content-from requires --assets all", file=sys.stderr)
         return 2
@@ -219,6 +238,7 @@ def main(argv: list[str] | None = None) -> int:
             retry_access_gates=args.retry_access_gates,
             retry_policy_skips=args.retry_policy_skips,
             reuse_content_from=args.reuse_content_from,
+            refresh=args.refresh,
         )
     except (FileExistsError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)

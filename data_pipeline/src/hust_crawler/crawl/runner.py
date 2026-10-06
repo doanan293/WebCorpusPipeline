@@ -14,6 +14,14 @@ from .assets import AssetPolicy
 from .frontier import FrontierPolicy
 from .options import CrawlOptions
 from .profiles import RuntimeTuning
+from .refresh import (
+    RefreshSession,
+    RefreshSettings,
+    complete_refresh_run,
+    preflight,
+    prepare_refresh_run,
+)
+from .refresh_store import RefreshStore
 from .reuse import (
     import_reused_content,
     prepare_reused_asset_targets,
@@ -90,7 +98,19 @@ def run_crawl(
     retry_access_gates: bool = False,
     retry_policy_skips: bool = False,
     reuse_content_from: Path | None = None,
+    refresh: bool = False,
 ) -> int:
+    if refresh and (
+        resume
+        or reuse_content_from is not None
+        or retry_failed
+        or retry_truncated
+        or retry_access_gates
+        or retry_policy_skips
+    ):
+        raise ValueError(
+            "--refresh cannot be combined with --resume, --reuse-content-from or --retry-* flags"
+        )
     if retry_failed and not resume:
         raise ValueError("--retry-failed requires --resume")
     if retry_truncated and not resume:
@@ -111,6 +131,10 @@ def run_crawl(
     state_dir = output / "state"
     if resume:
         validate_resume_workflow(state_dir, expected="hybrid-unified")
+    continue_run_id: str | None = None
+    if refresh:
+        validate_resume_workflow(state_dir, expected="hybrid-unified")
+        continue_run_id = preflight(state_dir)
 
     semantic_cfg = {
         **semantic_config_snapshot(config),
@@ -125,9 +149,11 @@ def run_crawl(
         input_path=input_path,
         semantic_config=semantic_cfg,
         runtime_config=runtime_cfg,
-        resume=resume,
+        resume=resume or refresh,
         allow_policy_migration=retry_policy_skips,
     )
+    refresh_session: RefreshSession | None = None
+    refresh_targets: list[tuple[str, str]] = []
     try:
         if reuse_content_from is not None:
             import_reused_content(reuse_content_from, state, input_path)
@@ -135,6 +161,19 @@ def run_crawl(
         writer = CrawlWriter(output, state, options)
         policy = AssetPolicy(options)
         reused_targets = reused_asset_targets(state) if reuse_content_from is not None else ()
+        if refresh:
+            refresh_settings = RefreshSettings.from_config(config)
+            refresh_store = RefreshStore(state.connection)
+            run_id, refresh_targets = prepare_refresh_run(
+                state,
+                refresh_store,
+                output,
+                seeds.recursive_hostnames,
+                refresh_settings,
+                continue_run_id,
+                now=time.time(),
+            )
+            refresh_session = RefreshSession(refresh_store, run_id, refresh_settings)
     except Exception:
         state.close()
         if reuse_content_from is not None:
@@ -156,11 +195,11 @@ def run_crawl(
             strategy="hybrid-unified",
         )
         frontier = FrontierPolicy(
-            seeds, options, route_families=state.iter_route_families()
+            seeds, options, route_families=() if refresh else state.iter_route_families()
         )
         resume_records: tuple[dict[str, object], ...] = ()
 
-        if resume:
+        if resume or refresh:
             if retry_failed:
                 state.requeue_retryable_failures()
             if retry_truncated:
@@ -203,7 +242,7 @@ def run_crawl(
             tuning=tuning,
             extensions=extensions,
         )
-        if resume:
+        if resume or refresh:
             settings_map.pop("JOBDIR", None)
         settings = Settings()
         settings.setmodule("hust_crawler.crawl.settings")
@@ -247,6 +286,8 @@ def run_crawl(
                 policy=policy,
                 coordinator=coordinator,
                 resume_records=resume_records,
+                refresh=refresh_session,
+                refresh_targets=refresh_targets,
             )
         process.start()
 
@@ -266,6 +307,10 @@ def run_crawl(
         )
         truncation_counts = state.reason_counts(TRUNCATION_REASONS)
         truncated = sum(truncation_counts.values())
+        if refresh_session is not None:
+            failed, truncated = refresh_session.store.failure_counts(
+                refresh_session.run_id, TRUNCATION_REASONS
+            )
 
         elapsed_seconds = time.time() - start_time
         completed = counts.get("completed_urls", 0)
@@ -280,7 +325,13 @@ def run_crawl(
             finish_reason, queued=queued, failed=failed, truncated=truncated
         )
         writer.publish()
+        refresh_summary = (
+            complete_refresh_run(state, refresh_session, output, status)
+            if refresh_session is not None
+            else None
+        )
         metrics = {
+            "refresh": refresh_summary,
             "elapsed_seconds": elapsed_seconds,
             "average_rate": avg_rate,
             "recent_rate": recent_rate,
@@ -303,6 +354,8 @@ def run_crawl(
         return exit_code
     except KeyboardInterrupt:
         writer.publish()
+        if refresh_session is not None:
+            complete_refresh_run(state, refresh_session, output, "interrupted")
         counts = state.counts()
         metrics = {
             "elapsed_seconds": time.time() - start_time,
@@ -320,6 +373,8 @@ def run_crawl(
         return 130
     except Exception as exc:
         writer.publish()
+        if refresh_session is not None:
+            complete_refresh_run(state, refresh_session, output, "failed")
         counts = state.counts()
         metrics = {
             "elapsed_seconds": time.time() - start_time,

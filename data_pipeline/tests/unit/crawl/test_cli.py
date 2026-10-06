@@ -354,3 +354,24 @@ def test_main_loads_contact_from_dotenv_in_working_directory(
 
     assert exit_code == 0
     assert observed["contact"] == "ops@example.org"
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--resume"],
+        ["--reuse-content-from", "other"],
+        ["--retry-failed"],
+        ["--retry-truncated"],
+        ["--retry-access-gates"],
+        ["--retry-policy-skips"],
+    ],
+)
+def test_refresh_rejects_incompatible_flags(tmp_path: Path, extra: list[str], capsys) -> None:
+    seeds = tmp_path / "seeds.txt"
+    seeds.write_text("a.test\n", encoding="utf-8")
+
+    code = cli.main(["--input", str(seeds), "--output", str(tmp_path / "out"), "--refresh", *extra])
+
+    assert code == 2
+    assert "--refresh cannot be combined" in capsys.readouterr().err

@@ -613,3 +613,22 @@ def test_crawl_runner_resume_rejects_incompatible_workflow(tmp_path: Path) -> No
     )
     with pytest.raises(ValueError, match="hybrid-unified"):
         run_unified_for_test(tmp_path, resume=True)
+
+
+def test_refresh_requires_existing_crawl(tmp_path: Path) -> None:
+    seeds_file = tmp_path / "seeds.txt"
+    seeds_file.write_text("a.test\n", encoding="utf-8")
+    seeds = SeedSet(frozenset({"a.test"}), (), ())
+    config = CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
+
+    with pytest.raises(ValueError, match="existing crawl"):
+        run_crawl(
+            input_path=seeds_file,
+            output=tmp_path / "missing",
+            config=config,
+            seeds=seeds,
+            options=CrawlOptions(),
+            tuning=resolve_runtime_tuning(config=config, profile="safe-fast"),
+            refresh=True,
+        )
+    assert not (tmp_path / "missing").exists()
