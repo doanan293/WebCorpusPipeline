@@ -169,7 +169,8 @@ class CrawlState:
             "CREATE TABLE IF NOT EXISTS errors (url TEXT PRIMARY KEY, payload TEXT NOT NULL);"
         )
         connection.execute(
-            "CREATE TABLE IF NOT EXISTS content_owner (content_id TEXT PRIMARY KEY, url TEXT NOT NULL);"
+            "CREATE TABLE IF NOT EXISTS content_owner (content_id TEXT PRIMARY KEY, url TEXT NOT "
+            "NULL);"
         )
         connection.execute(
             "CREATE TABLE IF NOT EXISTS metrics (name TEXT PRIMARY KEY, value INTEGER NOT NULL);"

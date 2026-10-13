@@ -131,7 +131,8 @@ def _navigation_pages(connection: sqlite3.Connection) -> list[str]:
 def _pagination_heads(connection: sqlite3.Connection) -> list[str]:
     rows = connection.execute(
         """
-        SELECT json_extract(payload, '$.family_key'), url, json_extract(payload, '$.discovered_from')
+        SELECT json_extract(payload, '$.family_key'), url,
+               json_extract(payload, '$.discovered_from')
         FROM url_records
         WHERE status = 'extracted' AND json_extract(payload, '$.family_key') IS NOT NULL
         ORDER BY json_extract(payload, '$.family_key'),

@@ -121,7 +121,8 @@ class WorkState:
         );
         CREATE TABLE IF NOT EXISTS refs (
           source_url TEXT NOT NULL, target_url TEXT NOT NULL, relation TEXT NOT NULL,
-          anchor_text TEXT NOT NULL DEFAULT '', alt TEXT NOT NULL DEFAULT '', caption TEXT NOT NULL DEFAULT '',
+          anchor_text TEXT NOT NULL DEFAULT '', alt TEXT NOT NULL DEFAULT '',
+          caption TEXT NOT NULL DEFAULT '',
           PRIMARY KEY(source_url,target_url,relation,anchor_text,alt,caption)
         );
         CREATE INDEX IF NOT EXISTS refs_target ON refs(target_url);
@@ -138,9 +139,14 @@ class WorkState:
           url TEXT NOT NULL, stage TEXT NOT NULL, reason TEXT NOT NULL,
           retry_at REAL, updated REAL NOT NULL, PRIMARY KEY(url,stage)
         );
-        CREATE TABLE IF NOT EXISTS inventory_cursor (id INTEGER PRIMARY KEY CHECK(id=1), cursor INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS inventory_cursor (
+          id INTEGER PRIMARY KEY CHECK(id=1),
+          cursor INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0
+        );
         INSERT OR IGNORE INTO inventory_cursor(id) VALUES (1);
-        CREATE TABLE IF NOT EXISTS inventory_sources (path TEXT PRIMARY KEY, cursor INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS inventory_sources (
+          path TEXT PRIMARY KEY, cursor INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0
+        );
         """)
         self.conn.commit()
 
@@ -150,7 +156,8 @@ class WorkState:
 
     def _set_meta(self, key: str, value: str) -> None:
         self.conn.execute(
-            "INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            "INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET "
+            "value=excluded.value",
             (key, value),
         )
         self.conn.commit()
@@ -177,7 +184,8 @@ class WorkState:
                 [(c.url, c.mime_hint, now) for c in candidates],
             )
             self.conn.executemany(
-                "INSERT OR IGNORE INTO refs(source_url,target_url,relation,anchor_text,alt,caption) VALUES(?,?,?,?,?,?)",
+                "INSERT OR IGNORE INTO "
+                "refs(source_url,target_url,relation,anchor_text,alt,caption) VALUES(?,?,?,?,?,?)",
                 [
                     (r.source_url, r.target_url, r.relation, r.anchor_text, r.alt, r.caption)
                     for r in refs
@@ -215,7 +223,8 @@ class WorkState:
     def claim_download(self) -> DownloadJob | None:
         now = time.time()
         row = self.conn.execute(
-            "SELECT * FROM inventory WHERE status IN ('pending','retry') AND (retry_at IS NULL OR retry_at<=?) ORDER BY url LIMIT 1",
+            "SELECT * FROM inventory WHERE status IN ('pending','retry') AND (retry_at IS NULL "
+            "OR retry_at<=?) ORDER BY url LIMIT 1",
             (now,),
         ).fetchone()
         if not row:
@@ -240,7 +249,8 @@ class WorkState:
 
     def checkpoint_download(self, job: DownloadJob) -> None:
         self.conn.execute(
-            "UPDATE inventory SET part_path=?,size=?,etag=?,final_url=?,expected_size=?,updated=? WHERE url=?",
+            "UPDATE inventory SET "
+            "part_path=?,size=?,etag=?,final_url=?,expected_size=?,updated=? WHERE url=?",
             (
                 str(job.part_path),
                 job.durable_offset,
@@ -255,7 +265,9 @@ class WorkState:
 
     def mark_finalizing(self, file: DownloadedFile) -> None:
         self.conn.execute(
-            "UPDATE inventory SET status='finalizing',final_path=?,sha256=?,size=?,mime_type=?,final_url=?,updated=? WHERE url=?",
+            "UPDATE inventory SET "
+            "status='finalizing',final_path=?,sha256=?,size=?,mime_type=?,final_url=?,updated=? "
+            "WHERE url=?",
             (
                 str(file.path),
                 file.sha256,
@@ -270,7 +282,9 @@ class WorkState:
 
     def mark_downloaded(self, file: DownloadedFile) -> None:
         self.conn.execute(
-            "UPDATE inventory SET status='downloaded',final_path=?,sha256=?,size=?,mime_type=?,final_url=?,updated=? WHERE url=?",
+            "UPDATE inventory SET "
+            "status='downloaded',final_path=?,sha256=?,size=?,mime_type=?,final_url=?,updated=? "
+            "WHERE url=?",
             (
                 str(file.path),
                 file.sha256,
@@ -300,7 +314,8 @@ class WorkState:
 
     def pending_downloads(self) -> int:
         return self.conn.execute(
-            "SELECT count(*) FROM inventory WHERE status IN ('pending','retry','in_progress','finalizing')"
+            "SELECT count(*) FROM inventory WHERE status IN "
+            "('pending','retry','in_progress','finalizing')"
         ).fetchone()[0]
 
     def next_retry_delay(self) -> float | None:
@@ -313,7 +328,8 @@ class WorkState:
 
     def pending_parse(self) -> Iterator[DownloadedFile]:
         rows = self.conn.execute(
-            "SELECT i.* FROM inventory i LEFT JOIN parse_results p ON i.url=p.url WHERE i.status='downloaded' AND p.url IS NULL ORDER BY i.url"
+            "SELECT i.* FROM inventory i LEFT JOIN parse_results p ON i.url=p.url WHERE "
+            "i.status='downloaded' AND p.url IS NULL ORDER BY i.url"
         )
         for row in rows:
             yield DownloadedFile(
@@ -327,7 +343,11 @@ class WorkState:
 
     def mark_parse(self, url: str, result: ParseResult, cache_path: Path | None = None) -> None:
         self.conn.execute(
-            "INSERT INTO parse_results(url,source_sha256,status,result_json,cache_path,updated) VALUES(?,?,?,?,?,?) ON CONFLICT(url) DO UPDATE SET source_sha256=excluded.source_sha256,status=excluded.status,result_json=excluded.result_json,cache_path=excluded.cache_path,updated=excluded.updated",
+            "INSERT INTO parse_results(url,source_sha256,status,result_json,cache_path,updated) "
+            "VALUES(?,?,?,?,?,?) ON CONFLICT(url) DO UPDATE SET "
+            "source_sha256=excluded.source_sha256,status=excluded.status,"
+            "result_json=excluded.result_json,cache_path=excluded.cache_path,"
+            "updated=excluded.updated",
             (
                 url,
                 result.source_sha256,
@@ -380,7 +400,8 @@ class WorkState:
             parsed=n("SELECT count(*) FROM parse_results WHERE status='extracted'"),
             failed=n("SELECT count(*) FROM failures WHERE retry_at IS NULL"),
             pending=n(
-                "SELECT count(*) FROM inventory WHERE status IN ('pending','retry','in_progress','finalizing')"
+                "SELECT count(*) FROM inventory WHERE status IN "
+                "('pending','retry','in_progress','finalizing')"
             ),
             quota_blocked=n("SELECT count(*) FROM parse_results WHERE status='quota_blocked'"),
             transferred_bytes=n(
@@ -413,7 +434,11 @@ class WorkState:
         payload: str | None = None,
     ) -> None:
         self.conn.execute(
-            "INSERT INTO cloud_jobs(request_id,url,file_id,job_id,key_label,key_fingerprint,status,payload,updated) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(request_id) DO UPDATE SET file_id=excluded.file_id,job_id=excluded.job_id,status=excluded.status,payload=excluded.payload,updated=excluded.updated",
+            "INSERT INTO "
+            "cloud_jobs(request_id,url,file_id,job_id,key_label,key_fingerprint,status,payload,"
+            "updated) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(request_id) DO UPDATE SET "
+            "file_id=excluded.file_id,job_id=excluded.job_id,status=excluded.status,"
+            "payload=excluded.payload,updated=excluded.updated",
             (
                 request_id,
                 url,

@@ -37,8 +37,10 @@ def extract_title(root: etree._Element, content_el: etree._Element) -> str:
 
     # 2. og:title
     for og_title in root.xpath(
-        "//meta[translate(@property, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')='og:title']/@content"
-        " | //meta[translate(@name, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')='og:title']/@content"
+        "//meta[translate(@property, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', "
+        "'abcdefghijklmnopqrstuvwxyz')='og:title']/@content"
+        " | //meta[translate(@name, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', "
+        "'abcdefghijklmnopqrstuvwxyz')='og:title']/@content"
     ):
         text = " ".join(str(og_title).split())
         if text:
@@ -65,7 +67,10 @@ def extract_meta_content(
     results: list[str] = []
     seen: set[str] = set()
     for val in values:
-        xpath = f"//meta[translate(@{attribute_name}, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')='{val.lower()}']/@content"
+        xpath = (
+            f"//meta[translate(@{attribute_name}, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', "
+            f"'abcdefghijklmnopqrstuvwxyz')='{val.lower()}']/@content"
+        )
         for raw in root.xpath(xpath):
             cleaned = " ".join(str(raw).split())
             if cleaned and cleaned not in seen:
@@ -91,7 +96,8 @@ def extract_language(root: etree._Element) -> str | None:
 def extract_canonical_url(root: etree._Element, base_url: str, warnings: list[str]) -> str | None:
     raw_canonicals: list[str] = []
     for href in root.xpath(
-        "//link[translate(@rel, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')='canonical']/@href"
+        "//link[translate(@rel, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', "
+        "'abcdefghijklmnopqrstuvwxyz')='canonical']/@href"
     ):
         resolved = normalize_url(str(href), base_url)
         if resolved and resolved not in raw_canonicals:
