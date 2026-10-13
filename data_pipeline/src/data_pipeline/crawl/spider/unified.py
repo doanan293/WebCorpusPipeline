@@ -24,11 +24,8 @@ from data_pipeline.crawl.frontier.sitemaps import (
 )
 from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.output.writer import CrawlWriter
-from data_pipeline.crawl.run.refresh import (
-    RefreshSession,
-)
 from data_pipeline.crawl.spider.html import HtmlHandler
-from data_pipeline.crawl.spider.refresh import RefreshHandler
+from data_pipeline.crawl.spider.refresh import RefreshHandler, RefreshSession
 from data_pipeline.crawl.spider.requests import RequestFactory
 
 

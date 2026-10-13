@@ -6,24 +6,16 @@ import os
 import shutil
 import sqlite3
 import tempfile
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
 from data_pipeline.core.policies.network import validate_public_web_url
-from data_pipeline.crawl.frontier.assets import AssetGroup, AssetRole, classify_asset
+from data_pipeline.crawl.frontier.assets import AssetRole, classify_asset
+from data_pipeline.crawl.spider.reuse import ReusedAssetTarget
 from data_pipeline.crawl.state.store import CrawlState
 
 _REUSABLE_STATUSES = frozenset({"complete", "complete_with_failures", "truncated"})
 _ASSET_ROLES = frozenset({"inline_image", "media_reference", "document_attachment"})
-
-
-@dataclass(frozen=True, slots=True)
-class ReusedAssetTarget:
-    url: str
-    role: AssetRole
-    group: AssetGroup
-    referring_pages: tuple[str, ...]
 
 
 def _lock_is_live(lock_path: Path) -> bool:
