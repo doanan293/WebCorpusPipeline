@@ -28,7 +28,7 @@ class EtaEstimator:
         if len(self.samples) < self.stable_samples:
             return "unknown (discovering)"
 
-        window = list(self.samples)[-self.stable_samples:]
+        window = list(self.samples)[-self.stable_samples :]
         if window[-1].discovered > window[0].discovered:
             return "unknown (discovering)"
 
@@ -133,10 +133,7 @@ class CrawlProgressReporter:
         cpu = self._get("hust/resources/cpu_percent", None)
         ram = self._get("hust/resources/ram_percent", None)
 
-        line = (
-            f"crawl | done={done} | queued={queued}"
-            f" | rate={rate:.1f} url/s"
-        )
+        line = f"crawl | done={done} | queued={queued} | rate={rate:.1f} url/s"
         if cpu is not None:
             line += f" | cpu={float(cpu):.0f}%"
         if ram is not None:
@@ -157,7 +154,8 @@ class CrawlProgressReporter:
                 f" | retries={self._get('hust/retry/count', 0)}"
                 f" | retry_waiting={self._get('hust/retry/waiting', 0)}"
                 f" | exceptions={self._get('downloader/exception_count', 0)}",
-                file=self.output, flush=True,
+                file=self.output,
+                flush=True,
             )
             for key, slot in slots.items():
                 if not slot.active:
@@ -166,6 +164,7 @@ class CrawlProgressReporter:
                     f"slot | host={key} | active={len(slot.active)}"
                     f" | transferring={len(slot.transferring)} | queued={len(slot.queue)}"
                     f" | concurrency={slot.concurrency} | delay={slot.delay:.2f}s",
-                    file=self.output, flush=True,
+                    file=self.output,
+                    flush=True,
                 )
         return line

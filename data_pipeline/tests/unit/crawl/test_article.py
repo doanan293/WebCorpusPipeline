@@ -96,7 +96,7 @@ def test_ambiguous_canonical_and_published_at_produces_warning() -> None:
 
 
 def test_content_html_preserves_semantics_and_removes_executable_markup() -> None:
-    source = '''<main onclick="steal()"><h1>Title</h1><p style="color:red">Hello <strong>world</strong>.</p><script>alert(1)</script><a href="javascript:alert(2)">bad</a><a href="/safe">safe</a><table><tr><th>Year</th><td>2026</td></tr></table></main>'''
+    source = """<main onclick="steal()"><h1>Title</h1><p style="color:red">Hello <strong>world</strong>.</p><script>alert(1)</script><a href="javascript:alert(2)">bad</a><a href="/safe">safe</a><table><tr><th>Year</th><td>2026</td></tr></table></main>"""
     article = analyze_article(source, "https://a.test/base").article
     rendered = article["content_html"]
     assert "<h1>Title</h1>" in rendered
@@ -110,9 +110,7 @@ def test_content_html_preserves_semantics_and_removes_executable_markup() -> Non
 
 
 def test_content_html_replaces_xml_control_characters_without_dropping_markup() -> None:
-    source = (
-        b"<main><h1>Title</h1><p>Before <span>hello\x1dworld</span> after</p></main>"
-    )
+    source = b"<main><h1>Title</h1><p>Before <span>hello\x1dworld</span> after</p></main>"
 
     article = analyze_article(source, "https://a.test/article").article
 
@@ -123,9 +121,7 @@ def test_content_html_replaces_xml_control_characters_without_dropping_markup() 
 
 
 def test_content_html_replaces_xml_control_characters_in_allowed_attributes() -> None:
-    source = (
-        b'<main><h1>Title</h1><p><a href="/safe" title="hello\x1dworld">Link</a></p></main>'
-    )
+    source = b'<main><h1>Title</h1><p><a href="/safe" title="hello\x1dworld">Link</a></p></main>'
 
     article = analyze_article(source, "https://a.test/article").article
 
@@ -193,7 +189,7 @@ def test_content_html_handles_semantic_elements_and_malicious_cases() -> None:
 
 def test_blocks_preserve_order_and_heading_paths() -> None:
     article = analyze_article(
-        '<main><h1>A</h1><p>Intro</p><h2>B</h2><ul><li>One</li><li>Two</li></ul><blockquote>Quote</blockquote></main>',
+        "<main><h1>A</h1><p>Intro</p><h2>B</h2><ul><li>One</li><li>Two</li></ul><blockquote>Quote</blockquote></main>",
         "https://a.test/",
     ).article
     assert [(b["type"], b.get("text")) for b in article["content_blocks"]] == [
@@ -231,7 +227,11 @@ def test_blocks_heading_hierarchy_and_replacement() -> None:
     ]
     assert article["headings"] == [
         {"level": 1, "text": "Main Title", "heading_path": ["Main Title"]},
-        {"level": 3, "text": "Skipped to Sub-sub", "heading_path": ["Main Title", "Skipped to Sub-sub"]},
+        {
+            "level": 3,
+            "text": "Skipped to Sub-sub",
+            "heading_path": ["Main Title", "Skipped to Sub-sub"],
+        },
         {"level": 3, "text": "Sibling Sub-sub", "heading_path": ["Main Title", "Sibling Sub-sub"]},
         {"level": 1, "text": "New Main Title", "heading_path": ["New Main Title"]},
     ]
@@ -276,24 +276,21 @@ def test_blocks_table_figure_code_and_nested_containers() -> None:
 
     # Synchronized text
     assert article["text"] == (
-        "Article\n"
-        "def foo():\n"
-        "    return 42\n"
-        "Performance Chart\n"
-        "Metric Value\n"
-        "Speed Fast"
+        "Article\ndef foo():\n    return 42\nPerformance Chart\nMetric Value\nSpeed Fast"
     )
 
 
 def test_article_assets_include_only_selected_same_host_images_and_documents() -> None:
-    source = '''<body><header><img src="/logo.png"></header><main><h1>A</h1><figure><img src="/photo.jpg" alt="Photo"><figcaption>Caption</figcaption></figure><a href="/report.pdf">Report</a><img src="https://cdn.test/external.jpg"></main></body>'''
+    source = """<body><header><img src="/logo.png"></header><main><h1>A</h1><figure><img src="/photo.jpg" alt="Photo"><figcaption>Caption</figcaption></figure><a href="/report.pdf">Report</a><img src="https://cdn.test/external.jpg"></main></body>"""
     result = analyze_article(source, "https://a.test/article")
     assert [(a.url, a.role, a.external) for a in result.assets] == [
         ("https://a.test/photo.jpg", "inline_image", False),
         ("https://a.test/report.pdf", "document_attachment", False),
         ("https://cdn.test/external.jpg", "inline_image", True),
     ]
-    assert any("external_asset:https://cdn.test/external.jpg" in w for w in result.article["warnings"])
+    assert any(
+        "external_asset:https://cdn.test/external.jpg" in w for w in result.article["warnings"]
+    )
 
 
 def test_extracts_every_supported_semantic_asset_source() -> None:
@@ -337,10 +334,12 @@ def test_asset_metadata_is_mode_independent_and_role_dedup_is_stable() -> None:
         "https://a.test/p",
     )
     assert len(analysis.assets) == 1
-    assert analysis.article["assets"] == [{
-        "url": "https://a.test/x.jpg",
-        "role": "inline_image",
-        "alt": "Sơ đồ",
-        "caption": "",
-        "external": False,
-    }]
+    assert analysis.article["assets"] == [
+        {
+            "url": "https://a.test/x.jpg",
+            "role": "inline_image",
+            "alt": "Sơ đồ",
+            "caption": "",
+            "external": False,
+        }
+    ]

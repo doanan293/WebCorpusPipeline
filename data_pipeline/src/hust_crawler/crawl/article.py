@@ -98,9 +98,7 @@ _DROP_TAGS = {
     "video",
 }
 
-_XML_INCOMPATIBLE_CHARACTERS = re.compile(
-    "[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]"
-)
+_XML_INCOMPATIBLE_CHARACTERS = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 
 
 AssetRole = Literal["inline_image", "media_reference", "document_attachment"]
@@ -171,7 +169,9 @@ def _extract_title(root: etree._Element, content_el: etree._Element) -> str:
     return ""
 
 
-def _extract_meta_content(root: etree._Element, attribute_name: str, values: tuple[str, ...]) -> list[str]:
+def _extract_meta_content(
+    root: etree._Element, attribute_name: str, values: tuple[str, ...]
+) -> list[str]:
     results: list[str] = []
     seen: set[str] = set()
     for val in values:
@@ -200,7 +200,9 @@ def _extract_language(root: etree._Element) -> str | None:
 
 def _extract_canonical_url(root: etree._Element, base_url: str, warnings: list[str]) -> str | None:
     raw_canonicals: list[str] = []
-    for href in root.xpath("//link[translate(@rel, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')='canonical']/@href"):
+    for href in root.xpath(
+        "//link[translate(@rel, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')='canonical']/@href"
+    ):
         resolved = normalize_url(str(href), base_url)
         if resolved and resolved not in raw_canonicals:
             raw_canonicals.append(resolved)
@@ -216,7 +218,9 @@ def _extract_author(root: etree._Element) -> str | None:
     return authors[0] if authors else None
 
 
-def _extract_published_at(root: etree._Element, content_el: etree._Element, warnings: list[str]) -> str | None:
+def _extract_published_at(
+    root: etree._Element, content_el: etree._Element, warnings: list[str]
+) -> str | None:
     dates: list[str] = []
     seen: set[str] = set()
 
@@ -226,9 +230,13 @@ def _extract_published_at(root: etree._Element, content_el: etree._Element, warn
             dates.append(cleaned)
             seen.add(cleaned)
 
-    for val in _extract_meta_content(root, "property", ("article:published_time", "og:published_time")):
+    for val in _extract_meta_content(
+        root, "property", ("article:published_time", "og:published_time")
+    ):
         add_date(val)
-    for val in _extract_meta_content(root, "name", ("article:published_time", "pubdate", "publishdate")):
+    for val in _extract_meta_content(
+        root, "name", ("article:published_time", "pubdate", "publishdate")
+    ):
         add_date(val)
 
     for time_el in content_el.xpath(".//time[@datetime]"):
@@ -255,7 +263,9 @@ def _extract_modified_at(root: etree._Element) -> str | None:
 
 
 def _extract_summary(root: etree._Element) -> str | None:
-    summaries = _extract_meta_content(root, "name", ("description", "og:description", "twitter:description"))
+    summaries = _extract_meta_content(
+        root, "name", ("description", "og:description", "twitter:description")
+    )
     if not summaries:
         summaries = _extract_meta_content(root, "property", ("description", "og:description"))
     return summaries[0] if summaries else None
@@ -273,7 +283,9 @@ def sanitize_article(element: etree._Element, base_url: str) -> etree._Element:
             continue
         tag = child.tag.lower()
         hints = f"{child.get('id', '')} {child.get('class', '')}"
-        is_hidden = child.get("hidden") is not None or (child.get("aria-hidden") or "").lower() == "true"
+        is_hidden = (
+            child.get("hidden") is not None or (child.get("aria-hidden") or "").lower() == "true"
+        )
         if (
             tag in _DROP_TAGS
             or tag in _NONCONTENT_TAGS
@@ -296,7 +308,12 @@ def sanitize_article(element: etree._Element, base_url: str) -> etree._Element:
 
         for key, val in raw_attrs.items():
             k = key.lower()
-            if k.startswith("on") or k in {"style", "class", "id"} or k.startswith("data-") or k not in allowed:
+            if (
+                k.startswith("on")
+                or k in {"style", "class", "id"}
+                or k.startswith("data-")
+                or k not in allowed
+            ):
                 continue
 
             if tag == "a" and k == "href":
@@ -358,20 +375,24 @@ def blocks_from_article(element: etree._Element) -> list[dict[str, Any]]:
                     if lvl >= level:
                         del heading_stack[lvl]
                 heading_stack[level] = text
-                blocks.append({
-                    "type": "heading",
-                    "level": level,
-                    "text": text,
-                    "heading_path": current_heading_path(),
-                })
+                blocks.append(
+                    {
+                        "type": "heading",
+                        "level": level,
+                        "text": text,
+                        "heading_path": current_heading_path(),
+                    }
+                )
         elif tag == "p":
             text = _normalized_text(list(node.itertext()))
             if text:
-                blocks.append({
-                    "type": "paragraph",
-                    "text": text,
-                    "heading_path": current_heading_path(),
-                })
+                blocks.append(
+                    {
+                        "type": "paragraph",
+                        "text": text,
+                        "heading_path": current_heading_path(),
+                    }
+                )
         elif tag in {"ul", "ol"}:
             items: list[str] = []
             for li in node.xpath(".//li"):
@@ -382,30 +403,36 @@ def blocks_from_article(element: etree._Element) -> list[dict[str, Any]]:
                 if item_text:
                     items.append(item_text)
             if items:
-                blocks.append({
-                    "type": "list",
-                    "ordered": tag == "ol",
-                    "items": items,
-                    "heading_path": current_heading_path(),
-                })
+                blocks.append(
+                    {
+                        "type": "list",
+                        "ordered": tag == "ol",
+                        "items": items,
+                        "heading_path": current_heading_path(),
+                    }
+                )
         elif tag == "blockquote":
             text = _normalized_text(list(node.itertext()))
             if text:
-                blocks.append({
-                    "type": "quote",
-                    "text": text,
-                    "heading_path": current_heading_path(),
-                })
+                blocks.append(
+                    {
+                        "type": "quote",
+                        "text": text,
+                        "heading_path": current_heading_path(),
+                    }
+                )
         elif tag == "pre":
             code_el = node.find(".//code")
             target = code_el if code_el is not None else node
             code_text = "".join(target.itertext()).strip("\r\n")
             if code_text:
-                blocks.append({
-                    "type": "code",
-                    "text": code_text,
-                    "heading_path": current_heading_path(),
-                })
+                blocks.append(
+                    {
+                        "type": "code",
+                        "text": code_text,
+                        "heading_path": current_heading_path(),
+                    }
+                )
         elif tag == "table":
             headers: list[list[str]] = []
             rows: list[list[str]] = []
@@ -430,57 +457,71 @@ def blocks_from_article(element: etree._Element) -> list[dict[str, Any]]:
                     else:
                         rows.append(row)
             if headers or rows:
-                blocks.append({
-                    "type": "table",
-                    "headers": headers,
-                    "rows": rows,
-                    "heading_path": current_heading_path(),
-                })
+                blocks.append(
+                    {
+                        "type": "table",
+                        "headers": headers,
+                        "rows": rows,
+                        "heading_path": current_heading_path(),
+                    }
+                )
         elif tag == "figure":
             img = node.find(".//img")
             caption_el = node.find(".//figcaption")
             asset_url = img.get("src", "") if img is not None else ""
             alt = img.get("alt", "") if img is not None else ""
-            caption = _normalized_text(list(caption_el.itertext())) if caption_el is not None else ""
-            blocks.append({
-                "type": "figure",
-                "asset_url": asset_url,
-                "alt": alt,
-                "caption": caption,
-                "heading_path": current_heading_path(),
-            })
+            caption = (
+                _normalized_text(list(caption_el.itertext())) if caption_el is not None else ""
+            )
+            blocks.append(
+                {
+                    "type": "figure",
+                    "asset_url": asset_url,
+                    "alt": alt,
+                    "caption": caption,
+                    "heading_path": current_heading_path(),
+                }
+            )
         elif tag == "img":
-            blocks.append({
-                "type": "figure",
-                "asset_url": node.get("src", ""),
-                "alt": node.get("alt", ""),
-                "caption": "",
-                "heading_path": current_heading_path(),
-            })
+            blocks.append(
+                {
+                    "type": "figure",
+                    "asset_url": node.get("src", ""),
+                    "alt": node.get("alt", ""),
+                    "caption": "",
+                    "heading_path": current_heading_path(),
+                }
+            )
         elif tag == "hr":
-            blocks.append({
-                "type": "separator",
-                "heading_path": current_heading_path(),
-            })
+            blocks.append(
+                {
+                    "type": "separator",
+                    "heading_path": current_heading_path(),
+                }
+            )
         else:
             if node.text and node.text.strip():
                 t = _normalized_text([node.text])
                 if t:
-                    blocks.append({
-                        "type": "paragraph",
-                        "text": t,
-                        "heading_path": current_heading_path(),
-                    })
+                    blocks.append(
+                        {
+                            "type": "paragraph",
+                            "text": t,
+                            "heading_path": current_heading_path(),
+                        }
+                    )
             for child in node:
                 walk(child)
                 if child.tail and child.tail.strip():
                     t = _normalized_text([child.tail])
                     if t:
-                        blocks.append({
-                            "type": "paragraph",
-                            "text": t,
-                            "heading_path": current_heading_path(),
-                        })
+                        blocks.append(
+                            {
+                                "type": "paragraph",
+                                "text": t,
+                                "heading_path": current_heading_path(),
+                            }
+                        )
 
     walk(element)
     return blocks
@@ -585,14 +626,32 @@ def extract_assets(
             alt = node.get("alt", "")
             src = node.get("src")
             if src:
-                _append_asset(assets, seen, value=src, base_url=base_url, role="inline_image", alt=alt, caption=caption)
+                _append_asset(
+                    assets,
+                    seen,
+                    value=src,
+                    base_url=base_url,
+                    role="inline_image",
+                    alt=alt,
+                    caption=caption,
+                )
             srcset = node.get("srcset")
             if srcset:
                 for v in _srcset_values(srcset):
-                    _append_asset(assets, seen, value=v, base_url=base_url, role="inline_image", alt=alt, caption=caption)
+                    _append_asset(
+                        assets,
+                        seen,
+                        value=v,
+                        base_url=base_url,
+                        role="inline_image",
+                        alt=alt,
+                        caption=caption,
+                    )
         elif tag == "source":
             parent = node.getparent()
-            parent_tag = parent.tag.lower() if parent is not None and isinstance(parent.tag, str) else ""
+            parent_tag = (
+                parent.tag.lower() if parent is not None and isinstance(parent.tag, str) else ""
+            )
             if parent_tag == "picture":
                 srcset = node.get("srcset")
                 if srcset:
@@ -604,32 +663,69 @@ def extract_assets(
             elif parent_tag in {"video", "audio"}:
                 src = node.get("src")
                 if src:
-                    _append_asset(assets, seen, value=src, base_url=base_url, role="media_reference")
+                    _append_asset(
+                        assets, seen, value=src, base_url=base_url, role="media_reference"
+                    )
         elif tag == "video":
             src = node.get("src")
             if src:
-                _append_asset(assets, seen, value=src, base_url=base_url, role="media_reference", caption=node.get("title", ""))
+                _append_asset(
+                    assets,
+                    seen,
+                    value=src,
+                    base_url=base_url,
+                    role="media_reference",
+                    caption=node.get("title", ""),
+                )
             poster = node.get("poster")
             if poster:
                 _append_asset(assets, seen, value=poster, base_url=base_url, role="inline_image")
         elif tag == "audio":
             src = node.get("src")
             if src:
-                _append_asset(assets, seen, value=src, base_url=base_url, role="media_reference", caption=node.get("title", ""))
+                _append_asset(
+                    assets,
+                    seen,
+                    value=src,
+                    base_url=base_url,
+                    role="media_reference",
+                    caption=node.get("title", ""),
+                )
         elif tag == "a":
             href = node.get("href")
             if href and _is_supported_document(href, node.get("type", "")):
                 text = _normalized_text(list(node.itertext()))
-                _append_asset(assets, seen, value=href, base_url=base_url, role="document_attachment", caption=text)
+                _append_asset(
+                    assets,
+                    seen,
+                    value=href,
+                    base_url=base_url,
+                    role="document_attachment",
+                    caption=text,
+                )
         elif tag == "object":
             data = node.get("data")
             if data and _is_supported_document(data, node.get("type", "")):
                 text = _normalized_text(list(node.itertext()))
-                _append_asset(assets, seen, value=data, base_url=base_url, role="document_attachment", caption=text)
+                _append_asset(
+                    assets,
+                    seen,
+                    value=data,
+                    base_url=base_url,
+                    role="document_attachment",
+                    caption=text,
+                )
         elif tag == "embed":
             src = node.get("src")
             if src and _is_supported_document(src, node.get("type", "")):
-                _append_asset(assets, seen, value=src, base_url=base_url, role="document_attachment", caption=node.get("title", ""))
+                _append_asset(
+                    assets,
+                    seen,
+                    value=src,
+                    base_url=base_url,
+                    role="document_attachment",
+                    caption=node.get("title", ""),
+                )
 
     if warnings is not None:
         for asset in assets:
@@ -637,7 +733,6 @@ def extract_assets(
                 warnings.append(f"external_asset:{asset.url}")
 
     return assets
-
 
 
 def analyze_article(source: bytes | str, url: str, encoding: str | None = None) -> ArticleAnalysis:

@@ -23,7 +23,9 @@ def article(slug: str, version: int, published: str, extra: str = "") -> str:
 def listing(title: str, slugs: list[str], pages: list[int]) -> str:
     items = "".join(f'<li><a href="/bai/{slug}">Bài {slug}</a></li>' for slug in slugs)
     pager = "".join(
-        f'<a href="/tin-tuc?page={number}">{number}</a>' if number > 1 else '<a href="/tin-tuc">1</a>'
+        f'<a href="/tin-tuc?page={number}">{number}</a>'
+        if number > 1
+        else '<a href="/tin-tuc">1</a>'
         for number in pages
     )
     return (
@@ -103,7 +105,9 @@ class RefreshSiteHandler:
         encoded = body.encode("utf-8")
         etag = '"' + hashlib.sha256(encoded).hexdigest()[:16] + '"'
         if request.headers.get(b"If-None-Match", b"").decode("latin1") == etag:
-            return Response(request.url, status=304, headers={b"ETag": etag.encode()}, body=b"", request=request)
+            return Response(
+                request.url, status=304, headers={b"ETag": etag.encode()}, body=b"", request=request
+            )
         return HtmlResponse(
             request.url,
             status=200,

@@ -36,8 +36,12 @@ def test_rendered_http_denial_is_terminal() -> None:
 
 def test_public_shell_requests_browser_once() -> None:
     html = '<div id="app"></div><script src="/app.js"></script>'
-    assert classify_access(status=200, url="https://example.com/", html=html, rendered=False).use_playwright
-    assert not classify_access(status=200, url="https://example.com/", html=html, rendered=True).use_playwright
+    assert classify_access(
+        status=200, url="https://example.com/", html=html, rendered=False
+    ).use_playwright
+    assert not classify_access(
+        status=200, url="https://example.com/", html=html, rendered=True
+    ).use_playwright
 
 
 def test_public_shell_ignores_head_noscript_and_formatting_whitespace() -> None:
@@ -182,11 +186,16 @@ def test_captcha_library_script_does_not_block_public_article() -> None:
     assert decision.outcome == "public"
 
 
-@pytest.mark.parametrize("html,reason", [
-    ("<main><h1>404</h1><p>Không tìm thấy nội dung</p></main>", "soft_404"),
-    ('<form action="/login"><input type="password"></form>', "login"),
-    ('<main><div class="g-recaptcha"></div></main>', "captcha"),
-    ("<main></main>", "empty"),
-])
+@pytest.mark.parametrize(
+    "html,reason",
+    [
+        ("<main><h1>404</h1><p>Không tìm thấy nội dung</p></main>", "soft_404"),
+        ('<form action="/login"><input type="password"></form>', "login"),
+        ('<main><div class="g-recaptcha"></div></main>', "captcha"),
+        ("<main></main>", "empty"),
+    ],
+)
 def test_page_gate_blocks_noncontent_shells(html: str, reason: str) -> None:
-    assert classify_page_gate(status=200, url="https://a.test/p", html=html, text="").reason == reason
+    assert (
+        classify_page_gate(status=200, url="https://a.test/p", html=html, text="").reason == reason
+    )

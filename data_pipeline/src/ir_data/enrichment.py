@@ -30,7 +30,9 @@ def extract_documents(state: WorkState, settings, repo_root: Path) -> RunSummary
         for file, local, error in workers.map(parse_local_safe, pending):
             if error is not None:
                 state.record_failure(file.url, "parse", str(error))
-                state.mark_parse(file.url, ParseResult(file.sha256, [], "failed", [str(error)], {}), None)
+                state.mark_parse(
+                    file.url, ParseResult(file.sha256, [], "failed", [str(error)], {}), None
+                )
                 continue
             missing = cloud_part_indices(local) if file.path.suffix.lower() == ".pdf" else []
             if not missing:

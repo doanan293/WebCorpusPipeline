@@ -19,9 +19,7 @@ ACCESS_POLICY_SEMANTIC_KEYS = frozenset(
 )
 
 
-def validate_policy_migration(
-    saved: Mapping[str, object], effective: Mapping[str, object]
-) -> None:
+def validate_policy_migration(saved: Mapping[str, object], effective: Mapping[str, object]) -> None:
     saved_revision = int(saved.get("access_policy_revision", 1))
     effective_revision = int(effective.get("access_policy_revision", 1))
     if saved_revision != 1 or effective_revision != 2:
@@ -47,8 +45,7 @@ def validate_policy_migration(
             if saved_other.get(key) != effective_other.get(key)
         )
         raise ValueError(
-            "resume semantic configuration differs outside access policy: "
-            + ", ".join(changed)
+            "resume semantic configuration differs outside access policy: " + ", ".join(changed)
         )
 
 

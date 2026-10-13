@@ -38,8 +38,6 @@ def test_frontier_limits_must_be_positive(field: str, value: int) -> None:
         CrawlOptions(**{field: value})
 
 
-
-
 def test_semantic_snapshot_includes_seed_scope() -> None:
     seeds = SeedSet(frozenset({"a.test"}), ("https://b.test/exact",), ())
     snapshot = CrawlOptions().semantic_snapshot(seeds)

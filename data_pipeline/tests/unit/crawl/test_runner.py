@@ -26,15 +26,14 @@ def test_frontier_limits_are_truncation_reasons() -> None:
 
 
 def test_finished_frontier_limit_returns_truncated() -> None:
-    assert finish_reason_to_exit(
-        "finished", queued=0, failed=0, truncated=1
-    ) == ("truncated", 4)
+    assert finish_reason_to_exit("finished", queued=0, failed=0, truncated=1) == ("truncated", 4)
 
 
 def test_queued_nonfinished_run_is_interrupted() -> None:
-    assert finish_reason_to_exit(
-        "shutdown", queued=2, failed=0, truncated=0
-    ) == ("interrupted", 130)
+    assert finish_reason_to_exit("shutdown", queued=2, failed=0, truncated=0) == (
+        "interrupted",
+        130,
+    )
 
 
 def test_shutdown_with_queue_is_interrupted_not_complete() -> None:
@@ -134,21 +133,19 @@ def run_unified_for_test(
     )
 
 
-def test_crawl_runner_policy_recovery_is_explicit_and_resumable(monkeypatch, tmp_path: Path) -> None:
+def test_crawl_runner_policy_recovery_is_explicit_and_resumable(
+    monkeypatch, tmp_path: Path
+) -> None:
     observed = capture_runner_dependencies(monkeypatch)
     assert run_unified_for_test(tmp_path) == 0
 
     observed.clear()
     assert run_unified_for_test(tmp_path, resume=True, retry_policy_skips=True) == 0
     assert observed["allow_policy_migration"] is True
-    assert {
-        row["url"] for row in observed["crawl_kwargs"]["resume_records"]
-    } == {"https://a.test/"}
+    assert {row["url"] for row in observed["crawl_kwargs"]["resume_records"]} == {"https://a.test/"}
 
 
-def test_crawl_runner_uses_crawl_phase_and_unified_spider(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_crawl_runner_uses_crawl_phase_and_unified_spider(monkeypatch, tmp_path: Path) -> None:
     observed = capture_runner_dependencies(monkeypatch)
     exit_code = run_unified_for_test(tmp_path)
     assert exit_code == 0
@@ -240,9 +237,7 @@ def test_crawl_runner_rejects_missing_reuse_source_before_creating_output(
         run_crawl(
             input_path=input_path,
             output=output,
-            config=CrawlerConfig(
-                hostnames=seeds.allowed_hostnames, contact="ops@example.com"
-            ),
+            config=CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com"),
             seeds=seeds,
             options=CrawlOptions(assets="all"),
             tuning=resolve_runtime_tuning(profile="safe-fast"),
@@ -267,9 +262,7 @@ def test_crawl_runner_rejects_existing_reuse_output_without_touching_it(
         run_crawl(
             input_path=input_path,
             output=output,
-            config=CrawlerConfig(
-                hostnames=seeds.allowed_hostnames, contact="ops@example.com"
-            ),
+            config=CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com"),
             seeds=seeds,
             options=CrawlOptions(assets="all"),
             tuning=resolve_runtime_tuning(profile="safe-fast"),
@@ -292,9 +285,7 @@ def test_crawl_runner_cleans_destination_after_corrupt_source_database(
         input_path=input_path,
         semantic_config={
             **semantic_config_snapshot(
-                CrawlerConfig(
-                    hostnames=seeds.allowed_hostnames, contact="ops@example.com"
-                )
+                CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
             ),
             **CrawlOptions().semantic_snapshot(seeds),
         },
@@ -309,9 +300,7 @@ def test_crawl_runner_cleans_destination_after_corrupt_source_database(
         run_crawl(
             input_path=input_path,
             output=output,
-            config=CrawlerConfig(
-                hostnames=seeds.allowed_hostnames, contact="ops@example.com"
-            ),
+            config=CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com"),
             seeds=seeds,
             options=CrawlOptions(assets="all"),
             tuning=resolve_runtime_tuning(profile="safe-fast"),
@@ -401,9 +390,7 @@ def test_crawl_runner_rejects_malformed_reused_article_before_scrapy_starts(
     assert not output.exists()
 
 
-def test_crawl_runner_keyboard_interrupt_publishes_snapshots(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_crawl_runner_keyboard_interrupt_publishes_snapshots(monkeypatch, tmp_path: Path) -> None:
     capture_runner_dependencies(monkeypatch)
     monkeypatch.setattr(
         runner.CrawlerProcess, "start", lambda self: (_ for _ in ()).throw(KeyboardInterrupt())
@@ -419,12 +406,12 @@ def test_crawl_runner_keyboard_interrupt_publishes_snapshots(
     assert "frontier" in manifest["metrics"]
 
 
-def test_crawl_runner_failure_publishes_snapshots(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_crawl_runner_failure_publishes_snapshots(monkeypatch, tmp_path: Path) -> None:
     capture_runner_dependencies(monkeypatch)
     monkeypatch.setattr(
-        runner.CrawlerProcess, "start", lambda self: (_ for _ in ()).throw(RuntimeError("crawl crashed"))
+        runner.CrawlerProcess,
+        "start",
+        lambda self: (_ for _ in ()).throw(RuntimeError("crawl crashed")),
     )
     exit_code = run_unified_for_test(tmp_path)
     assert exit_code == 1
@@ -438,9 +425,7 @@ def test_crawl_runner_failure_publishes_snapshots(
     assert "frontier" in manifest["metrics"]
 
 
-def test_crawl_runner_resume_restores_frontier_and_coordinator(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_crawl_runner_resume_restores_frontier_and_coordinator(monkeypatch, tmp_path: Path) -> None:
     observed = capture_runner_dependencies(monkeypatch)
     exit_code = run_unified_for_test(tmp_path)
     assert exit_code == 0
@@ -455,23 +440,27 @@ def test_crawl_runner_resume_restores_frontier_and_coordinator(
         runtime_config=observed["runtime_config"],
         resume=True,
     )
-    state.merge_url({
-        "url": "https://a.test/page1",
-        "status": "scheduled",
-        "frontier_action": "scheduled",
-    })
-    state.upsert_host_discovery({
-        "hostname": "a.test",
-        "mode": "sitemap",
-        "robots_complete": True,
-        "pending_sitemaps": [],
-        "registered_sitemaps": {"https://a.test/sitemap.xml": True},
-        "sitemaps_succeeded": 1,
-        "sitemaps_failed": 0,
-        "sitemaps_absent": 0,
-        "sitemap_targets": ["https://a.test/page1"],
-        "html_targets": [],
-    })
+    state.merge_url(
+        {
+            "url": "https://a.test/page1",
+            "status": "scheduled",
+            "frontier_action": "scheduled",
+        }
+    )
+    state.upsert_host_discovery(
+        {
+            "hostname": "a.test",
+            "mode": "sitemap",
+            "robots_complete": True,
+            "pending_sitemaps": [],
+            "registered_sitemaps": {"https://a.test/sitemap.xml": True},
+            "sitemaps_succeeded": 1,
+            "sitemaps_failed": 0,
+            "sitemaps_absent": 0,
+            "sitemap_targets": ["https://a.test/page1"],
+            "html_targets": [],
+        }
+    )
     state.close()
 
     # Now resume via run_crawl
@@ -487,9 +476,7 @@ def test_crawl_runner_resume_restores_frontier_and_coordinator(
     assert observed["jobdir"] is None
 
 
-def test_crawl_runner_retry_failed_requeues_transport_errors(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_crawl_runner_retry_failed_requeues_transport_errors(monkeypatch, tmp_path: Path) -> None:
     observed = capture_runner_dependencies(monkeypatch)
     assert run_unified_for_test(tmp_path) == 0
 
@@ -501,11 +488,13 @@ def test_crawl_runner_retry_failed_requeues_transport_errors(
         runtime_config=observed["runtime_config"],
         resume=True,
     )
-    state.merge_url({
-        "url": "https://a.test/retry",
-        "status": "scheduled",
-        "frontier_action": "scheduled",
-    })
+    state.merge_url(
+        {
+            "url": "https://a.test/retry",
+            "status": "scheduled",
+            "frontier_action": "scheduled",
+        }
+    )
     state.complete_url(
         {"url": "https://a.test/retry", "status": "failed"},
         error={
@@ -518,9 +507,9 @@ def test_crawl_runner_retry_failed_requeues_transport_errors(
 
     observed.clear()
     assert run_unified_for_test(tmp_path, resume=True, retry_failed=True) == 0
-    assert [
-        record["url"] for record in observed["crawl_kwargs"]["resume_records"]
-    ] == ["https://a.test/retry"]
+    assert [record["url"] for record in observed["crawl_kwargs"]["resume_records"]] == [
+        "https://a.test/retry"
+    ]
 
 
 def test_crawl_runner_retry_truncated_requeues_query_variant_limits(
@@ -537,13 +526,15 @@ def test_crawl_runner_retry_truncated_requeues_query_variant_limits(
         runtime_config=observed["runtime_config"],
         resume=True,
     )
-    state.complete_url({
-        "url": "https://a.test/news?page=22&tag=undergraduate",
-        "status": "skipped",
-        "reason": "query_variant_limit",
-        "discovery_source": "html_link",
-        "response_purpose": "page",
-    })
+    state.complete_url(
+        {
+            "url": "https://a.test/news?page=22&tag=undergraduate",
+            "status": "skipped",
+            "reason": "query_variant_limit",
+            "discovery_source": "html_link",
+            "response_purpose": "page",
+        }
+    )
     state.close()
 
     observed.clear()
@@ -553,9 +544,7 @@ def test_crawl_runner_retry_truncated_requeues_query_variant_limits(
         "https://a.test/news?page=22&tag=undergraduate"
     ]
     assert resume_records[0]["link_kind"] == "pagination"
-    assert resume_records[0]["family_key"] == (
-        "a.test/news?page={page}&tag=undergraduate"
-    )
+    assert resume_records[0]["family_key"] == ("a.test/news?page={page}&tag=undergraduate")
     assert resume_records[0]["ordinal"] == 22
 
 
@@ -573,42 +562,51 @@ def test_crawl_runner_retry_access_gates_requeues_captcha_blocked_pages(
         runtime_config=observed["runtime_config"],
         resume=True,
     )
-    state.merge_url({
-        "url": "https://a.test/false-captcha",
-        "status": "scheduled",
-        "seed_type": "recursive",
-        "frontier_action": "scheduled",
-        "discovery_source": "html_link",
-        "response_purpose": "page",
-        "link_kind": "content",
-    })
-    state.complete_url({
-        "url": "https://a.test/false-captcha",
-        "status": "skipped",
-        "reason": "captcha_blocked",
-    })
+    state.merge_url(
+        {
+            "url": "https://a.test/false-captcha",
+            "status": "scheduled",
+            "seed_type": "recursive",
+            "frontier_action": "scheduled",
+            "discovery_source": "html_link",
+            "response_purpose": "page",
+            "link_kind": "content",
+        }
+    )
+    state.complete_url(
+        {
+            "url": "https://a.test/false-captcha",
+            "status": "skipped",
+            "reason": "captcha_blocked",
+        }
+    )
     state.close()
 
     observed.clear()
-    assert run_unified_for_test(
-        tmp_path,
-        resume=True,
-        retry_access_gates=True,
-    ) == 0
-    assert [
-        record["url"] for record in observed["crawl_kwargs"]["resume_records"]
-    ] == ["https://a.test/false-captcha"]
+    assert (
+        run_unified_for_test(
+            tmp_path,
+            resume=True,
+            retry_access_gates=True,
+        )
+        == 0
+    )
+    assert [record["url"] for record in observed["crawl_kwargs"]["resume_records"]] == [
+        "https://a.test/false-captcha"
+    ]
 
 
 def test_crawl_runner_resume_rejects_incompatible_workflow(tmp_path: Path) -> None:
     state_dir = tmp_path / "crawl-output" / "state"
     state_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / "manifest.json").write_text(
-        json.dumps({
-            "state_version": 4,
-            "phase": "crawl",
-            "semantic_config": {"crawl_strategy": "sitemap-only"},
-        }),
+        json.dumps(
+            {
+                "state_version": 4,
+                "phase": "crawl",
+                "semantic_config": {"crawl_strategy": "sitemap-only"},
+            }
+        ),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="hybrid-unified"):

@@ -23,7 +23,11 @@ def open_state(
     semantic_config: dict[str, object] | None = None,
     runtime_config: dict[str, object] | None = None,
 ) -> CrawlState:
-    state_dir = root if root.name == "state" or (root / "manifest.json").exists() else root / "output" / "state"
+    state_dir = (
+        root
+        if root.name == "state" or (root / "manifest.json").exists()
+        else root / "output" / "state"
+    )
     input_path = state_dir.parent / "input.txt"
     if not input_path.exists():
         input_path.parent.mkdir(parents=True, exist_ok=True)
@@ -51,7 +55,10 @@ def test_url_upsert_keeps_one_authoritative_disposition(tmp_path: Path) -> None:
     state.upsert_url({"url": "https://a.test/x", "status": "extracted"})
     state.checkpoint("https://a.test/x")
     state.export(tmp_path / "output")
-    rows = [json.loads(line) for line in (tmp_path / "output/url_records.jsonl").read_text().splitlines()]
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "output/url_records.jsonl").read_text().splitlines()
+    ]
     assert rows == [{"status": "extracted", "url": "https://a.test/x"}]
     assert state.is_complete("https://a.test/x")
     state.close()
@@ -95,8 +102,7 @@ def test_crawl_export_lists_only_successful_urls_in_text_file(tmp_path: Path) ->
     state.export_crawl(tmp_path / "output")
 
     assert (tmp_path / "output/urls.txt").read_text(encoding="utf-8") == (
-        "https://a.test/a-article\n"
-        "https://a.test/z-file.pdf\n"
+        "https://a.test/a-article\nhttps://a.test/z-file.pdf\n"
     )
     state.close()
 
@@ -113,9 +119,7 @@ def test_finish_publishes_only_current_extracted_articles_to_final(tmp_path: Pat
         },
     )
     state.put_article({"url": "https://a.test/stale", "title": "Stale", "text": "Full text"})
-    state.upsert_url(
-        {"url": "https://a.test/stale", "status": "skipped", "reason": "action_auth"}
-    )
+    state.upsert_url({"url": "https://a.test/stale", "status": "skipped", "reason": "action_auth"})
 
     state.finish("complete_with_failures", 3, state.counts(), {}, public_output=output)
 
@@ -126,7 +130,9 @@ def test_finish_publishes_only_current_extracted_articles_to_final(tmp_path: Pat
     summary = json.loads((final / "README.json").read_text())
     assert summary["article_count"] == summary["url_count"] == 1
     assert sorted(path.name for path in final.iterdir()) == [
-        "README.json", "articles.jsonl", "urls.txt"
+        "README.json",
+        "articles.jsonl",
+        "urls.txt",
     ]
     state.close()
 
@@ -238,7 +244,9 @@ def test_resume_policy_migration_requires_explicit_opt_in(tmp_path: Path) -> Non
     resumed_again.close()
 
 
-def test_requeue_policy_skips_preserves_successful_records_and_is_idempotent(tmp_path: Path) -> None:
+def test_requeue_policy_skips_preserves_successful_records_and_is_idempotent(
+    tmp_path: Path,
+) -> None:
     state = open_state(tmp_path)
     successful = {
         "url": "https://a.test/success",
@@ -284,7 +292,9 @@ def test_requeue_zero_content_bootstrap_only_resets_recoverable_roots(tmp_path: 
     state = open_state(tmp_path)
     state.complete_url({"url": "https://a.test/", "status": "skipped", "reason": "access_denied"})
     state.complete_url({"url": "https://b.test/", "status": "extracted"})
-    state.complete_url({"url": "https://c.test/", "status": "skipped", "reason": "host_out_of_scope"})
+    state.complete_url(
+        {"url": "https://c.test/", "status": "skipped", "reason": "host_out_of_scope"}
+    )
 
     assert state.requeue_zero_content_bootstrap(frozenset({"a.test", "b.test", "c.test"})) == 1
     pending = {row["url"] for row in state.iter_pending_scheduled_records()}
@@ -524,8 +534,7 @@ def test_requeue_retryable_failures_only_resets_transport_errors(tmp_path: Path)
 
     state.export(tmp_path / "output")
     remaining_errors = [
-        json.loads(line)
-        for line in (tmp_path / "output/errors.jsonl").read_text().splitlines()
+        json.loads(line) for line in (tmp_path / "output/errors.jsonl").read_text().splitlines()
     ]
     assert [record["url"] for record in remaining_errors] == [
         "https://a.test/bad-redirect",
@@ -583,21 +592,15 @@ def test_requeue_query_variant_truncations_rebuilds_semantic_metadata(
     ]
     pagination, wordpress = pending
     assert pagination["link_kind"] == "pagination"
-    assert pagination["family_key"] == (
-        "a.test/news?page={page}&tag=undergraduate"
-    )
+    assert pagination["family_key"] == ("a.test/news?page={page}&tag=undergraduate")
     assert pagination["ordinal"] == 22
     assert wordpress["link_kind"] == "content"
     assert wordpress.get("family_key") is None
     assert wordpress.get("ordinal") is None
     assert all(record["status"] == "scheduled" for record in pending)
     assert all("reason" not in record for record in pending)
-    assert state.reason_counts(frozenset({"query_variant_limit"})) == {
-        "query_variant_limit": 1
-    }
-    assert state.reason_counts(frozenset({"host_url_limit"})) == {
-        "host_url_limit": 1
-    }
+    assert state.reason_counts(frozenset({"query_variant_limit"})) == {"query_variant_limit": 1}
+    assert state.reason_counts(frozenset({"host_url_limit"})) == {"host_url_limit": 1}
     state.close()
 
 
@@ -608,22 +611,22 @@ def test_requeue_access_gates_only_resets_captcha_blocked_pages(tmp_path: Path) 
         ("https://a.test/login", "login_required"),
         ("https://a.test/query", "query_variant_limit"),
     ):
-        state.merge_url({
-            "url": url,
-            "status": "scheduled",
-            "seed_type": "recursive",
-            "frontier_action": "scheduled",
-            "discovery_source": "html_link",
-            "response_purpose": "page",
-            "link_kind": "content",
-        })
+        state.merge_url(
+            {
+                "url": url,
+                "status": "scheduled",
+                "seed_type": "recursive",
+                "frontier_action": "scheduled",
+                "discovery_source": "html_link",
+                "response_purpose": "page",
+                "link_kind": "content",
+            }
+        )
         state.complete_url({"url": url, "status": "skipped", "reason": reason})
 
     assert state.requeue_access_gates() == 1
     pending = list(state.iter_pending_scheduled_records())
-    assert [record["url"] for record in pending] == [
-        "https://a.test/false-captcha"
-    ]
+    assert [record["url"] for record in pending] == ["https://a.test/false-captcha"]
     assert pending[0]["status"] == "scheduled"
     assert "reason" not in pending[0]
     assert state.is_complete("https://a.test/login")
@@ -663,8 +666,6 @@ def test_resume_rejects_wrong_state_version(tmp_path: Path) -> None:
         open_state(tmp_path, resume=True)
 
 
-
-
 def test_host_discovery_state_round_trip(tmp_path: Path) -> None:
     state = open_state(tmp_path)
     record = {
@@ -689,7 +690,11 @@ def test_host_discovery_state_round_trip(tmp_path: Path) -> None:
 
 def test_finish_publishes_discovery_strategy_to_public_manifest(tmp_path: Path) -> None:
     state = open_state(tmp_path, phase="discover")
-    discovery = {"strategy": "sitemap-only", "sitemap_url_limits": "unbounded", "hosts": {"a.test": {"mode": "sitemap"}}}
+    discovery = {
+        "strategy": "sitemap-only",
+        "sitemap_url_limits": "unbounded",
+        "hosts": {"a.test": {"mode": "sitemap"}},
+    }
     state.finish("complete", 0, {}, {}, discovery=discovery, public_output=tmp_path / "output")
     public = json.loads((tmp_path / "output/manifest.json").read_text())
     assert public["discovery"] == discovery
@@ -697,31 +702,37 @@ def test_finish_publishes_discovery_strategy_to_public_manifest(tmp_path: Path) 
 
 def test_manifest_groups_stored_bytes_by_asset_class(tmp_path: Path) -> None:
     state = open_state(tmp_path)
-    state.put_file({
-        "url": "https://a.test/photo.jpg",
-        "final_url": "https://a.test/photo.jpg",
-        "content_type": "image/jpeg",
-        "size": 5,
-        "sha256": "sha-img",
-        "asset_role": "inline_image",
-    })
-    state.put_file({
-        "url": "https://a.test/report.pdf",
-        "final_url": "https://a.test/report.pdf",
-        "content_type": "application/pdf",
-        "size": 9,
-        "sha256": "sha-pdf",
-        "asset_role": "document_attachment",
-    })
+    state.put_file(
+        {
+            "url": "https://a.test/photo.jpg",
+            "final_url": "https://a.test/photo.jpg",
+            "content_type": "image/jpeg",
+            "size": 5,
+            "sha256": "sha-img",
+            "asset_role": "inline_image",
+        }
+    )
+    state.put_file(
+        {
+            "url": "https://a.test/report.pdf",
+            "final_url": "https://a.test/report.pdf",
+            "content_type": "application/pdf",
+            "size": 9,
+            "sha256": "sha-pdf",
+            "asset_role": "document_attachment",
+        }
+    )
     # Another URL sharing the same sha256 blob (aliased file)
-    state.put_file({
-        "url": "https://a.test/photo_alias.jpg",
-        "final_url": "https://a.test/photo_alias.jpg",
-        "content_type": "image/jpeg",
-        "size": 5,
-        "sha256": "sha-img",
-        "asset_role": "inline_image",
-    })
+    state.put_file(
+        {
+            "url": "https://a.test/photo_alias.jpg",
+            "final_url": "https://a.test/photo_alias.jpg",
+            "content_type": "image/jpeg",
+            "size": 5,
+            "sha256": "sha-img",
+            "asset_role": "inline_image",
+        }
+    )
     metrics = state.asset_metrics()
     assert metrics == {
         "image": {"file_count": 2, "unique_bytes": 5},
@@ -751,15 +762,25 @@ def test_crawl_manifest_includes_hybrid_discovery(tmp_path: Path) -> None:
 def test_resume_rejects_fixed_inventory_state_with_clear_message(tmp_path: Path) -> None:
     state = open_state(tmp_path, phase="crawl", semantic_config={})
     state.close()
-    state_dir = tmp_path if tmp_path.name == "state" or (tmp_path / "manifest.json").exists() else tmp_path / "output" / "state"
+    state_dir = (
+        tmp_path
+        if tmp_path.name == "state" or (tmp_path / "manifest.json").exists()
+        else tmp_path / "output" / "state"
+    )
     with pytest.raises(ValueError, match="hybrid-unified"):
         validate_resume_workflow(state_dir, expected="hybrid-unified")
 
 
 def test_validate_resume_workflow_accepts_matching_strategy(tmp_path: Path) -> None:
-    state = open_state(tmp_path, phase="crawl", semantic_config={"crawl_strategy": "hybrid-unified"})
+    state = open_state(
+        tmp_path, phase="crawl", semantic_config={"crawl_strategy": "hybrid-unified"}
+    )
     state.close()
-    state_dir = tmp_path if tmp_path.name == "state" or (tmp_path / "manifest.json").exists() else tmp_path / "output" / "state"
+    state_dir = (
+        tmp_path
+        if tmp_path.name == "state" or (tmp_path / "manifest.json").exists()
+        else tmp_path / "output" / "state"
+    )
     validate_resume_workflow(state_dir, expected="hybrid-unified")
 
 
@@ -770,7 +791,11 @@ def test_validate_resume_workflow_ignores_missing_manifest(tmp_path: Path) -> No
 def test_validate_resume_workflow_rejects_sitemap_only_state(tmp_path: Path) -> None:
     state = open_state(tmp_path, phase="crawl", semantic_config={"crawl_strategy": "sitemap-only"})
     state.close()
-    state_dir = tmp_path if tmp_path.name == "state" or (tmp_path / "manifest.json").exists() else tmp_path / "output" / "state"
+    state_dir = (
+        tmp_path
+        if tmp_path.name == "state" or (tmp_path / "manifest.json").exists()
+        else tmp_path / "output" / "state"
+    )
     with pytest.raises(ValueError, match="cannot resume sitemap-only state as hybrid-unified"):
         validate_resume_workflow(state_dir, expected="hybrid-unified")
 
@@ -797,19 +822,30 @@ def test_asset_referrers_persists_and_updates_file_payload(tmp_path: Path) -> No
     state.add_asset_referrer("https://cdn.test/a.png", "https://a.test/p1", "inline_image")
     state.add_asset_referrer("https://cdn.test/a.png", "https://a.test/p2", "inline_image")
     state.add_asset_referrer("https://cdn.test/a.png", "https://a.test/p1", "inline_image")
-    assert state.asset_referrers("https://cdn.test/a.png") == ("https://a.test/p1", "https://a.test/p2")
+    assert state.asset_referrers("https://cdn.test/a.png") == (
+        "https://a.test/p1",
+        "https://a.test/p2",
+    )
 
     # If file row already exists, add_asset_referrer updates its payload
-    state.put_file({
-        "url": "https://cdn.test/a.png",
-        "final_url": "https://cdn.test/a.png",
-        "asset_role": "inline_image",
-        "referring_pages": ["https://a.test/p1", "https://a.test/p2"],
-    })
+    state.put_file(
+        {
+            "url": "https://cdn.test/a.png",
+            "final_url": "https://cdn.test/a.png",
+            "asset_role": "inline_image",
+            "referring_pages": ["https://a.test/p1", "https://a.test/p2"],
+        }
+    )
     state.add_asset_referrer("https://cdn.test/a.png", "https://a.test/p3", "inline_image")
-    cursor = state.connection.execute("SELECT payload FROM files WHERE url = ?;", ("https://cdn.test/a.png",))
+    cursor = state.connection.execute(
+        "SELECT payload FROM files WHERE url = ?;", ("https://cdn.test/a.png",)
+    )
     updated_payload = json.loads(cursor.fetchone()[0])
-    assert updated_payload["referring_pages"] == ["https://a.test/p1", "https://a.test/p2", "https://a.test/p3"]
+    assert updated_payload["referring_pages"] == [
+        "https://a.test/p1",
+        "https://a.test/p2",
+        "https://a.test/p3",
+    ]
     state.close()
 
 
@@ -866,7 +902,9 @@ def test_release_content_owner_promotes_first_duplicate(tmp_path: Path) -> None:
 def test_release_content_owner_without_duplicates_frees_content(tmp_path: Path) -> None:
     state = open_state(tmp_path)
     writer = CrawlWriter(tmp_path / "output", state, CrawlOptions())
-    writer.write_article({"url": "https://a.test/a", "final_url": "https://a.test/a", "text": "Only"})
+    writer.write_article(
+        {"url": "https://a.test/a", "final_url": "https://a.test/a", "text": "Only"}
+    )
     old_id = state.url_record("https://a.test/a")["content_id"]
 
     state.release_content_owner("https://a.test/a", old_id)

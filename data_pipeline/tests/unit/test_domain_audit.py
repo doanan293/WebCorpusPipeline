@@ -55,13 +55,10 @@ def test_classify_http_status(status: int, active: bool, reason: str) -> None:
         b"<title>Web Server's Default Page</title>",
         b"<title>404</title>",
         (
-            b'<title>403 Forbidden</title><p>Access is forbidden to the requested page:</p>'
+            b"<title>403 Forbidden</title><p>Access is forbidden to the requested page:</p>"
             b'<a href="http://cpanel.com/">cPanel, Inc.</a>'
         ),
-        (
-            b'<meta http-equiv="refresh" content="0;URL=/cgi-sys/defaultwebpage.cgi">'
-            b"<body></body>"
-        ),
+        (b'<meta http-equiv="refresh" content="0;URL=/cgi-sys/defaultwebpage.cgi"><body></body>'),
         "<title>Website hiện không hoạt động</title>".encode(),
         b"webserver is functioning normally",
         b"ADD ANYTHING HERE OR JUST REMOVE IT... Welcome to WordPress. This is your first post.",
@@ -126,8 +123,7 @@ def test_public_content_with_a_login_control_remains_active() -> None:
 
 def test_short_visible_password_form_is_login_only() -> None:
     body = (
-        b"<title>QLCB</title><form>Ten dang nhap: <input name='u'>"
-        b"Mat khau: <input name='p'></form>"
+        b"<title>QLCB</title><form>Ten dang nhap: <input name='u'>Mat khau: <input name='p'></form>"
     )
 
     assert classify_response(200, body, "text/html") == (False, "login_only")
@@ -305,10 +301,7 @@ def test_probe_finds_public_content_from_same_host_sitemap() -> None:
                 status=200,
                 final_url=url,
                 content_type="application/xml",
-                body=(
-                    b"<urlset><url><loc>https://example.hust.edu.vn/news</loc>"
-                    b"</url></urlset>"
-                ),
+                body=(b"<urlset><url><loc>https://example.hust.edu.vn/news</loc></url></urlset>"),
             )
         if url == "https://example.hust.edu.vn/news":
             return ProbeAttempt(
@@ -350,10 +343,7 @@ def test_probe_finds_public_sitemap_content_behind_script_shell_root() -> None:
                 status=200,
                 final_url=url,
                 content_type="application/xml",
-                body=(
-                    b"<urlset><url><loc>https://example.hust.edu.vn/news</loc>"
-                    b"</url></urlset>"
-                ),
+                body=(b"<urlset><url><loc>https://example.hust.edu.vn/news</loc></url></urlset>"),
             )
         if url == "https://example.hust.edu.vn/news":
             return ProbeAttempt(
@@ -386,10 +376,7 @@ def test_probe_does_not_follow_placeholder_vendor_links() -> None:
                 status=200,
                 final_url=url,
                 content_type="text/html",
-                body=(
-                    b"<title>Apache Tomcat/10.1.55</title>"
-                    b"<a href='/docs/'>Documentation</a>"
-                ),
+                body=(b"<title>Apache Tomcat/10.1.55</title><a href='/docs/'>Documentation</a>"),
             )
         if url.endswith("/sitemap.xml"):
             return ProbeAttempt(status=404, final_url=url, body=b"not found")
@@ -420,10 +407,7 @@ def test_probe_rejects_login_only_redirect_with_non_login_title() -> None:
             status=200,
             final_url="https://example.hust.edu.vn/Account/Login.aspx",
             content_type="text/html",
-            body=(
-                b"<title>Student portal</title><form>"
-                b'<input type="password"></form>'
-            ),
+            body=(b'<title>Student portal</title><form><input type="password"></form>'),
         )
 
     result = probe_host(
@@ -664,9 +648,7 @@ def test_non_dom_meta_refresh_text_is_not_followed(body: bytes) -> None:
 def test_probe_reserves_sitemap_budget_after_five_root_links() -> None:
     def fetch(url: str, timeout: float) -> ProbeAttempt:
         if url == "https://example.hust.edu.vn/":
-            links = b"".join(
-                f'<a href="/dead-{index}">Dead</a>'.encode() for index in range(5)
-            )
+            links = b"".join(f'<a href="/dead-{index}">Dead</a>'.encode() for index in range(5))
             return ProbeAttempt(
                 status=200,
                 final_url="https://example.hust.edu.vn/login",
@@ -1276,15 +1258,9 @@ def test_browser_request_policy_blocks_external_and_non_public_targets(
 
     monkeypatch.setattr(domain_audit, "resolve_hostname", resolve)
 
-    assert domain_audit._browser_request_allowed(
-        "https://public.hust.edu.vn/app.js", timeout=1
-    )
-    assert not domain_audit._browser_request_allowed(
-        "https://private.hust.edu.vn/api", timeout=1
-    )
-    assert not domain_audit._browser_request_allowed(
-        "https://example.com/tracker.js", timeout=1
-    )
+    assert domain_audit._browser_request_allowed("https://public.hust.edu.vn/app.js", timeout=1)
+    assert not domain_audit._browser_request_allowed("https://private.hust.edu.vn/api", timeout=1)
+    assert not domain_audit._browser_request_allowed("https://example.com/tracker.js", timeout=1)
     assert not domain_audit._browser_request_allowed(
         "https://public.hust.edu.vn:2375/admin", timeout=1
     )
@@ -1302,10 +1278,7 @@ def test_browser_policy_cache_key_includes_scheme_and_effective_port() -> None:
         "public.hust.edu.vn",
         80,
     )
-    assert (
-        domain_audit._browser_policy_key("https://public.hust.edu.vn:2375/admin")
-        is None
-    )
+    assert domain_audit._browser_policy_key("https://public.hust.edu.vn:2375/admin") is None
 
 
 def test_run_audit_keeps_only_canonical_hust_redirect_target(tmp_path) -> None:
@@ -1397,9 +1370,7 @@ def test_run_audit_keeps_shortest_hostname_for_identical_content(tmp_path) -> No
     ]
 
 
-def test_command_updates_domain_files_with_configured_paths(
-    tmp_path, monkeypatch
-) -> None:
+def test_command_updates_domain_files_with_configured_paths(tmp_path, monkeypatch) -> None:
     all_path = tmp_path / "all.txt"
     all_path.write_text("a.hust.edu.vn\n", encoding="utf-8")
     active_path = tmp_path / "active.txt"

@@ -151,9 +151,7 @@ class CrawlWriter:
 
         referring_pages = list(self.state.asset_referrers(url))
 
-        cursor = self.state.connection.execute(
-            "SELECT payload FROM files WHERE url = ?;", (url,)
-        )
+        cursor = self.state.connection.execute("SELECT payload FROM files WHERE url = ?;", (url,))
         existing_row = cursor.fetchone()
         if existing_row:
             existing_payload = json.loads(existing_row[0])

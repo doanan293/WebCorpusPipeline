@@ -9,7 +9,9 @@ from ir_data.inventory import index_inventory, source_key
 from ir_data.state import WorkState, fingerprint_source, read_crawl_id
 
 
-def write_source(folder: Path, rows: list[dict[str, object]], *, crawl_id: str | None = "c1") -> Path:
+def write_source(
+    folder: Path, rows: list[dict[str, object]], *, crawl_id: str | None = "c1"
+) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "articles.jsonl").write_text(
         "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
@@ -65,7 +67,9 @@ def test_rebind_adopts_legacy_work_dir(tmp_path: Path) -> None:
 
 def test_inventory_keeps_a_cursor_per_source(tmp_path: Path) -> None:
     final = write_source(tmp_path / "final", [page("https://a.test/", "https://a.test/f.pdf")])
-    changes = write_source(tmp_path / "changes" / "R", [page("https://a.test/new", "https://a.test/g.pdf")])
+    changes = write_source(
+        tmp_path / "changes" / "R", [page("https://a.test/new", "https://a.test/g.pdf")]
+    )
     with WorkState.open(tmp_path / "work", "fp", crawl_id="c1") as state:
         index_inventory(final, state)
         index_inventory(changes, state)
@@ -79,7 +83,9 @@ def test_inventory_keeps_a_cursor_per_source(tmp_path: Path) -> None:
 
 def test_modified_page_refs_are_replaced(tmp_path: Path) -> None:
     final = write_source(tmp_path / "final", [page("https://a.test/hub", "https://a.test/old")])
-    changes = write_source(tmp_path / "changes" / "R", [page("https://a.test/hub", "https://a.test/new")])
+    changes = write_source(
+        tmp_path / "changes" / "R", [page("https://a.test/hub", "https://a.test/new")]
+    )
     (changes / "changes.jsonl").write_text(
         json.dumps({"url": "https://a.test/hub", "change": "modified"}) + "\n", encoding="utf-8"
     )

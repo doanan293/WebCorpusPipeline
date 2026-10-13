@@ -85,8 +85,7 @@ def _build_response(handler: Any, url: str, req: Request) -> Response:
 def default_routes() -> dict[str, Any]:
     routes: dict[str, Any] = {}
     routes["/html-only/"] = html(
-        '<a href="/html-only/article">Article</a>'
-        '<a href="/html-only/report.pdf">Report</a>'
+        '<a href="/html-only/article">Article</a><a href="/html-only/report.pdf">Report</a>'
     )
     routes["/html-only/article"] = html("<main><h1>HTML only</h1><p>Body</p></main>")
     routes["/html-only/report.pdf"] = response(b"%PDF-1.4", "application/pdf")
@@ -156,7 +155,9 @@ def run_generated_site(
     for f in range(filters):
         for s in range(sorts):
             for l_idx in range(languages):
-                list_links.append(f'<a href="/list?filter={f}&amp;sort={s}&amp;lang={l_idx}">Link</a>')
+                list_links.append(
+                    f'<a href="/list?filter={f}&amp;sort={s}&amp;lang={l_idx}">Link</a>'
+                )
     list_links_html = "".join(list_links)
 
     queue: deque[Request] = deque(spider.start_requests())

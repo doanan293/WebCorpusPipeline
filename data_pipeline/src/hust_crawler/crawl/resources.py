@@ -19,7 +19,9 @@ class ResourceSampler:
         meminfo_text: Callable[[], str] | None = None,
     ) -> None:
         self._read_text = read_text or (lambda path: path.read_text(encoding="utf-8"))
-        self._meminfo_text = meminfo_text or (lambda: Path("/proc/meminfo").read_text(encoding="utf-8"))
+        self._meminfo_text = meminfo_text or (
+            lambda: Path("/proc/meminfo").read_text(encoding="utf-8")
+        )
         self._previous_cpu: tuple[int, int] | None = None
 
     def sample(self) -> ResourceSample:

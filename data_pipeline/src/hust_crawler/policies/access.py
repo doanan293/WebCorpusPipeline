@@ -121,7 +121,9 @@ def classify_access(*, status: int, url: str, html: str, rendered: bool) -> Acce
     if has_captcha_widget:
         return AccessDecision("captcha_blocked", False, "interactive_captcha")
     has_password = bool(re.search(r"type\s*=\s*['\"]password['\"]", lowered))
-    has_article = any(marker in lowered for marker in ("<article", "<main", 'itemprop="articlebody"'))
+    has_article = any(
+        marker in lowered for marker in ("<article", "<main", 'itemprop="articlebody"')
+    )
     has_login_action = bool(re.search(r"action\s*=\s*['\"][^'\"]*(?:login|signin|auth)", lowered))
     has_login_gate = has_password and (
         has_login_action
@@ -159,9 +161,19 @@ def classify_page_gate(
         return PageGateDecision(False, "captcha")
     heading = html_title(html).casefold().strip()
     visible = " ".join((heading, text.casefold()))
-    soft_markers = ("404", "not found", "page not found", "không tìm thấy", "nội dung không tồn tại")
-    heading_is_error = heading in {"404", "not found", "page not found"} or heading.startswith("404 -")
-    phrase_is_error = len(text.strip()) < 1000 and any(marker in visible for marker in soft_markers[1:])
+    soft_markers = (
+        "404",
+        "not found",
+        "page not found",
+        "không tìm thấy",
+        "nội dung không tồn tại",
+    )
+    heading_is_error = heading in {"404", "not found", "page not found"} or heading.startswith(
+        "404 -"
+    )
+    phrase_is_error = len(text.strip()) < 1000 and any(
+        marker in visible for marker in soft_markers[1:]
+    )
     if heading_is_error or phrase_is_error:
         return PageGateDecision(False, "soft_404")
     if not text.strip():

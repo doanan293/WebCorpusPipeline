@@ -70,12 +70,18 @@ def main(root: Path, step: str, version: int, fail_paths: str = "") -> int:
     runner.build_settings = fixture_build_settings
 
     argv = [
-        "--input", str(seeds_file),
-        "--output", str(root / "crawl"),
-        "--config", str(config_file),
-        "--profile", "safe-fast",
-        "--concurrency", "4",
-        "--max-per-host", "2",
+        "--input",
+        str(seeds_file),
+        "--output",
+        str(root / "crawl"),
+        "--config",
+        str(config_file),
+        "--profile",
+        "safe-fast",
+        "--concurrency",
+        "4",
+        "--max-per-host",
+        "2",
     ]
     if step != "initial":
         argv.append("--refresh")
@@ -84,5 +90,10 @@ def main(root: Path, step: str, version: int, fail_paths: str = "") -> int:
 
 if __name__ == "__main__":
     raise SystemExit(
-        main(Path(sys.argv[1]), sys.argv[2], int(sys.argv[3]), sys.argv[4] if len(sys.argv) > 4 else "")
+        main(
+            Path(sys.argv[1]),
+            sys.argv[2],
+            int(sys.argv[3]),
+            sys.argv[4] if len(sys.argv) > 4 else "",
+        )
     )

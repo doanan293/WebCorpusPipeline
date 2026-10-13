@@ -293,13 +293,15 @@ def test_resume_schedules_pending_record_from_sqlite_state() -> None:
 
 def test_sitemap_discovered_html_also_expands_same_host_links() -> None:
     spider, _ = make_spider(recursive_hostnames=frozenset({"a.test"}))
-    request = page_request(
-        "https://a.test/from-map", discovery_source="sitemap"
+    request = page_request("https://a.test/from-map", discovery_source="sitemap")
+    children = list(
+        spider.parse_response(
+            html_response(
+                request,
+                '<a href="/outside-map">New</a><a href="https://other.test/no">No</a>',
+            )
+        )
     )
-    children = list(spider.parse_response(html_response(
-        request,
-        '<a href="/outside-map">New</a><a href="https://other.test/no">No</a>',
-    )))
     assert [child.url for child in children] == ["https://a.test/outside-map"]
     assert children[0].meta["discovery_source"] == "html_link"
 
@@ -307,9 +309,7 @@ def test_sitemap_discovered_html_also_expands_same_host_links() -> None:
 def test_exact_seed_extracts_but_does_not_expand_html() -> None:
     spider, writer = make_spider(exact_urls=("https://a.test/one",))
     request = next(spider.start_requests())
-    children = list(spider.parse_response(
-        html_response(request, '<a href="/two">Two</a>')
-    ))
+    children = list(spider.parse_response(html_response(request, '<a href="/two">Two</a>')))
     assert children == []
     assert writer.articles[0]["url"] == "https://a.test/one"
 
@@ -317,12 +317,14 @@ def test_exact_seed_extracts_but_does_not_expand_html() -> None:
 def test_exact_seed_schedules_document_attachment_but_not_html() -> None:
     spider, writer = make_spider(exact_urls=("https://a.test/one",), assets="all")
     request = next(spider.start_requests())
-    children = list(spider.parse_response(
-        html_response(
-            request,
-            '<main><h1>One</h1><p>Body</p><a href="/report.pdf">Report</a><a href="/two">Two</a></main>',
+    children = list(
+        spider.parse_response(
+            html_response(
+                request,
+                '<main><h1>One</h1><p>Body</p><a href="/report.pdf">Report</a><a href="/two">Two</a></main>',
+            )
         )
-    ))
+    )
     assert len(children) == 1
     assert children[0].url == "https://a.test/report.pdf"
     assert children[0].meta["asset_role"] == "document_attachment"
@@ -332,22 +334,14 @@ def test_exact_seed_schedules_document_attachment_but_not_html() -> None:
 def test_pagination_counts_only_newly_scheduled_content() -> None:
     spider, _ = make_spider(recursive_hostnames=frozenset({"a.test"}))
     seed_duplicate(spider.frontier, "https://a.test/article")
-    request = page_request(
-        "https://a.test/news?page=1", discovery_source="html_link"
-    )
-    list(spider.parse_response(html_response(
-        request, '<a href="/article">Already seen</a>'
-    )))
-    assert spider.frontier.snapshot()["stats"][
-        "frontier/pagination_empty_observation"
-    ] == 1
+    request = page_request("https://a.test/news?page=1", discovery_source="html_link")
+    list(spider.parse_response(html_response(request, '<a href="/article">Already seen</a>')))
+    assert spider.frontier.snapshot()["stats"]["frontier/pagination_empty_observation"] == 1
 
 
 def test_wordpress_shortlink_counts_as_new_pagination_content() -> None:
     spider, _ = make_spider(recursive_hostnames=frozenset({"a.test"}))
-    request = page_request(
-        "https://a.test/news?page=1", discovery_source="html_link"
-    )
+    request = page_request("https://a.test/news?page=1", discovery_source="html_link")
     request.meta.update(
         {
             "family_key": "a.test/news?page={page}",
@@ -356,30 +350,33 @@ def test_wordpress_shortlink_counts_as_new_pagination_content() -> None:
         }
     )
 
-    children = list(spider.parse_response(html_response(
-        request,
-        '<link rel="shortlink" href="/?p=33214">'
-        '<a href="/news?page=2">2</a>',
-    )))
+    children = list(
+        spider.parse_response(
+            html_response(
+                request,
+                '<link rel="shortlink" href="/?p=33214"><a href="/news?page=2">2</a>',
+            )
+        )
+    )
 
     assert "https://a.test/?p=33214" in {child.url for child in children}
-    assert spider.frontier.snapshot()["stats"].get(
-        "frontier/pagination_empty_observation", 0
-    ) == 0
+    assert spider.frontier.snapshot()["stats"].get("frontier/pagination_empty_observation", 0) == 0
 
 
 def test_html_schedules_all_assets_in_all_mode() -> None:
-    spider, writer = make_spider(
-        recursive_hostnames=frozenset({"a.test"}), assets="all"
-    )
+    spider, writer = make_spider(recursive_hostnames=frozenset({"a.test"}), assets="all")
     request = page_request("https://a.test/", discovery_source="seed")
-    children = list(spider.parse_response(html_response(
-        request,
-        '<main><h1>Title</h1><p>Body</p>'
-        '<a href="/report.pdf">PDF</a>'
-        '<a href="/sheet.xlsx">Sheet</a>'
-        '<img src="/photo.jpg"><video src="/movie.mp4"></video></main>',
-    )))
+    children = list(
+        spider.parse_response(
+            html_response(
+                request,
+                "<main><h1>Title</h1><p>Body</p>"
+                '<a href="/report.pdf">PDF</a>'
+                '<a href="/sheet.xlsx">Sheet</a>'
+                '<img src="/photo.jpg"><video src="/movie.mp4"></video></main>',
+            )
+        )
+    )
     child_urls = {child.url for child in children}
     assert "https://a.test/report.pdf" in child_urls
     assert "https://a.test/photo.jpg" in child_urls
@@ -390,11 +387,15 @@ def test_extensionless_embedded_resource_outside_article_is_not_scheduled_as_pag
     spider, _ = make_spider(recursive_hostnames=frozenset({"a.test"}))
     request = page_request("https://a.test/news", discovery_source="seed")
 
-    children = list(spider.parse_response(html_response(
-        request,
-        '<main><h1>Title</h1><p>Body</p></main>'
-        '<footer><img src="/index.php?second=cronjobs&amp;p=random" alt="cron"></footer>',
-    )))
+    children = list(
+        spider.parse_response(
+            html_response(
+                request,
+                "<main><h1>Title</h1><p>Body</p></main>"
+                '<footer><img src="/index.php?second=cronjobs&amp;p=random" alt="cron"></footer>',
+            )
+        )
+    )
 
     assert "https://a.test/index.php?p=random&second=cronjobs" not in {
         child.url for child in children
@@ -490,7 +491,11 @@ def test_asset_policy_schedules_in_all_and_records_in_content_only() -> None:
 
 def test_known_image_media_targets_skipped_without_request() -> None:
     spider, writer = make_spider(
-        exact_urls=("https://a.test/photo.jpg", "https://a.test/audio.mp3", "https://a.test/article")
+        exact_urls=(
+            "https://a.test/photo.jpg",
+            "https://a.test/audio.mp3",
+            "https://a.test/article",
+        )
     )
     requests = list(spider.start_requests())
     assert [r.url for r in requests] == ["https://a.test/article"]
@@ -679,7 +684,9 @@ def test_unknown_binary_responses_are_not_persisted_in_content_only() -> None:
     )
     list(spider.parse_response(response))
     assert writer.files == []
-    assert writer.url_records["https://a.test/download-slug"]["status"] == "discovered_not_downloaded"
+    assert (
+        writer.url_records["https://a.test/download-slug"]["status"] == "discovered_not_downloaded"
+    )
     assert writer.state.is_complete("https://a.test/download-slug")
 
 
@@ -800,7 +807,7 @@ def test_external_page_rejected_but_external_asset_discovered() -> None:
     spider, writer = make_spider(recursive_hostnames=frozenset({"a.test"}))
     request = page_request("https://a.test/", discovery_source="seed")
     html = (
-        '<main><h1>Header</h1><p>Text</p>'
+        "<main><h1>Header</h1><p>Text</p>"
         '<a href="https://cdn.example.com/other">External Page</a>'
         '<img src="https://cdn.example.com/logo.png">'
         '<img src="https://a.test/valid.png"></main>'
@@ -855,7 +862,9 @@ def test_content_only_records_assets_without_requests() -> None:
         )
     )
     assert not [request for request in children if request.meta.get("request_scope") == "asset"]
-    assert {record["status"] for record in writer.discovered_assets} == {"discovered_not_downloaded"}
+    assert {record["status"] for record in writer.discovered_assets} == {
+        "discovered_not_downloaded"
+    }
 
 
 def test_all_schedules_same_host_and_external_assets_only() -> None:
@@ -894,7 +903,9 @@ def test_paginator_enqueues_one_next() -> None:
         '<a href="/news?page=2" rel="next">2</a><a href="/news?page=3">3</a></main>',
     )
     requests = list(spider.parse_response(first))
-    assert [request.url for request in requests if "page=" in request.url] == ["https://a.test/news?page=2"]
+    assert [request.url for request in requests if "page=" in request.url] == [
+        "https://a.test/news?page=2"
+    ]
 
 
 def test_exact_pdf_seed_obeys_mode() -> None:

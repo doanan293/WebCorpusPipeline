@@ -173,9 +173,7 @@ class SitemapDiscoveryCoordinator:
         return {
             "strategy": self.strategy,
             "sitemap_url_limits": "unbounded",
-            "hosts": {
-                h: self.hosts[h].to_summary() for h in sorted(self.hosts.keys())
-            },
+            "hosts": {h: self.hosts[h].to_summary() for h in sorted(self.hosts.keys())},
         }
 
     def restore(self, records: Iterable[dict[str, object]]) -> None:

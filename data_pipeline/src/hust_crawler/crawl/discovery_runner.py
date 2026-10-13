@@ -41,11 +41,14 @@ def run_discovery(
     )
     writer = DiscoveryWriter(output, state)
 
-    exact_hosts = frozenset(
-        (urlsplit(u).hostname or "").lower().rstrip(".")
-        for u in seeds.exact_urls
-        if urlsplit(u).hostname
-    ) - seeds.recursive_hostnames
+    exact_hosts = (
+        frozenset(
+            (urlsplit(u).hostname or "").lower().rstrip(".")
+            for u in seeds.exact_urls
+            if urlsplit(u).hostname
+        )
+        - seeds.recursive_hostnames
+    )
     coordinator = SitemapDiscoveryCoordinator(
         exact_hostnames=exact_hosts, on_change=state.upsert_host_discovery
     )

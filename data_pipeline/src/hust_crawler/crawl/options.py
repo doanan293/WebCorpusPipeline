@@ -39,9 +39,13 @@ class CrawlOptions:
 
 def crawl_options_from_config(config: CrawlerConfig, **overrides: object) -> CrawlOptions:
     names = (
-        "assets", "max_file_bytes", "max_total_file_bytes",
-        "max_query_variants_per_path", "pagination_empty_pages",
-        "max_urls_per_host", "max_total_urls",
+        "assets",
+        "max_file_bytes",
+        "max_total_file_bytes",
+        "max_query_variants_per_path",
+        "pagination_empty_pages",
+        "max_urls_per_host",
+        "max_total_urls",
     )
     values = {
         name: overrides[name] if overrides.get(name) is not None else getattr(config, name)

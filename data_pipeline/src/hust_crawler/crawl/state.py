@@ -150,7 +150,9 @@ class CrawlState:
                     raise ValueError("resume phase does not match saved run")
                 if manifest.get("input_sha256") != input_sha256:
                     raise ValueError("resume input does not match saved crawl")
-                saved_semantic = normalize_legacy_semantic_config(manifest.get("semantic_config", {}))
+                saved_semantic = normalize_legacy_semantic_config(
+                    manifest.get("semantic_config", {})
+                )
                 effective_semantic = normalize_legacy_semantic_config(semantic_config)
                 if saved_semantic != effective_semantic:
                     if not allow_policy_migration:
@@ -217,12 +219,24 @@ class CrawlState:
             );
             """
         )
-        connection.execute("CREATE TABLE IF NOT EXISTS targets (url TEXT PRIMARY KEY, payload TEXT NOT NULL);")
-        connection.execute("CREATE TABLE IF NOT EXISTS articles (url TEXT PRIMARY KEY, payload TEXT NOT NULL);")
-        connection.execute("CREATE TABLE IF NOT EXISTS files (url TEXT PRIMARY KEY, payload TEXT NOT NULL);")
-        connection.execute("CREATE TABLE IF NOT EXISTS errors (url TEXT PRIMARY KEY, payload TEXT NOT NULL);")
-        connection.execute("CREATE TABLE IF NOT EXISTS content_owner (content_id TEXT PRIMARY KEY, url TEXT NOT NULL);")
-        connection.execute("CREATE TABLE IF NOT EXISTS metrics (name TEXT PRIMARY KEY, value INTEGER NOT NULL);")
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS targets (url TEXT PRIMARY KEY, payload TEXT NOT NULL);"
+        )
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS articles (url TEXT PRIMARY KEY, payload TEXT NOT NULL);"
+        )
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS files (url TEXT PRIMARY KEY, payload TEXT NOT NULL);"
+        )
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS errors (url TEXT PRIMARY KEY, payload TEXT NOT NULL);"
+        )
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS content_owner (content_id TEXT PRIMARY KEY, url TEXT NOT NULL);"
+        )
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS metrics (name TEXT PRIMARY KEY, value INTEGER NOT NULL);"
+        )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS host_discovery (
@@ -461,14 +475,18 @@ class CrawlState:
             (content_id, url),
         )
         self.connection.commit()
-        cursor = self.connection.execute("SELECT url FROM content_owner WHERE content_id = ?;", (content_id,))
+        cursor = self.connection.execute(
+            "SELECT url FROM content_owner WHERE content_id = ?;", (content_id,)
+        )
         row = cursor.fetchone()
         assert row is not None
         return str(row[0])
 
     def counts(self) -> dict[str, int]:
         result: dict[str, int] = {}
-        for row in self.connection.execute("SELECT status, count(*) FROM url_records GROUP BY status;"):
+        for row in self.connection.execute(
+            "SELECT status, count(*) FROM url_records GROUP BY status;"
+        ):
             result[f"url_status_{row[0]}"] = int(row[1])
 
         cursor = self.connection.execute("SELECT count(*) FROM url_records;")
@@ -570,8 +588,6 @@ class CrawlState:
             (url,),
         )
         return tuple(row[0] for row in cursor.fetchall())
-
-
 
     def iter_url_records(self) -> Iterator[dict[str, object]]:
         cursor = self.connection.execute("SELECT payload FROM url_records ORDER BY url;")
@@ -921,9 +937,7 @@ class CrawlState:
     def export(self, output: Path) -> None:
         self.export_crawl(output)
 
-    def iter_final_articles(
-        self, urls: Iterable[str] | None = None
-    ) -> Iterator[tuple[str, str]]:
+    def iter_final_articles(self, urls: Iterable[str] | None = None) -> Iterator[tuple[str, str]]:
         """Yield (url, payload) for extracted articles, inlining excluded owner text."""
         query = """
             SELECT a.url, a.payload
@@ -976,9 +990,10 @@ class CrawlState:
         tmp_urls = final / "urls.txt.tmp"
 
         count = 0
-        with tmp_articles.open("w", encoding="utf-8") as articles_file, tmp_urls.open(
-            "w", encoding="utf-8"
-        ) as urls_file:
+        with (
+            tmp_articles.open("w", encoding="utf-8") as articles_file,
+            tmp_urls.open("w", encoding="utf-8") as urls_file,
+        ):
             for url, payload in self.iter_final_articles():
                 articles_file.write(f"{payload}\n")
                 urls_file.write(f"{url}\n")
@@ -1055,7 +1070,9 @@ class CrawlState:
             "counts": counts,
             "metrics": metrics,
             "truncation": truncation,
-            "truncation_reasons": sorted(list(truncation.keys())) if isinstance(truncation, dict) else [],
+            "truncation_reasons": sorted(list(truncation.keys()))
+            if isinstance(truncation, dict)
+            else [],
             "finished_at": time.time(),
         }
         if discovery is not None or self.manifest.get("phase") == "discover":

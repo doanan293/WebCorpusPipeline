@@ -35,7 +35,9 @@ def resolve_runtime_tuning(
         max_concurrency=concurrency if concurrency is not None else config.concurrent_requests,
         max_per_host=max_per_host if max_per_host is not None else config.concurrent_per_host,
         resource_limit_percent=(
-            resource_limit_percent if resource_limit_percent is not None else config.resource_limit_percent
+            resource_limit_percent
+            if resource_limit_percent is not None
+            else config.resource_limit_percent
         ),
         playwright_max_pages=config.playwright_max_pages,
         journal_batch_size=config.journal_batch_size,

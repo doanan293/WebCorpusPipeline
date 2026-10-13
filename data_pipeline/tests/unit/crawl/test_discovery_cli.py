@@ -25,9 +25,7 @@ def test_discovery_cli_help() -> None:
     assert "sitemap" in help_text.lower()
 
 
-def test_main_loads_contact_from_dotenv_in_working_directory(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_main_loads_contact_from_dotenv_in_working_directory(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / ".env").write_text("CRAWLER_CONTACT=ops@example.org\n", encoding="utf-8")
     (tmp_path / "seeds.txt").write_text("example.com\n", encoding="utf-8")
     write_complete_config(tmp_path)

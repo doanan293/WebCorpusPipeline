@@ -47,9 +47,7 @@ TRUNCATION_REASONS = frozenset(
 )
 
 
-def _clean_failed_reuse_output(
-    output: Path, state_dir: Path, *, output_existed: bool
-) -> None:
+def _clean_failed_reuse_output(output: Path, state_dir: Path, *, output_existed: bool) -> None:
     if output_existed:
         shutil.rmtree(state_dir, ignore_errors=True)
     else:
@@ -177,17 +175,18 @@ def run_crawl(
     except Exception:
         state.close()
         if reuse_content_from is not None:
-            _clean_failed_reuse_output(
-                output, state_dir, output_existed=output_existed
-            )
+            _clean_failed_reuse_output(output, state_dir, output_existed=output_existed)
         raise
 
     try:
-        exact_hosts = frozenset(
-            (urlsplit(u).hostname or "").lower().rstrip(".")
-            for u in seeds.exact_urls
-            if urlsplit(u).hostname
-        ) - seeds.recursive_hostnames
+        exact_hosts = (
+            frozenset(
+                (urlsplit(u).hostname or "").lower().rstrip(".")
+                for u in seeds.exact_urls
+                if urlsplit(u).hostname
+            )
+            - seeds.recursive_hostnames
+        )
 
         coordinator = SitemapDiscoveryCoordinator(
             exact_hostnames=exact_hosts,
@@ -223,9 +222,7 @@ def run_crawl(
                 "message": f"line {inv.line}: {inv.reason}",
             }
             state.put_error(err)
-            state.upsert_url(
-                {"url": inv.value, "status": "failed", "reason": inv.reason}
-            )
+            state.upsert_url({"url": inv.value, "status": "failed", "reason": inv.reason})
 
         jobdir = state_dir / "scrapy-job"
         start_time = time.time()
@@ -252,16 +249,12 @@ def run_crawl(
         settings.set("HUST_CRAWL_OPTIONS", options, priority="cmdline")
 
         process = CrawlerProcess(settings=settings)
-        spider_cls = (
-            ReusedAssetSpider if reuse_content_from is not None else UnifiedSpider
-        )
+        spider_cls = ReusedAssetSpider if reuse_content_from is not None else UnifiedSpider
         crawler = process.create_crawler(spider_cls)
     except Exception:
         writer.close()
         if reuse_content_from is not None:
-            _clean_failed_reuse_output(
-                output, state_dir, output_existed=output_existed
-            )
+            _clean_failed_reuse_output(output, state_dir, output_existed=output_existed)
         raise
 
     exit_code = 1

@@ -64,11 +64,14 @@ class UnifiedSpider(scrapy.Spider):
         self.refresh = refresh
         self.refresh_targets = tuple(refresh_targets)
 
-        exact_hosts = frozenset(
-            (urlsplit(u).hostname or "").lower().rstrip(".")
-            for u in seeds.exact_urls
-            if urlsplit(u).hostname
-        ) - seeds.recursive_hostnames
+        exact_hosts = (
+            frozenset(
+                (urlsplit(u).hostname or "").lower().rstrip(".")
+                for u in seeds.exact_urls
+                if urlsplit(u).hostname
+            )
+            - seeds.recursive_hostnames
+        )
         for eh in exact_hosts:
             self.coordinator.register_exact_host(eh)
 
@@ -92,15 +95,15 @@ class UnifiedSpider(scrapy.Spider):
                 "discovered_from": candidate.discovered_from,
                 "frontier_action": "scheduled",
                 "discovery_source": candidate.discovery_source,
-            "response_purpose": candidate.purpose,
-            "explicit": candidate.explicit,
-            "link_kind": candidate.link_kind,
-            "family_key": candidate.family_key,
-            "ordinal": candidate.ordinal,
-            "asset_role": candidate.asset_role,
-            "asset_group": candidate.asset_group,
-            "priority": decision.priority,
-        }
+                "response_purpose": candidate.purpose,
+                "explicit": candidate.explicit,
+                "link_kind": candidate.link_kind,
+                "family_key": candidate.family_key,
+                "ordinal": candidate.ordinal,
+                "asset_role": candidate.asset_role,
+                "asset_group": candidate.asset_group,
+                "priority": decision.priority,
+            }
         )
 
         req_host = (urlsplit(canonical).hostname or "").lower().rstrip(".")
@@ -127,7 +130,9 @@ class UnifiedSpider(scrapy.Spider):
         if candidate.purpose == "asset":
             meta.update(
                 {
-                    "asset_group": candidate.asset_group or recognizable_asset(canonical) or "document",
+                    "asset_group": candidate.asset_group
+                    or recognizable_asset(canonical)
+                    or "document",
                     "asset_role": candidate.asset_role,
                     "referring_page": candidate.discovered_from,
                 }
@@ -193,7 +198,11 @@ class UnifiedSpider(scrapy.Spider):
                     )
                 return None
             else:
-                if is_binary and recognizable_asset(candidate.url) is None and candidate.purpose != "asset":
+                if (
+                    is_binary
+                    and recognizable_asset(candidate.url) is None
+                    and candidate.purpose != "asset"
+                ):
                     decision = self.frontier.consider(candidate)
                     if decision.canonical_url:
                         self.writer.record_skipped(
@@ -234,7 +243,9 @@ class UnifiedSpider(scrapy.Spider):
             purpose_value = str(record.get("response_purpose") or "page")
             purpose = cast(
                 Purpose,
-                purpose_value if purpose_value in {"robots", "sitemap", "page", "asset"} else "page",
+                purpose_value
+                if purpose_value in {"robots", "sitemap", "page", "asset"}
+                else "page",
             )
             source_value = str(record.get("discovery_source") or "html_link")
             discovery_source = cast(
@@ -255,17 +266,13 @@ class UnifiedSpider(scrapy.Spider):
                 discovery_source=discovery_source,
                 link_kind=cast(Any, record.get("link_kind")),
                 family_key=(
-                    str(record["family_key"])
-                    if record.get("family_key") is not None
-                    else None
+                    str(record["family_key"]) if record.get("family_key") is not None else None
                 ),
                 ordinal=cast(int | None, record.get("ordinal")),
                 asset_role=cast(Any, record.get("asset_role")),
                 asset_group=cast(Any, record.get("asset_group")),
             )
-            decision = FrontierDecision(
-                "schedule", url, None, int(record.get("priority") or 0)
-            )
+            decision = FrontierDecision("schedule", url, None, int(record.get("priority") or 0))
             request = self._create_request_for_scheduled(candidate, decision)
             if request is not None:
                 yield request
@@ -341,7 +348,9 @@ class UnifiedSpider(scrapy.Spider):
                     purpose="asset",
                     explicit=True,
                     discovery_source="seed",
-                    asset_role=role_map.get(group, "document_attachment") if group else "document_attachment",
+                    asset_role=role_map.get(group, "document_attachment")
+                    if group
+                    else "document_attachment",
                     asset_group=group,
                 )
             else:
@@ -685,7 +694,11 @@ class UnifiedSpider(scrapy.Spider):
         self._store_validators(url, response, last_checked_run=self.refresh.run_id)
         self.refresh.finish_target(url, outcome)
         yield from self._expand_html(
-            response, analysis, stored_article, url, str(response.meta.get("seed_mode", "recursive"))
+            response,
+            analysis,
+            stored_article,
+            url,
+            str(response.meta.get("seed_mode", "recursive")),
         )
 
     def parse_response(self, response: Response) -> Iterator[scrapy.Request]:
@@ -707,7 +720,9 @@ class UnifiedSpider(scrapy.Spider):
         )
 
         # 1. Header guard stop
-        if "download_stopped" in getattr(response, "flags", []) or response.meta.get("header_stop_reason"):
+        if "download_stopped" in getattr(response, "flags", []) or response.meta.get(
+            "header_stop_reason"
+        ):
             self.writer.record_discovered(
                 {
                     "url": input_url,
@@ -798,7 +813,11 @@ class UnifiedSpider(scrapy.Spider):
             else:
                 val_decision = self.policy.validate_response(content_type, response.url)
                 if val_decision.persist:
-                    group = val_decision.group or recognizable_asset(response.url, content_type) or "document"
+                    group = (
+                        val_decision.group
+                        or recognizable_asset(response.url, content_type)
+                        or "document"
+                    )
                     role_map = {
                         "image": "inline_image",
                         "media": "media_reference",
@@ -899,7 +918,9 @@ class UnifiedSpider(scrapy.Spider):
             try:
                 parsed = parse_sitemap(response.body, response.url, route.content_type)
             except SitemapParseError:
-                self.coordinator.complete_sitemap(hostname, response.url, result="failed", targets=0)
+                self.coordinator.complete_sitemap(
+                    hostname, response.url, result="failed", targets=0
+                )
                 self.writer.write_error({"url": input_url, "error": "sitemap_parse_error"})
                 self.writer.checkpoint(input_url)
                 return
@@ -921,7 +942,9 @@ class UnifiedSpider(scrapy.Spider):
                             req = self._candidate_request(cand)
                             if req is not None:
                                 yield req
-                self.coordinator.complete_sitemap(hostname, response.url, result="success", targets=0)
+                self.coordinator.complete_sitemap(
+                    hostname, response.url, result="success", targets=0
+                )
             else:
                 valid_targets = 0
                 for loc in parsed.locations:
@@ -945,7 +968,9 @@ class UnifiedSpider(scrapy.Spider):
                                 purpose="asset",
                                 explicit=False,
                                 discovery_source="sitemap",
-                                asset_role=role_map.get(group, "document_attachment") if group else "document_attachment",
+                                asset_role=role_map.get(group, "document_attachment")
+                                if group
+                                else "document_attachment",
                                 asset_group=group,
                             )
                         else:
@@ -982,7 +1007,9 @@ class UnifiedSpider(scrapy.Spider):
         elif route.action == "optional_absent":
             hostname = (urlsplit(response.url).hostname or "").lower().rstrip(".")
             if purpose == "sitemap":
-                self.coordinator.complete_sitemap(hostname, response.url, result="absent", targets=0)
+                self.coordinator.complete_sitemap(
+                    hostname, response.url, result="absent", targets=0
+                )
             elif purpose == "robots":
                 self.coordinator.complete_robots(hostname)
             self.writer.record_absent(
@@ -998,7 +1025,9 @@ class UnifiedSpider(scrapy.Spider):
         elif route.action == "http_error":
             hostname = (urlsplit(response.url).hostname or "").lower().rstrip(".")
             if purpose == "sitemap":
-                self.coordinator.complete_sitemap(hostname, response.url, result="failed", targets=0)
+                self.coordinator.complete_sitemap(
+                    hostname, response.url, result="failed", targets=0
+                )
             elif purpose == "robots":
                 self.coordinator.complete_robots(hostname)
 
@@ -1049,7 +1078,9 @@ class UnifiedSpider(scrapy.Spider):
         error_name = getattr(failure.type, "__name__", "")
 
         if self.refresh is not None and request.meta.get("refresh_reason"):
-            outcome = "access_gate" if isinstance(failure.value, IgnoreRequest) else "request_failed"
+            outcome = (
+                "access_gate" if isinstance(failure.value, IgnoreRequest) else "request_failed"
+            )
             self.refresh.finish_target(input_url, outcome, error=error_str[:500])
             return None
 

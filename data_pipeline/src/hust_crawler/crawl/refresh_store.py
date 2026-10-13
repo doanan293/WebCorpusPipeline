@@ -123,9 +123,7 @@ class RefreshStore:
         )
         return [(str(url), str(reason)) for url, reason in rows]
 
-    def finish_target(
-        self, run_id: str, url: str, outcome: str, error: str | None = None
-    ) -> None:
+    def finish_target(self, run_id: str, url: str, outcome: str, error: str | None = None) -> None:
         self.connection.execute(
             """
             UPDATE refresh_targets SET done = 1, outcome = ?, error = ?
@@ -164,9 +162,7 @@ class RefreshStore:
             "outcomes": dict(sorted(outcomes.items())),
         }
 
-    def failure_counts(
-        self, run_id: str, truncation_reasons: Iterable[str]
-    ) -> tuple[int, int]:
+    def failure_counts(self, run_id: str, truncation_reasons: Iterable[str]) -> tuple[int, int]:
         successes = sorted(SUCCESS_OUTCOMES)
         failed_targets = self.connection.execute(
             f"""

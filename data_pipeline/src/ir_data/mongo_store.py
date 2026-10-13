@@ -64,9 +64,7 @@ def _replace_batches(collection, values) -> None:
     for value in values:
         operation_value = dict(value)
         approx = len(json.dumps(operation_value, ensure_ascii=False).encode()) + 1024
-        if operations and (
-            len(operations) >= 100 or batch_bytes + approx > MAX_BATCH_BYTES
-        ):
+        if operations and (len(operations) >= 100 or batch_bytes + approx > MAX_BATCH_BYTES):
             collection.bulk_write(operations, ordered=False)
             operations = []
             batch_bytes = 0
@@ -121,7 +119,9 @@ def import_corpus(path: Path, settings) -> dict:
         db.datasets.update_one({"_id": sid}, {"$set": {"status": "ready", "error": None}})
         return {"snapshot_id": sid, "status": "ready"}
     except Exception as exc:
-        db.datasets.update_one({"_id": sid}, {"$set": {"status": "failed", "error": str(exc)[:1000]}})
+        db.datasets.update_one(
+            {"_id": sid}, {"$set": {"status": "failed", "error": str(exc)[:1000]}}
+        )
         raise
     finally:
         client.close()

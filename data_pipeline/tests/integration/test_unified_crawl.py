@@ -24,7 +24,9 @@ def run_fixture(
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -33,7 +35,9 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def asset_requests(tmp_path: Path) -> list[str]:
     suffixes = (".png", ".jpg", ".svg", ".mp3", ".mp4", ".pdf", ".docx", ".xlsx", ".pptx")
-    return [url for url in requested_urls(tmp_path) if urlsplit(url).path.lower().endswith(suffixes)]
+    return [
+        url for url in requested_urls(tmp_path) if urlsplit(url).path.lower().endswith(suffixes)
+    ]
 
 
 def request_counts(tmp_path: Path) -> Counter[str]:
@@ -65,7 +69,9 @@ def requested_urls(tmp_path: Path) -> list[str]:
     log_path = tmp_path / "requested_urls.txt"
     if not log_path.exists():
         return []
-    return [line.strip() for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [
+        line.strip() for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
 
 
 def records_by_url(path: Path) -> dict[str, dict[str, Any]]:
@@ -87,7 +93,9 @@ def completed_urls(tmp_path: Path, first: list[str]) -> list[str]:
         for url, rec in records.items()
         if rec.get("status") == "extracted"
         and url in first_set
-        and not url.endswith(("/robots.txt", "sitemap.xml", "sitemap_index.xml", "sitemap-index.xml"))
+        and not url.endswith(
+            ("/robots.txt", "sitemap.xml", "sitemap_index.xml", "sitemap-index.xml")
+        )
     ]
 
 

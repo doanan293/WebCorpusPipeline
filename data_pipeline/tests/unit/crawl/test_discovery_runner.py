@@ -31,7 +31,10 @@ def run_discovery_for_test(tmp_path: Path) -> int:
     )
     config = CrawlerConfig(hostnames=frozenset({"a.test"}), contact="ops@example.com")
     from hust_crawler.crawl.profiles import resolve_runtime_tuning
-    tuning = resolve_runtime_tuning(profile="safe-fast", concurrency=4, max_per_host=2, resource_limit_percent=80)
+
+    tuning = resolve_runtime_tuning(
+        profile="safe-fast", concurrency=4, max_per_host=2, resource_limit_percent=80
+    )
     output = tmp_path / "output"
     return run_discovery(
         input_path=seeds_file,

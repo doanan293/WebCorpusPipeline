@@ -9,12 +9,15 @@ from hust_crawler.crawl.assets import (
 from hust_crawler.crawl.options import CrawlOptions
 
 
-@pytest.mark.parametrize("url,role,group", [
-    ("https://cdn.test/a.svg", "inline_image", "image"),
-    ("https://cdn.test/a.mp4", "media_reference", "media"),
-    ("https://cdn.test/a.pdf", "document_attachment", "document"),
-    ("https://cdn.test/a.odp", "document_attachment", "document"),
-])
+@pytest.mark.parametrize(
+    "url,role,group",
+    [
+        ("https://cdn.test/a.svg", "inline_image", "image"),
+        ("https://cdn.test/a.mp4", "media_reference", "media"),
+        ("https://cdn.test/a.pdf", "document_attachment", "document"),
+        ("https://cdn.test/a.odp", "document_attachment", "document"),
+    ],
+)
 def test_all_schedules_supported_semantic_assets(url: str, role: str, group: str) -> None:
     asset = ArticleAsset(url=url, role=role, alt="", caption="", external=True)
     decision = AssetPolicy(CrawlOptions(assets="all")).consider(asset, "https://a.test/p")
@@ -39,12 +42,15 @@ def test_known_unsupported_binary_is_recognized_without_becoming_semantic(url: s
     assert recognizable_asset(absolute) is None
 
 
-@pytest.mark.parametrize("mime,url,expected", [
-    ("image/png", "https://x/a.bin", (True, "image", None)),
-    ("application/octet-stream", "https://x/a.pdf", (True, "document", None)),
-    ("text/html", "https://x/a.pdf", (False, None, "unexpected_asset_content")),
-    ("application/zip", "https://x/a.zip", (False, None, "unsupported_asset_type")),
-])
+@pytest.mark.parametrize(
+    "mime,url,expected",
+    [
+        ("image/png", "https://x/a.bin", (True, "image", None)),
+        ("application/octet-stream", "https://x/a.pdf", (True, "document", None)),
+        ("text/html", "https://x/a.pdf", (False, None, "unexpected_asset_content")),
+        ("application/zip", "https://x/a.zip", (False, None, "unsupported_asset_type")),
+    ],
+)
 def test_final_response_validation(mime: str, url: str, expected: tuple[object, ...]) -> None:
     decision = AssetPolicy(CrawlOptions(assets="all")).validate_response(mime, url)
     assert (decision.persist, decision.group, decision.reason) == expected

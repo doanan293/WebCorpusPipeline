@@ -21,9 +21,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--input", "-i", type=str, required=True, help="Path to canonical URLs file"
     )
-    parser.add_argument(
-        "--output", "-o", type=str, required=True, help="Crawl output directory"
-    )
+    parser.add_argument("--output", "-o", type=str, required=True, help="Crawl output directory")
     parser.add_argument(
         "--assets",
         type=str,

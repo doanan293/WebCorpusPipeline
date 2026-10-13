@@ -59,8 +59,6 @@ class ProbeAttempt:
     error: str | None = None
 
 
-
-
 class UnsafeRedirectError(OSError):
     def __init__(self, target_url: str, reason: str) -> None:
         super().__init__(f"{reason}: {target_url}")
@@ -77,9 +75,7 @@ class SafeRedirectHandler(HTTPRedirectHandler):
         if target_hostname == source_hostname and not _is_hust_hostname(target_hostname):
             try:
                 if ipaddress.ip_address(target_hostname).is_loopback:
-                    return super().redirect_request(
-                        req, fp, code, msg, headers, target_url
-                    )
+                    return super().redirect_request(req, fp, code, msg, headers, target_url)
             except ValueError:
                 pass
         if not _is_hust_web_url(target_url):
@@ -137,9 +133,7 @@ def classify_response(
     normalized_type = (content_type or "").lower()
     login_markers = ("password", "sign in", "log in", "login", "đăng nhập")
     if status in {401, 403}:
-        if "<html" in normalized and any(
-            marker in normalized for marker in login_markers
-        ):
+        if "<html" in normalized and any(marker in normalized for marker in login_markers):
             return False, "login_only"
         return False, "access_denied"
     if not active:
@@ -245,9 +239,12 @@ def classify_response(
             )
         )
     )
-    if login_url or (registration_url and "<form" in normalized) or (
-        password_input and any(marker in normalized for marker in login_titles)
-    ) or short_account_form:
+    if (
+        login_url
+        or (registration_url and "<form" in normalized)
+        or (password_input and any(marker in normalized for marker in login_titles))
+        or short_account_form
+    ):
         return False, "login_only"
     html_response = "html" in normalized_type or bool(
         re.search(r"<(?:html|head|body|title|main|div|script)\b", normalized)
@@ -268,10 +265,7 @@ def classify_response(
 
 
 def _is_hust_hostname(hostname: str | None) -> bool:
-    return bool(
-        hostname
-        and (hostname == "hust.edu.vn" or hostname.endswith(".hust.edu.vn"))
-    )
+    return bool(hostname and (hostname == "hust.edu.vn" or hostname.endswith(".hust.edu.vn")))
 
 
 def _is_hust_web_url(url: str) -> bool:
@@ -377,9 +371,7 @@ def _probe_public_subpage(
     include_root_links: bool = True,
 ) -> ProbeAttempt | None:
     root_candidates = (
-        _same_host_public_urls(hostname, root_url, root_attempt.body)
-        if include_root_links
-        else []
+        _same_host_public_urls(hostname, root_url, root_attempt.body) if include_root_links else []
     )
     sitemap_url = urljoin(root_url, "/sitemap.xml")
     sitemap = fetch(sitemap_url, timeout)
@@ -675,16 +667,12 @@ def fetch_url(url: str, timeout: float) -> ProbeAttempt:
 
 def load_candidate_hostnames(path: Path) -> tuple[str, ...]:
     hostnames: set[str] = set()
-    for line_number, raw_line in enumerate(
-        path.read_text(encoding="utf-8").splitlines(), 1
-    ):
+    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         hostname = raw_line.strip().lower().rstrip(".")
         if not hostname or hostname.startswith("#"):
             continue
         if hostname != "hust.edu.vn" and not hostname.endswith(".hust.edu.vn"):
-            raise ValueError(
-                f"{path}:{line_number}: hostname outside HUST scope: {hostname}"
-            )
+            raise ValueError(f"{path}:{line_number}: hostname outside HUST scope: {hostname}")
         hostnames.add(hostname)
     return tuple(sorted(hostnames))
 
@@ -995,18 +983,11 @@ def _atomic_text(path: Path, value: str) -> None:
     temporary.replace(path)
 
 
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="hust-domain-audit")
-    parser.add_argument(
-        "--all-domains", type=Path, default=Path("docs/domain_all.txt")
-    )
-    parser.add_argument(
-        "--active-domains", type=Path, default=Path("docs/domain_active.txt")
-    )
-    parser.add_argument(
-        "--report", type=Path, default=Path("docs/domain_status.jsonl")
-    )
+    parser.add_argument("--all-domains", type=Path, default=Path("docs/domain_all.txt"))
+    parser.add_argument("--active-domains", type=Path, default=Path("docs/domain_active.txt"))
+    parser.add_argument("--report", type=Path, default=Path("docs/domain_status.jsonl"))
     parser.add_argument("--workers", type=int, default=32)
     parser.add_argument("--browser-workers", type=int, default=6)
     parser.add_argument("--browser-timeout", type=float, default=15.0)

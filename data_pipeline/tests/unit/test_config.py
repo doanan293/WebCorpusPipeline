@@ -33,9 +33,7 @@ def test_domain_active_uses_plain_hostname_per_line_format(tmp_path: Path) -> No
     source = tmp_path / "domain_active.txt"
     source.write_text("b.hust.edu.vn\na.hust.edu.vn\n", encoding="utf-8")
 
-    assert load_hostnames(source) == frozenset(
-        {"a.hust.edu.vn", "b.hust.edu.vn"}
-    )
+    assert load_hostnames(source) == frozenset({"a.hust.edu.vn", "b.hust.edu.vn"})
 
 
 def test_load_hostnames_rejects_urls(tmp_path: Path) -> None:
@@ -141,12 +139,14 @@ def test_config_load_rejects_placeholder_operator_contact(tmp_path: Path) -> Non
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [("retry_times", -1), ("download_timeout_seconds", 0),
-     ("retry_max_delay_seconds", 0), ("max_response_bytes", 0)],
+    [
+        ("retry_times", -1),
+        ("download_timeout_seconds", 0),
+        ("retry_max_delay_seconds", 0),
+        ("max_response_bytes", 0),
+    ],
 )
-def test_config_rejects_non_positive_runtime_values(
-    tmp_path: Path, field: str, value: int
-) -> None:
+def test_config_rejects_non_positive_runtime_values(tmp_path: Path, field: str, value: int) -> None:
     domains = tmp_path / "domains.txt"
     domains.write_text("example.com\n", encoding="utf-8")
     raw = tmp_path / "crawler.yaml"
@@ -156,7 +156,9 @@ def test_config_rejects_non_positive_runtime_values(
         CrawlerConfig.load(raw, domains)
 
 
-@pytest.mark.parametrize("field", ["concurrent_requests", "concurrent_per_host", "playwright_max_pages"])
+@pytest.mark.parametrize(
+    "field", ["concurrent_requests", "concurrent_per_host", "playwright_max_pages"]
+)
 def test_config_rejects_non_positive_concurrency_fields(tmp_path: Path, field: str) -> None:
     domains = tmp_path / "domains.txt"
     domains.write_text("example.com\n", encoding="utf-8")

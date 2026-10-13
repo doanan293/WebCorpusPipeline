@@ -97,15 +97,31 @@ def test_select_targets_collects_each_hub_kind(tmp_path: Path) -> None:
         state,
         "https://a.test/tin-tuc?page=2",
         role="navigation",
-        record={"family_key": "a.test/tin-tuc?page={page}", "ordinal": 2, "discovered_from": "https://a.test/tin-tuc"},
+        record={
+            "family_key": "a.test/tin-tuc?page={page}",
+            "ordinal": 2,
+            "discovered_from": "https://a.test/tin-tuc",
+        },
     )
     put_page(state, "https://a.test/bai/recent", article={"published_at": RECENT})
     put_page(state, "https://a.test/bai/old", article={"published_at": OLD})
     put_page(state, "https://a.test/bai/undated")
     put_page(state, "https://a.test/bai/from-run", record={"first_seen_run": "20260920T000000Z"})
-    for url, purpose in (("https://a.test/robots.txt", "robots"), ("https://a.test/sitemap.xml", "sitemap")):
-        state.upsert_url({"url": url, "status": "scheduled", "response_purpose": purpose, "completed": True})
-    state.upsert_url({"url": "https://b.test/robots.txt", "status": "scheduled", "response_purpose": "robots", "completed": True})
+    for url, purpose in (
+        ("https://a.test/robots.txt", "robots"),
+        ("https://a.test/sitemap.xml", "sitemap"),
+    ):
+        state.upsert_url(
+            {"url": url, "status": "scheduled", "response_purpose": purpose, "completed": True}
+        )
+    state.upsert_url(
+        {
+            "url": "https://b.test/robots.txt",
+            "status": "scheduled",
+            "response_purpose": "robots",
+            "completed": True,
+        }
+    )
 
     targets = select_targets(
         state.connection, frozenset({"a.test"}), RefreshSettings(), ["20260920T000000Z"], NOW
@@ -126,9 +142,21 @@ def test_select_targets_collects_each_hub_kind(tmp_path: Path) -> None:
 def test_select_recent_orders_newest_first_and_ignores_bad_dates(tmp_path: Path) -> None:
     state = open_state(tmp_path)
     day = 86400
-    put_page(state, "https://a.test/a", article={"published_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(NOW - 5 * day))})
-    put_page(state, "https://a.test/b", article={"published_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(NOW - 1 * day))})
-    put_page(state, "https://a.test/c", article={"modified_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(NOW - 2 * day))})
+    put_page(
+        state,
+        "https://a.test/a",
+        article={"published_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(NOW - 5 * day))},
+    )
+    put_page(
+        state,
+        "https://a.test/b",
+        article={"published_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(NOW - 1 * day))},
+    )
+    put_page(
+        state,
+        "https://a.test/c",
+        article={"modified_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(NOW - 2 * day))},
+    )
     put_page(state, "https://a.test/bad", article={"published_at": "08/09/2026", "modified_at": ""})
 
     recent = select_recent(state.connection, RefreshSettings(recheck_limit=2), [], NOW)
@@ -138,7 +166,9 @@ def test_select_recent_orders_newest_first_and_ignores_bad_dates(tmp_path: Path)
 
 
 def test_validators_round_trip_to_conditional_headers() -> None:
-    validators = response_validators({b"ETag": b'"v1"', b"Last-Modified": b"Tue, 06 Oct 2026 00:00:00 GMT"})
+    validators = response_validators(
+        {b"ETag": b'"v1"', b"Last-Modified": b"Tue, 06 Oct 2026 00:00:00 GMT"}
+    )
     assert validators == {"etag": '"v1"', "last_modified": "Tue, 06 Oct 2026 00:00:00 GMT"}
     assert conditional_headers(validators) == {
         "If-None-Match": '"v1"',
@@ -156,7 +186,9 @@ def test_classify_refetch() -> None:
 
 def test_follow_pagination_stops_after_configured_empty_pages(tmp_path: Path) -> None:
     state = open_state(tmp_path)
-    session = RefreshSession(RefreshStore(state.connection), "R", RefreshSettings(pagination_empty_pages=2))
+    session = RefreshSession(
+        RefreshStore(state.connection), "R", RefreshSettings(pagination_empty_pages=2)
+    )
     assert session.follow_pagination("f", 3) is True
     assert session.follow_pagination("f", 0) is True
     assert session.follow_pagination("f", 0) is False
@@ -200,12 +232,20 @@ def test_prepare_continues_interrupted_run_without_new_backup(tmp_path: Path) ->
     state = open_state(tmp_path)
     store = RefreshStore(state.connection)
     store.start_run("20261006T000000Z")
-    store.add_targets("20261006T000000Z", [("https://a.test/", "homepage"), ("https://a.test/x", "recent")])
+    store.add_targets(
+        "20261006T000000Z", [("https://a.test/", "homepage"), ("https://a.test/x", "recent")]
+    )
     store.finish_target("20261006T000000Z", "https://a.test/", "unchanged")
     store.finish_run("20261006T000000Z", "interrupted", {})
 
     run_id, targets = prepare_refresh_run(
-        state, store, tmp_path / "out", frozenset({"a.test"}), RefreshSettings(), "20261006T000000Z", now=NOW
+        state,
+        store,
+        tmp_path / "out",
+        frozenset({"a.test"}),
+        RefreshSettings(),
+        "20261006T000000Z",
+        now=NOW,
     )
 
     assert run_id == "20261006T000000Z"
@@ -220,15 +260,23 @@ def test_complete_refresh_run_exports_changes(tmp_path: Path) -> None:
     put_page(state, "https://a.test/new")
     store = RefreshStore(state.connection)
     output = tmp_path / "out"
-    run_id, _ = prepare_refresh_run(state, store, output, frozenset(), RefreshSettings(), None, now=NOW)
+    run_id, _ = prepare_refresh_run(
+        state, store, output, frozenset(), RefreshSettings(), None, now=NOW
+    )
     session = RefreshSession(store, run_id, RefreshSettings())
     session.record_change("https://a.test/new", "new", page_role="content", content_id="c1")
 
     summary = complete_refresh_run(state, session, output, "complete")
 
     run_dir = output / "changes" / run_id
-    changes = [json.loads(line) for line in (run_dir / "changes.jsonl").read_text(encoding="utf-8").splitlines()]
-    articles = [json.loads(line) for line in (run_dir / "articles.jsonl").read_text(encoding="utf-8").splitlines()]
+    changes = [
+        json.loads(line)
+        for line in (run_dir / "changes.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    articles = [
+        json.loads(line)
+        for line in (run_dir / "articles.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
     assert [c["url"] for c in changes] == ["https://a.test/new"]
     assert [a["url"] for a in articles] == ["https://a.test/new"]
     assert json.loads((run_dir / "summary.json").read_text(encoding="utf-8")) == summary
@@ -243,9 +291,13 @@ def test_interrupted_refresh_run_exports_nothing(tmp_path: Path) -> None:
     state = open_state(tmp_path)
     store = RefreshStore(state.connection)
     output = tmp_path / "out"
-    run_id, _ = prepare_refresh_run(state, store, output, frozenset(), RefreshSettings(), None, now=NOW)
+    run_id, _ = prepare_refresh_run(
+        state, store, output, frozenset(), RefreshSettings(), None, now=NOW
+    )
 
-    complete_refresh_run(state, RefreshSession(store, run_id, RefreshSettings()), output, "interrupted")
+    complete_refresh_run(
+        state, RefreshSession(store, run_id, RefreshSettings()), output, "interrupted"
+    )
 
     assert not (output / "changes").exists()
     assert "last_refresh_run_id" not in state.manifest
@@ -266,8 +318,13 @@ def test_failed_prepare_restores_finished_crawl_status(tmp_path: Path, monkeypat
     monkeypatch.setattr(state, "backup_to", disk_full)
     with pytest.raises(OSError):
         prepare_refresh_run(
-            state, RefreshStore(state.connection), tmp_path / "out",
-            frozenset({"a.test"}), RefreshSettings(), None, now=NOW,
+            state,
+            RefreshStore(state.connection),
+            tmp_path / "out",
+            frozenset({"a.test"}),
+            RefreshSettings(),
+            None,
+            now=NOW,
         )
     state.close()
 

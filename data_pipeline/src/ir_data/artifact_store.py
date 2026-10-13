@@ -26,8 +26,19 @@ def verify_file(file: DownloadedFile) -> bool:
 def extension_for(mime: str, url: str) -> str:
     suffix = Path(url.split("?", 1)[0]).suffix.lower()
     known = {
-        ".pdf", ".doc", ".docx", ".odt", ".xls", ".xlsx", ".ods",
-        ".ppt", ".pptx", ".odp", ".txt", ".csv", ".rtf",
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".odt",
+        ".xls",
+        ".xlsx",
+        ".ods",
+        ".ppt",
+        ".pptx",
+        ".odp",
+        ".txt",
+        ".csv",
+        ".rtf",
     }
     if suffix in known:
         return suffix

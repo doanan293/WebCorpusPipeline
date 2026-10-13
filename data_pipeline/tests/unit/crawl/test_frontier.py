@@ -44,40 +44,26 @@ def test_hard_host_limit_applies_to_sitemap_and_html_sources() -> None:
 
 
 def test_exact_hostname_boundary_rejects_subdomain_and_lookalike() -> None:
-    frontier = FrontierPolicy(
-        SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions()
-    )
+    frontier = FrontierPolicy(SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions())
     for url in ("https://sub.a.test/x", "https://a.test.evil.test/x"):
         decision = frontier.consider(candidate(url))
         assert (decision.action, decision.reason) == ("reject", "host_out_of_scope")
 
 
 def test_navigation_query_variants_stop_at_twenty() -> None:
-    frontier = FrontierPolicy(
-        SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions()
-    )
+    frontier = FrontierPolicy(SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions())
     decisions = [
-        frontier.consider(candidate(f"https://a.test/category/news?sort={i}"))
-        for i in range(21)
+        frontier.consider(candidate(f"https://a.test/category/news?sort={i}")) for i in range(21)
     ]
     assert all(d.action == "schedule" for d in decisions[:20])
-    assert (decisions[20].action, decisions[20].reason) == (
-        "reject", "query_variant_limit"
-    )
+    assert (decisions[20].action, decisions[20].reason) == ("reject", "query_variant_limit")
 
 
 def test_root_path_query_variants_stop_at_twenty() -> None:
-    frontier = FrontierPolicy(
-        SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions()
-    )
-    decisions = [
-        frontier.consider(candidate(f"https://a.test/?sort={i}"))
-        for i in range(21)
-    ]
+    frontier = FrontierPolicy(SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions())
+    decisions = [frontier.consider(candidate(f"https://a.test/?sort={i}")) for i in range(21)]
     assert all(d.action == "schedule" for d in decisions[:20])
-    assert (decisions[20].action, decisions[20].reason) == (
-        "reject", "query_variant_limit"
-    )
+    assert (decisions[20].action, decisions[20].reason) == ("reject", "query_variant_limit")
 
 
 @pytest.mark.parametrize("query_key", ["f.subject", "facet.topic", "filters[topic]"])
@@ -157,9 +143,7 @@ def test_archive_path_query_variants_are_bounded(path: str) -> None:
 
 
 def test_namespaced_pagination_uses_one_branch() -> None:
-    frontier = FrontierPolicy(
-        SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions()
-    )
+    frontier = FrontierPolicy(SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions())
 
     first = frontier._pagination_branch("https://a.test/items?spc.page=1&tag=ai")
     second = frontier._pagination_branch("https://a.test/items?spc.page=2&tag=ai")
@@ -178,17 +162,13 @@ def test_namespaced_pagination_uses_one_branch() -> None:
 def test_facet_namespace_with_pagination_like_field_is_not_a_pagination_branch(
     url: str,
 ) -> None:
-    frontier = FrontierPolicy(
-        SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions()
-    )
+    frontier = FrontierPolicy(SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions())
 
     assert frontier._pagination_branch(url) is None
 
 
 def test_semantic_pagination_is_not_limited_to_twenty_query_variants() -> None:
-    frontier = FrontierPolicy(
-        SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions()
-    )
+    frontier = FrontierPolicy(SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions())
 
     decisions = [
         frontier.consider(
@@ -204,9 +184,7 @@ def test_semantic_pagination_is_not_limited_to_twenty_query_variants() -> None:
 
 
 def test_semantic_pagination_does_not_charge_query_variant_budget() -> None:
-    frontier = FrontierPolicy(
-        SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions()
-    )
+    frontier = FrontierPolicy(SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions())
     for number in range(1, 21):
         decision = frontier.consider(
             candidate(
@@ -222,14 +200,10 @@ def test_semantic_pagination_does_not_charge_query_variant_budget() -> None:
 
 
 def test_wordpress_shortlinks_are_not_limited_as_navigation_queries() -> None:
-    frontier = FrontierPolicy(
-        SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions()
-    )
+    frontier = FrontierPolicy(SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions())
 
     decisions = [
-        frontier.consider(
-            candidate(f"https://a.test/?p={post_id}", link_kind="content")
-        )
+        frontier.consider(candidate(f"https://a.test/?p={post_id}", link_kind="content"))
         for post_id in range(1, 22)
     ]
 
@@ -237,13 +211,9 @@ def test_wordpress_shortlinks_are_not_limited_as_navigation_queries() -> None:
 
 
 def test_semantic_content_receives_content_priority() -> None:
-    frontier = FrontierPolicy(
-        SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions()
-    )
+    frontier = FrontierPolicy(SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions())
 
-    decision = frontier.consider(
-        candidate("https://a.test/?p=33214", link_kind="content")
-    )
+    decision = frontier.consider(candidate("https://a.test/?p=33214", link_kind="content"))
 
     assert decision.priority == 500
 
@@ -259,9 +229,7 @@ def test_restore_does_not_charge_pagination_against_query_variant_budget() -> No
         }
         for number in range(1, 21)
     ]
-    frontier = FrontierPolicy(
-        SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions()
-    )
+    frontier = FrontierPolicy(SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions())
 
     frontier.restore(records)
 
@@ -269,11 +237,8 @@ def test_restore_does_not_charge_pagination_against_query_variant_budget() -> No
     assert decision.action == "schedule"
 
 
-
 def test_three_empty_pages_close_only_the_same_pagination_branch() -> None:
-    frontier = FrontierPolicy(
-        SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions()
-    )
+    frontier = FrontierPolicy(SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions())
     for number in range(1, 4):
         url = f"https://a.test/news?page={number}"
         assert frontier.consider(candidate(url)).action == "schedule"
@@ -395,12 +360,8 @@ def test_content_urls_outrank_navigation_urls() -> None:
             purpose="robots",
         )
     )
-    sitemap_decision = frontier.consider(
-        candidate("https://a.test/article-1", source="sitemap")
-    )
-    content_decision = frontier.consider(
-        candidate("https://a.test/article-2", source="html_link")
-    )
+    sitemap_decision = frontier.consider(candidate("https://a.test/article-1", source="sitemap"))
+    content_decision = frontier.consider(candidate("https://a.test/article-2", source="html_link"))
     navigation_decision = frontier.consider(
         candidate("https://a.test/category/news", source="html_link")
     )
@@ -425,14 +386,18 @@ def test_global_limit_returns_total_url_limit() -> None:
     seeds = SeedSet(frozenset({"a.test", "b.test"}), (), ())
     frontier = FrontierPolicy(seeds, CrawlOptions(max_urls_per_host=10, max_total_urls=2))
     assert frontier.consider(candidate("https://a.test/1")).action == "schedule"
-    assert frontier.consider(candidate("https://b.test/1", discovered_from="https://b.test/")).action == "schedule"
+    assert (
+        frontier.consider(candidate("https://b.test/1", discovered_from="https://b.test/")).action
+        == "schedule"
+    )
     stopped = frontier.consider(candidate("https://a.test/2"))
     assert (stopped.action, stopped.reason) == ("reject", "total_url_limit")
 
 
-
 def test_page_role_classification() -> None:
-    frontier = FrontierPolicy(SeedSet(frozenset({"lms.hust.edu.vn", "a.test"}), (), ()), CrawlOptions())
+    frontier = FrontierPolicy(
+        SeedSet(frozenset({"lms.hust.edu.vn", "a.test"}), (), ()), CrawlOptions()
+    )
     assert frontier.page_role("https://lms.hust.edu.vn/") == "content"
     assert frontier.page_role("https://lms.hust.edu.vn/course/view.php?id=2") == "content"
     assert frontier.page_role("https://lms.hust.edu.vn/news/detail-slug") == "content"
@@ -457,7 +422,6 @@ def test_frontier_policy_handles_none_trap_exceptions() -> None:
         trap_exceptions=None,
     )
     assert frontier.trap_exceptions == {}
-
 
 
 @pytest.mark.parametrize(
@@ -492,7 +456,6 @@ def test_trap_exceptions_allow_configured_traps() -> None:
     assert decision.action == "schedule"
 
 
-
 def test_observe_pagination_resets_on_content() -> None:
     seeds = SeedSet(frozenset({"a.test"}), (), ())
     frontier = FrontierPolicy(seeds, CrawlOptions())
@@ -515,7 +478,12 @@ def test_restore_ignores_non_scheduled() -> None:
     records = [
         {"url": "https://a.test/rej", "frontier_action": "rejected", "seed_type": "recursive"},
         {"url": "https://a.test/rec", "frontier_action": "record_only", "seed_type": "recursive"},
-        {"url": "https://a.test/1", "frontier_action": "scheduled", "seed_type": "recursive", "discovery_source": "html_link"},
+        {
+            "url": "https://a.test/1",
+            "frontier_action": "scheduled",
+            "seed_type": "recursive",
+            "discovery_source": "html_link",
+        },
     ]
     frontier = FrontierPolicy(SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions())
     frontier.restore(records)
@@ -573,9 +541,7 @@ def test_closed_pagination_branch_does_not_reject_wordpress_content_id() -> None
     )
     frontier.observe_pagination("https://a.test/?p=1", new_content_count=0)
 
-    decision = frontier.consider(
-        candidate("https://a.test/?p=33214", link_kind="content")
-    )
+    decision = frontier.consider(candidate("https://a.test/?p=33214", link_kind="content"))
 
     assert decision.action == "schedule"
     assert decision.priority == 500
@@ -609,13 +575,25 @@ def test_observe_pagination_stats_and_branches() -> None:
 
 def test_direct_external_asset_is_allowed_but_external_page_is_not() -> None:
     frontier = FrontierPolicy(SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions())
-    asset = frontier.consider(Candidate(
-        "https://cdn.test/a.png", "recursive", "https://a.test/p", "image", "asset",
-        discovery_source="html_link",
-    ))
-    page = frontier.consider(Candidate(
-        "https://cdn.test/page", "recursive", "https://a.test/p", "html", "page",
-        discovery_source="html_link",
-    ))
+    asset = frontier.consider(
+        Candidate(
+            "https://cdn.test/a.png",
+            "recursive",
+            "https://a.test/p",
+            "image",
+            "asset",
+            discovery_source="html_link",
+        )
+    )
+    page = frontier.consider(
+        Candidate(
+            "https://cdn.test/page",
+            "recursive",
+            "https://a.test/p",
+            "html",
+            "page",
+            discovery_source="html_link",
+        )
+    )
     assert asset.action == "schedule"
     assert (page.action, page.reason) == ("reject", "host_out_of_scope")

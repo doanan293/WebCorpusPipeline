@@ -42,6 +42,7 @@ def test_identical_files_share_one_blob(tmp_path: Path) -> None:
     assert writer.stored_bytes == 4
     writer.close()
 
+
 def test_file_size_limit_rejection(tmp_path: Path) -> None:
     writer = make_writer(tmp_path, max_file_bytes=3)
     with pytest.raises(StorageLimit) as exc_info:
@@ -68,16 +69,20 @@ def test_storage_budget_rejection(tmp_path: Path) -> None:
 
 def test_write_article_content_deduplication(tmp_path: Path) -> None:
     writer = make_writer(tmp_path)
-    a1 = writer.write_article({
-        "url": "https://a.test/1",
-        "title": "One",
-        "text": "Same text content",
-    })
-    a2 = writer.write_article({
-        "url": "https://a.test/2",
-        "title": "Two",
-        "text": "Same text content",
-    })
+    a1 = writer.write_article(
+        {
+            "url": "https://a.test/1",
+            "title": "One",
+            "text": "Same text content",
+        }
+    )
+    a2 = writer.write_article(
+        {
+            "url": "https://a.test/2",
+            "title": "Two",
+            "text": "Same text content",
+        }
+    )
     assert "duplicate_of" not in a1 or a1["duplicate_of"] is None
     assert a2["duplicate_of"] == "https://a.test/1"
     writer.close()
@@ -85,19 +90,26 @@ def test_write_article_content_deduplication(tmp_path: Path) -> None:
 
 def test_write_article_completes_url(tmp_path: Path) -> None:
     writer = make_writer(tmp_path)
-    writer.write_article({
-        "url": "https://a.test/article",
-        "title": "Article",
-        "text": "Body",
-    })
+    writer.write_article(
+        {
+            "url": "https://a.test/article",
+            "title": "Article",
+            "text": "Body",
+        }
+    )
     assert writer.state.is_complete("https://a.test/article")
     writer.close()
 
 
-
 def test_file_record_preserves_article_asset_role(tmp_path: Path) -> None:
     writer = make_writer(tmp_path)
-    record = writer.write_file("https://a.test/photo.jpg", "https://a.test/photo.jpg", "image/jpeg", b"image", asset_role="inline_image")
+    record = writer.write_file(
+        "https://a.test/photo.jpg",
+        "https://a.test/photo.jpg",
+        "image/jpeg",
+        b"image",
+        asset_role="inline_image",
+    )
     assert record["asset_role"] == "inline_image"
     assert record["path"].startswith("files/")
     writer.close()
@@ -128,12 +140,22 @@ def test_extensionless_odf_files_resolve_extension(
 def test_file_record_merges_referrers_and_reuses_body(tmp_path: Path) -> None:
     writer = make_writer(tmp_path)
     first = writer.write_file(
-        "https://cdn.test/a.png", "https://cdn.test/a.png", "image/png", b"same",
-        asset_group="image", asset_role="inline_image", referring_page="https://a.test/one",
+        "https://cdn.test/a.png",
+        "https://cdn.test/a.png",
+        "image/png",
+        b"same",
+        asset_group="image",
+        asset_role="inline_image",
+        referring_page="https://a.test/one",
     )
     second = writer.write_file(
-        "https://cdn.test/a.png", "https://cdn.test/a.png", "image/png", b"same",
-        asset_group="image", asset_role="inline_image", referring_page="https://a.test/two",
+        "https://cdn.test/a.png",
+        "https://cdn.test/a.png",
+        "image/png",
+        b"same",
+        asset_group="image",
+        asset_role="inline_image",
+        referring_page="https://a.test/two",
     )
     assert first["sha256"] == second["sha256"]
     assert second["referring_pages"] == ["https://a.test/one", "https://a.test/two"]
@@ -155,7 +177,9 @@ def test_content_id_for_matches_written_article(tmp_path: Path) -> None:
     from hust_crawler.crawl.writer import content_id_for
 
     writer = make_writer(tmp_path)
-    stored = writer.write_article({"url": "https://a.test/a", "final_url": "https://a.test/a", "text": "  Body \n"})
+    stored = writer.write_article(
+        {"url": "https://a.test/a", "final_url": "https://a.test/a", "text": "  Body \n"}
+    )
 
     assert stored["content_id"] == content_id_for("  Body \n") == content_id_for("Body")
     writer.close()

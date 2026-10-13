@@ -8,15 +8,18 @@ from hust_crawler.crawl.link_policy import (
 )
 
 
-@pytest.mark.parametrize("url,text,kind", [
-    ("https://a.test/article/123", "Chi tiết", "content"),
-    ("https://a.test/view?id=123", "Xem", "content"),
-    ("https://a.test/news?page=2", "2", "pagination"),
-    ("https://a.test/search?q=x", "Tìm", "search_filter"),
-    ("https://a.test/archive/2026/09", "Tháng 9", "calendar_archive"),
-    ("https://a.test/logout", "Đăng xuất", "action_auth"),
-    ("https://a.test/report.pdf", "PDF", "asset"),
-])
+@pytest.mark.parametrize(
+    "url,text,kind",
+    [
+        ("https://a.test/article/123", "Chi tiết", "content"),
+        ("https://a.test/view?id=123", "Xem", "content"),
+        ("https://a.test/news?page=2", "2", "pagination"),
+        ("https://a.test/search?q=x", "Tìm", "search_filter"),
+        ("https://a.test/archive/2026/09", "Tháng 9", "calendar_archive"),
+        ("https://a.test/logout", "Đăng xuất", "action_auth"),
+        ("https://a.test/report.pdf", "PDF", "asset"),
+    ],
+)
 def test_link_kinds(url: str, text: str, kind: str) -> None:
     assert classify_link(url, source_url="https://a.test/news", text=text).kind == kind
 
@@ -111,9 +114,16 @@ def test_generic_sort_query_keys_are_navigation(query_key: str) -> None:
 def test_route_family_preserves_content_ids() -> None:
     assert route_family_key("https://a.test/article/123", "content") is None
     assert route_family_key("https://a.test/view?id=123", "content") is None
-    assert route_family_key("https://a.test/news?page=123", "pagination") == "a.test/news?page={page}"
-    assert route_family_key("https://a.test/news/page/123", "pagination") == "a.test/news/page/{page}"
-    assert route_family_key("https://a.test/archive/2026/09", "calendar_archive") == "a.test/archive/{year}/{month}"
+    assert (
+        route_family_key("https://a.test/news?page=123", "pagination") == "a.test/news?page={page}"
+    )
+    assert (
+        route_family_key("https://a.test/news/page/123", "pagination") == "a.test/news/page/{page}"
+    )
+    assert (
+        route_family_key("https://a.test/archive/2026/09", "calendar_archive")
+        == "a.test/archive/{year}/{month}"
+    )
 
 
 def test_wordpress_shortlink_post_id_is_content() -> None:
@@ -180,8 +190,14 @@ def test_shortlink_relation_overrides_other_pagination_signals() -> None:
 
 def test_selects_only_one_semantic_next() -> None:
     links = (
-        ClassifiedLink("https://a.test/news?page=2", "pagination", "a.test/news?page={page}", 2, False, None),
-        ClassifiedLink("https://a.test/news?page=3", "pagination", "a.test/news?page={page}", 3, True, None),
-        ClassifiedLink("https://a.test/news?page=99", "pagination", "a.test/news?page={page}", 99, False, None),
+        ClassifiedLink(
+            "https://a.test/news?page=2", "pagination", "a.test/news?page={page}", 2, False, None
+        ),
+        ClassifiedLink(
+            "https://a.test/news?page=3", "pagination", "a.test/news?page={page}", 3, True, None
+        ),
+        ClassifiedLink(
+            "https://a.test/news?page=99", "pagination", "a.test/news?page={page}", 99, False, None
+        ),
     )
     assert select_semantic_next(links, current_ordinal=2).url.endswith("page=3")

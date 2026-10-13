@@ -79,7 +79,9 @@ def known_page(writer: CrawlWriter, url: str, body: str, **record: object) -> di
             **record,
         }
     )
-    return writer.write_article({"url": url, "final_url": url, "text": text, "page_role": "content"})
+    return writer.write_article(
+        {"url": url, "final_url": url, "text": text, "page_role": "content"}
+    )
 
 
 def test_html_response_stores_http_validators(tmp_path: Path) -> None:
@@ -109,7 +111,7 @@ ARTICLE_1 = "<main><h1>Bài một</h1><p>Nội dung bài một của khoa, đủ
 ARTICLE_2 = "<main><h1>Bài hai</h1><p>Nội dung bài hai của khoa, đủ dài để trích xuất.</p></main>"
 LIST_V1 = '<main><h1>Tin tức</h1><p>Danh sách bài mới.</p><a href="/bai/1">Bài một</a></main>'
 LIST_V2 = (
-    '<main><h1>Tin tức</h1><p>Danh sách bài mới, đã cập nhật bài hai.</p>'
+    "<main><h1>Tin tức</h1><p>Danh sách bài mới, đã cập nhật bài hai.</p>"
     '<a href="/bai/2">Bài hai</a><a href="/bai/1">Bài một</a></main>'
 )
 
@@ -122,7 +124,9 @@ def refresh_spider(
     store.add_targets(RUN_ID, targets)
     writer.state.refresh_run_id = RUN_ID
     session = RefreshSession(store, RUN_ID, settings or RefreshSettings())
-    return make_spider(writer, refresh=session, refresh_targets=store.pending_targets(RUN_ID)), store
+    return make_spider(
+        writer, refresh=session, refresh_targets=store.pending_targets(RUN_ID)
+    ), store
 
 
 def outcome(store: RefreshStore, url: str) -> str:
@@ -222,7 +226,9 @@ def test_soft_404_refetch_keeps_existing_article(tmp_path: Path) -> None:
     spider, store = refresh_spider(writer, [("https://a.test/tin-tuc", "navigation")])
     [request] = list(spider.start_requests())
 
-    body = "<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>"
+    body = (
+        "<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>"
+    )
     list(spider.parse_response(page(request, body)))
 
     assert outcome(store, "https://a.test/tin-tuc").startswith("gate_")
@@ -251,7 +257,7 @@ def test_pagination_refetches_known_next_page_only_while_new_links_appear(tmp_pa
     writer = open_writer(tmp_path)
     page1_v1 = LIST_V1.replace("</main>", '<a href="/tin-tuc?page=2">2</a></main>')
     page2 = (
-        '<main><h1>Tin tức trang 2</h1><p>Danh sách cũ.</p>'
+        "<main><h1>Tin tức trang 2</h1><p>Danh sách cũ.</p>"
         '<a href="/bai/1">Bài một</a><a href="/tin-tuc?page=3">3</a></main>'
     )
     known_page(writer, "https://a.test/tin-tuc", page1_v1)

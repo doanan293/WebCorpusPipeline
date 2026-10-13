@@ -10,8 +10,8 @@ from hust_crawler.crawl.content import (
 
 DECLARED_UTF8_HTML = (
     '<?xml version="1.0" encoding="utf-8"?>'
-    '<html><head><title>Thông báo</title></head>'
-    '<body><main><p>Nội dung tiếng Việt.</p></main>'
+    "<html><head><title>Thông báo</title></head>"
+    "<body><main><p>Nội dung tiếng Việt.</p></main>"
     '<a href="/tin-moi">Tin mới</a></body></html>'
 ).encode("utf-8")
 
@@ -30,7 +30,7 @@ def test_discover_html_accepts_bytes_with_xml_encoding_declaration() -> None:
 
 def test_article_and_outgoing_links() -> None:
     result = extract_html(
-        '<nav>Menu</nav><article><h1>Tin mới</h1><p>Nội dung.</p></article>'
+        "<nav>Menu</nav><article><h1>Tin mới</h1><p>Nội dung.</p></article>"
         '<a href="/b"> B </a><a href="https://outside.test/c">C</a>',
         "https://site.test/a",
     )
@@ -107,7 +107,7 @@ def test_malformed_html_preserves_paragraph_boundaries() -> None:
 
 def test_missing_title_and_text_emit_warnings() -> None:
     result = extract_html(
-        '<html><head><title> </title></head><body><nav>Menu</nav><script>noise()</script></body></html>',
+        "<html><head><title> </title></head><body><nav>Menu</nav><script>noise()</script></body></html>",
         "https://site.test/empty",
     )
 
@@ -133,8 +133,18 @@ def test_discovery_includes_media_and_srcset_but_discards_transients() -> None:
     """
 
     assert discover_html(html, "https://site.test/page") == [
-        {"url": "https://assets.site.test/article?id=1", "text": "Article", "kind": "html", "rel": []},
-        {"url": "https://assets.site.test/article?id=2", "text": "Article", "kind": "html", "rel": []},
+        {
+            "url": "https://assets.site.test/article?id=1",
+            "text": "Article",
+            "kind": "html",
+            "rel": [],
+        },
+        {
+            "url": "https://assets.site.test/article?id=2",
+            "text": "Article",
+            "kind": "html",
+            "rel": [],
+        },
         {
             "url": "https://assets.site.test/v1/hero.jpg?size=large",
             "text": "Hero",
@@ -194,7 +204,9 @@ def test_resource_kind_uses_mime_before_extension(
 def test_legacy_title_text_and_links_fields_remain_present() -> None:
     from hust_crawler.crawl.article import analyze_article
 
-    article = analyze_article("<main><h1>A</h1><p>B</p><a href='/c'>C</a></main>", "https://a.test/").article
+    article = analyze_article(
+        "<main><h1>A</h1><p>B</p><a href='/c'>C</a></main>", "https://a.test/"
+    ).article
     assert article["title"] == "A"
     assert article["text"] == "A\nB\nC"
     assert article["links"] == [{"url": "https://a.test/c", "text": "C"}]

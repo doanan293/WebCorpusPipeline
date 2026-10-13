@@ -8,7 +8,6 @@ from hust_crawler.policies.url import (
 )
 
 
-
 def test_exact_host_and_tracking_cleanup() -> None:
     decision = UrlPolicy(frozenset({"example.com"})).decide(
         "HTTPS://EXAMPLE.COM:443/a/../b?utm_source=x&z=2&a=1#top"

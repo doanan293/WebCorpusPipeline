@@ -86,9 +86,7 @@ def test_empty_discovery_finishes_as_no_sitemap() -> None:
     coordinator = SitemapDiscoveryCoordinator()
     coordinator.register_sitemap("a.test", "https://a.test/sitemap.xml", required=False)
     coordinator.complete_robots("a.test")
-    coordinator.complete_sitemap(
-        "a.test", "https://a.test/sitemap.xml", result="absent", targets=0
-    )
+    coordinator.complete_sitemap("a.test", "https://a.test/sitemap.xml", result="absent", targets=0)
     host = coordinator.snapshot()["hosts"]["a.test"]
     assert host["mode"] == "no_sitemap"
     assert "fallback_targets" not in host
@@ -113,9 +111,7 @@ def test_html_targets_are_counted_without_hiding_sitemap_outcome() -> None:
     coordinator = SitemapDiscoveryCoordinator(strategy="hybrid-unified")
     coordinator.register_sitemap("a.test", "https://a.test/sitemap.xml", required=False)
     coordinator.complete_robots("a.test")
-    coordinator.complete_sitemap(
-        "a.test", "https://a.test/sitemap.xml", result="absent"
-    )
+    coordinator.complete_sitemap("a.test", "https://a.test/sitemap.xml", result="absent")
     coordinator.record_html_target("a.test", "https://a.test/")
     host = coordinator.snapshot()["hosts"]["a.test"]
     assert host["mode"] == "no_sitemap"

@@ -73,7 +73,10 @@ def test_powerpoint_reads_text_and_marks_image_only_slide(tmp_path):
 
 def test_download_extension_uses_mime_for_dynamic_document_urls():
     assert extension_for("application/pdf", "https://example.test/download.aspx?id=7") == ".pdf"
-    assert extension_for(
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "https://example.test/file?id=8",
-    ) == ".docx"
+    assert (
+        extension_for(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "https://example.test/file?id=8",
+        )
+        == ".docx"
+    )

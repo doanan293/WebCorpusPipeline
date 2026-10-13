@@ -15,8 +15,6 @@ if TYPE_CHECKING:
     from .crawl.profiles import RuntimeTuning
 
 
-
-
 def normalize_hostname(value: str) -> str:
     hostname = value.strip().lower().rstrip(".")
     if not hostname or any(char.isspace() for char in hostname):
@@ -116,18 +114,42 @@ class CrawlerConfig:
             raise ValueError("contact is required")
         validate_network_contact(contact)
         required = (
-            "user_agent_name", "user_agent_version", "concurrent_requests",
-            "access_policy_revision", "browser_user_agent",
-            "concurrent_per_host", "download_delay_seconds", "download_timeout_seconds",
-            "max_response_bytes", "robots_txt_obey", "cookies_enabled", "redirect_max_times",
-            "autothrottle_enabled", "autothrottle_target_concurrency", "throttle_start_seconds",
-            "throttle_max_seconds", "retry_times", "retry_statuses", "retry_backoff_base_seconds",
-            "retry_max_delay_seconds", "playwright_max_pages", "resource_limit_percent", "assets",
-            "max_file_bytes", "max_total_file_bytes", "max_query_variants_per_path",
-            "pagination_empty_pages", "max_urls_per_host", "max_total_urls", "journal_batch_size",
-            "journal_flush_seconds", "progress_interval_seconds",
-            "refresh_pagination_empty_pages", "refresh_recent_days",
-            "refresh_recent_runs", "refresh_recheck_limit",
+            "user_agent_name",
+            "user_agent_version",
+            "concurrent_requests",
+            "access_policy_revision",
+            "browser_user_agent",
+            "concurrent_per_host",
+            "download_delay_seconds",
+            "download_timeout_seconds",
+            "max_response_bytes",
+            "robots_txt_obey",
+            "cookies_enabled",
+            "redirect_max_times",
+            "autothrottle_enabled",
+            "autothrottle_target_concurrency",
+            "throttle_start_seconds",
+            "throttle_max_seconds",
+            "retry_times",
+            "retry_statuses",
+            "retry_backoff_base_seconds",
+            "retry_max_delay_seconds",
+            "playwright_max_pages",
+            "resource_limit_percent",
+            "assets",
+            "max_file_bytes",
+            "max_total_file_bytes",
+            "max_query_variants_per_path",
+            "pagination_empty_pages",
+            "max_urls_per_host",
+            "max_total_urls",
+            "journal_batch_size",
+            "journal_flush_seconds",
+            "progress_interval_seconds",
+            "refresh_pagination_empty_pages",
+            "refresh_recent_days",
+            "refresh_recent_runs",
+            "refresh_recheck_limit",
         )
         missing = sorted(name for name in required if name not in raw)
         if "contact" not in raw and not environment.get("CRAWLER_CONTACT", "").strip():
@@ -144,37 +166,72 @@ class CrawlerConfig:
         values = {
             "hostnames": hostnames,
             "contact": contact,
-            "user_agent_name": str(raw["user_agent_name"]), "user_agent_version": str(raw["user_agent_version"]),
+            "user_agent_name": str(raw["user_agent_name"]),
+            "user_agent_version": str(raw["user_agent_version"]),
             "access_policy_revision": int(raw["access_policy_revision"]),
             "browser_user_agent": str(raw["browser_user_agent"]),
-            "concurrent_requests": int(raw["concurrent_requests"]), "concurrent_per_host": int(raw["concurrent_per_host"]),
-            "playwright_max_pages": int(raw["playwright_max_pages"]), "download_delay_seconds": float(raw["download_delay_seconds"]),
-            "throttle_start_seconds": float(raw["throttle_start_seconds"]), "throttle_max_seconds": float(raw["throttle_max_seconds"]),
-            "retry_times": int(raw["retry_times"]), "retry_statuses": tuple(int(status) for status in raw["retry_statuses"]),
-            "retry_backoff_base_seconds": float(raw["retry_backoff_base_seconds"]), "retry_max_delay_seconds": float(raw["retry_max_delay_seconds"]),
-            "download_timeout_seconds": float(raw["download_timeout_seconds"]), "max_response_bytes": int(raw["max_response_bytes"]),
-            "robots_txt_obey": required_bool("robots_txt_obey"), "cookies_enabled": required_bool("cookies_enabled"),
-            "redirect_max_times": int(raw["redirect_max_times"]), "autothrottle_enabled": required_bool("autothrottle_enabled"),
-            "autothrottle_target_concurrency": float(raw["autothrottle_target_concurrency"]), "resource_limit_percent": int(raw["resource_limit_percent"]),
-            "assets": raw["assets"], "max_file_bytes": int(raw["max_file_bytes"]), "max_total_file_bytes": int(raw["max_total_file_bytes"]),
-            "max_query_variants_per_path": int(raw["max_query_variants_per_path"]), "pagination_empty_pages": int(raw["pagination_empty_pages"]),
-            "max_urls_per_host": int(raw["max_urls_per_host"]), "max_total_urls": int(raw["max_total_urls"]),
-            "journal_batch_size": int(raw["journal_batch_size"]), "journal_flush_seconds": float(raw["journal_flush_seconds"]),
+            "concurrent_requests": int(raw["concurrent_requests"]),
+            "concurrent_per_host": int(raw["concurrent_per_host"]),
+            "playwright_max_pages": int(raw["playwright_max_pages"]),
+            "download_delay_seconds": float(raw["download_delay_seconds"]),
+            "throttle_start_seconds": float(raw["throttle_start_seconds"]),
+            "throttle_max_seconds": float(raw["throttle_max_seconds"]),
+            "retry_times": int(raw["retry_times"]),
+            "retry_statuses": tuple(int(status) for status in raw["retry_statuses"]),
+            "retry_backoff_base_seconds": float(raw["retry_backoff_base_seconds"]),
+            "retry_max_delay_seconds": float(raw["retry_max_delay_seconds"]),
+            "download_timeout_seconds": float(raw["download_timeout_seconds"]),
+            "max_response_bytes": int(raw["max_response_bytes"]),
+            "robots_txt_obey": required_bool("robots_txt_obey"),
+            "cookies_enabled": required_bool("cookies_enabled"),
+            "redirect_max_times": int(raw["redirect_max_times"]),
+            "autothrottle_enabled": required_bool("autothrottle_enabled"),
+            "autothrottle_target_concurrency": float(raw["autothrottle_target_concurrency"]),
+            "resource_limit_percent": int(raw["resource_limit_percent"]),
+            "assets": raw["assets"],
+            "max_file_bytes": int(raw["max_file_bytes"]),
+            "max_total_file_bytes": int(raw["max_total_file_bytes"]),
+            "max_query_variants_per_path": int(raw["max_query_variants_per_path"]),
+            "pagination_empty_pages": int(raw["pagination_empty_pages"]),
+            "max_urls_per_host": int(raw["max_urls_per_host"]),
+            "max_total_urls": int(raw["max_total_urls"]),
+            "journal_batch_size": int(raw["journal_batch_size"]),
+            "journal_flush_seconds": float(raw["journal_flush_seconds"]),
             "progress_interval_seconds": float(raw["progress_interval_seconds"]),
             "refresh_pagination_empty_pages": int(raw["refresh_pagination_empty_pages"]),
             "refresh_recent_days": int(raw["refresh_recent_days"]),
             "refresh_recent_runs": int(raw["refresh_recent_runs"]),
             "refresh_recheck_limit": int(raw["refresh_recheck_limit"]),
         }
-        positive = tuple(name for name in required if name not in {"user_agent_name", "user_agent_version", "browser_user_agent", "robots_txt_obey", "cookies_enabled", "autothrottle_enabled", "assets", "retry_statuses"})
+        positive = tuple(
+            name
+            for name in required
+            if name
+            not in {
+                "user_agent_name",
+                "user_agent_version",
+                "browser_user_agent",
+                "robots_txt_obey",
+                "cookies_enabled",
+                "autothrottle_enabled",
+                "assets",
+                "retry_statuses",
+            }
+        )
         for name in positive:
             if values[name] <= 0:
                 raise ValueError(f"{name} must be positive")
-        if not values["retry_statuses"] or any(status < 100 or status > 599 for status in values["retry_statuses"]):
+        if not values["retry_statuses"] or any(
+            status < 100 or status > 599 for status in values["retry_statuses"]
+        ):
             raise ValueError("retry_statuses must contain HTTP status codes")
         if values["download_delay_seconds"] <= 0:
             raise ValueError("download_delay_seconds must be positive")
-        if values["throttle_start_seconds"] <= 0 or values["throttle_max_seconds"] <= 0 or values["throttle_start_seconds"] > values["throttle_max_seconds"]:
+        if (
+            values["throttle_start_seconds"] <= 0
+            or values["throttle_max_seconds"] <= 0
+            or values["throttle_start_seconds"] > values["throttle_max_seconds"]
+        ):
             raise ValueError("throttle delays must be positive and ordered")
         if values["autothrottle_target_concurrency"] > values["concurrent_per_host"]:
             raise ValueError("autothrottle_target_concurrency must not exceed concurrent_per_host")
@@ -192,12 +249,21 @@ _RUNTIME_CONFIG_KEYS = {
     "download_delay_seconds",
     "throttle_start_seconds",
     "throttle_max_seconds",
-    "autothrottle_enabled", "autothrottle_target_concurrency", "download_timeout_seconds",
-    "retry_times", "retry_backoff_base_seconds", "retry_max_delay_seconds",
-    "playwright_max_pages", "resource_limit_percent", "journal_batch_size",
-    "journal_flush_seconds", "progress_interval_seconds",
-    "refresh_pagination_empty_pages", "refresh_recent_days",
-    "refresh_recent_runs", "refresh_recheck_limit",
+    "autothrottle_enabled",
+    "autothrottle_target_concurrency",
+    "download_timeout_seconds",
+    "retry_times",
+    "retry_backoff_base_seconds",
+    "retry_max_delay_seconds",
+    "playwright_max_pages",
+    "resource_limit_percent",
+    "journal_batch_size",
+    "journal_flush_seconds",
+    "progress_interval_seconds",
+    "refresh_pagination_empty_pages",
+    "refresh_recent_days",
+    "refresh_recent_runs",
+    "refresh_recheck_limit",
 }
 
 
@@ -210,7 +276,10 @@ def _normalized_snapshot(values: dict[str, object]) -> dict[str, object]:
         if isinstance(value, tuple):
             return [normalize(item) for item in value]
         if isinstance(value, dict):
-            return {str(key): normalize(item) for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))}
+            return {
+                str(key): normalize(item)
+                for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+            }
         return value
 
     return {key: normalize(value) for key, value in sorted(values.items())}

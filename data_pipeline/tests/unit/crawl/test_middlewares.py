@@ -22,7 +22,12 @@ from hust_crawler.crawl.middlewares import (
 
 def test_redirect_outside_exact_hosts_raises_ignore_request() -> None:
     request = Request("https://a.test/", meta={"allowed_hostnames": frozenset({"a.test"})})
-    response = Response("https://a.test/", status=302, headers={b"Location": b"https://outside.test/page"}, request=request)
+    response = Response(
+        "https://a.test/",
+        status=302,
+        headers={b"Location": b"https://outside.test/page"},
+        request=request,
+    )
     try:
         ExactHostRedirectMiddleware().process_response(request, response)
     except Exception as exc:
@@ -34,7 +39,12 @@ def test_redirect_outside_exact_hosts_raises_ignore_request() -> None:
 def test_redirect_cannot_cross_request_host_even_if_other_host_in_crawl() -> None:
     # A request on b.test with allowed_hostnames={b.test} cannot redirect to a.test
     request = Request("https://b.test/redirect", meta={"allowed_hostnames": frozenset({"b.test"})})
-    response = Response("https://b.test/redirect", status=302, headers={b"Location": b"https://a.test/target"}, request=request)
+    response = Response(
+        "https://b.test/redirect",
+        status=302,
+        headers={b"Location": b"https://a.test/target"},
+        request=request,
+    )
     try:
         ExactHostRedirectMiddleware().process_response(request, response)
     except Exception as exc:
@@ -117,9 +127,12 @@ def test_redirect_chain_is_rejected_after_twenty_redirects() -> None:
 
 def test_retry_after_delays_rescheduled_request() -> None:
     clock = task.Clock()
-    middleware = PoliteRetryMiddleware(clock=clock, max_retries=3, retry_statuses={429, 503}, base_delay=2, max_delay=60)
+    middleware = PoliteRetryMiddleware(
+        clock=clock, max_retries=3, retry_statuses={429, 503}, base_delay=2, max_delay=60
+    )
     request = Request("https://a.test/")
     response = Response(request.url, status=429, headers={b"Retry-After": b"7"}, request=request)
+
     async def exercise():
         pending = asyncio.create_task(middleware.process_response(request, response))
         await asyncio.sleep(0)
@@ -194,9 +207,7 @@ def test_http_transport_failure_falls_back_to_https_before_retrying() -> None:
         },
     )
 
-    fallback = asyncio.run(
-        middleware.process_exception(request, ConnectError("No route to host"))
-    )
+    fallback = asyncio.run(middleware.process_exception(request, ConnectError("No route to host")))
 
     assert fallback.url == "https://a.test/article?id=42"
     assert fallback.meta["input_url"] == "http://a.test:80/article?id=42"
@@ -264,7 +275,14 @@ def test_policy_rejection_is_not_retried() -> None:
 
 def test_html_shell_is_rescheduled_once_with_playwright() -> None:
     request = Request("https://a.test/", meta={"allowed_hostnames": frozenset({"a.test"})})
-    response = HtmlResponse(request.url, status=200, headers={b"Content-Type": b"text/html"}, body=b'<div id="app"></div><script src="app.js"></script>', request=request, encoding="utf-8")
+    response = HtmlResponse(
+        request.url,
+        status=200,
+        headers={b"Content-Type": b"text/html"},
+        body=b'<div id="app"></div><script src="app.js"></script>',
+        request=request,
+        encoding="utf-8",
+    )
     rerender = PlaywrightFallbackMiddleware().process_response(request, response)
     assert rerender.meta["playwright"] is True
     assert rerender.meta["rendered"] is True
@@ -280,10 +298,7 @@ def test_html_shell_is_rescheduled_once_with_playwright() -> None:
             self.snapshots = [
                 {"document_id": 1, "text_length": 100},
                 {"document_id": 1, "text_length": 100},
-                *(
-                    {"document_id": 2, "text_length": 100}
-                    for _ in range(8)
-                ),
+                *({"document_id": 2, "text_length": 100} for _ in range(8)),
             ]
             self.evaluate_calls = 0
             self.waits: list[int] = []
@@ -379,7 +394,9 @@ def test_rendered_access_gate_is_terminal(body: str, reason: str) -> None:
 def test_asset_redirect_remains_asset_only_across_public_hosts() -> None:
     middleware = SafeRedirectMiddleware()
     request = Request("https://cdn.test/a", meta={"request_scope": "asset", "redirect_urls": ()})
-    response = Response(request.url, status=302, headers={"Location": "https://store.test/a.png"}, request=request)
+    response = Response(
+        request.url, status=302, headers={"Location": "https://store.test/a.png"}, request=request
+    )
     redirected = middleware.process_response(request, response)
     assert redirected.meta["request_scope"] == "asset"
     assert redirected.url == "https://store.test/a.png"
@@ -387,8 +404,12 @@ def test_asset_redirect_remains_asset_only_across_public_hosts() -> None:
 
 def test_page_redirect_still_rejects_cross_host() -> None:
     middleware = SafeRedirectMiddleware()
-    request = Request("https://a.test/p", meta={"request_scope": "page", "allowed_hostnames": {"a.test"}})
-    response = Response(request.url, status=302, headers={"Location": "https://cdn.test/p"}, request=request)
+    request = Request(
+        "https://a.test/p", meta={"request_scope": "page", "allowed_hostnames": {"a.test"}}
+    )
+    response = Response(
+        request.url, status=302, headers={"Location": "https://cdn.test/p"}, request=request
+    )
     with pytest.raises(IgnoreRequest, match="redirect_out_of_scope"):
         middleware.process_response(request, response)
 
@@ -437,10 +458,13 @@ def test_public_asset_address_middleware_rejects_unsafe_asset_url() -> None:
 
 
 def test_content_only_stops_ambiguous_binary_at_headers() -> None:
-    request = Request("https://a.test/download?id=1", meta={
-        "asset_mode": "content-only",
-        "request_scope": "page",
-    })
+    request = Request(
+        "https://a.test/download?id=1",
+        meta={
+            "asset_mode": "content-only",
+            "request_scope": "page",
+        },
+    )
     guard = ContentOnlyHeadersGuard()
     with pytest.raises(StopDownload) as exc:
         guard.headers_received(

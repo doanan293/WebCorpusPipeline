@@ -13,9 +13,7 @@ class SpiderErrorRecorder:
     def on_spider_error(self, failure, response) -> None:
         request = response.request
         input_url = (
-            request.meta.get("input_url", response.url)
-            if request is not None
-            else response.url
+            request.meta.get("input_url", response.url) if request is not None else response.url
         )
         if self.writer is not None:
             self.writer.write_error(

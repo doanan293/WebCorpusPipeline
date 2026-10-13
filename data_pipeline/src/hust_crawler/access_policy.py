@@ -16,9 +16,15 @@ def classify_access(*, status: int, url: str, html: str, rendered: bool) -> Acce
     if any(marker in lowered for marker in _CAPTCHA_MARKERS):
         return AccessDecision("captcha_blocked", False, "interactive_captcha")
     has_password = bool(re.search(r"type\s*=\s*['\"]password['\"]", lowered))
-    has_article = any(marker in lowered for marker in ("<article", "<main", "itemprop=\"articlebody\""))
+    has_article = any(
+        marker in lowered for marker in ("<article", "<main", 'itemprop="articlebody"')
+    )
     has_login_action = bool(re.search(r"action\s*=\s*['\"][^'\"]*(?:login|signin|auth)", lowered))
-    if has_password and (has_login_action or any(marker in url.lower() for marker in _LOGIN_PATH_MARKERS) or not has_article):
+    if has_password and (
+        has_login_action
+        or any(marker in url.lower() for marker in _LOGIN_PATH_MARKERS)
+        or not has_article
+    ):
         return AccessDecision("login_required", False, "access_gate")
     visible = re.sub(r"<script\b[^>]*>.*?</script>", "", lowered, flags=re.S)
     text = re.sub(r"<[^>]+>", " ", visible).strip()

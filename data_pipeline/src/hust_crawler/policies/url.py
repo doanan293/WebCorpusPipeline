@@ -57,10 +57,16 @@ def canonicalize_url(
     cleaned: list[tuple[str, str]] = []
     for key, value in pairs:
         key_lower = key.lower()
-        if key_lower in trap_keys or key_lower in {"fbclid", "gclid"} or key_lower.startswith("utm_"):
+        if (
+            key_lower in trap_keys
+            or key_lower in {"fbclid", "gclid"}
+            or key_lower.startswith("utm_")
+        ):
             continue
-        if check_traps and key_lower in {"q", "query", "search", "keyword"} and (
-            "search" in lowered_path or "find" in lowered_path
+        if (
+            check_traps
+            and key_lower in {"q", "query", "search", "keyword"}
+            and ("search" in lowered_path or "find" in lowered_path)
         ):
             return None, hostname, "search_trap"
         cleaned.append((key, value))

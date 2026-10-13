@@ -81,7 +81,12 @@ def test_failure_counts_only_cover_this_run(tmp_path: Path) -> None:
     state.upsert_url({"url": "https://a.test/old", "status": "failed"})
     state.upsert_url({"url": "https://a.test/new", "status": "failed", "first_seen_run": RUN})
     state.upsert_url(
-        {"url": "https://a.test/cut", "status": "skipped", "reason": "host_url_limit", "first_seen_run": RUN}
+        {
+            "url": "https://a.test/cut",
+            "status": "skipped",
+            "reason": "host_url_limit",
+            "first_seen_run": RUN,
+        }
     )
 
     assert store.failure_counts(RUN, {"host_url_limit"}) == (2, 1)

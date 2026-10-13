@@ -51,7 +51,9 @@ def build_graph(source: Path, enrichment: Path, output: Path) -> dict:
                 for item in row.get("links") or []:
                     target = _url(item.get("url")) if isinstance(item, dict) else ""
                     if target:
-                        edge_batch.append((page, target, "hyperlink", str(item.get("text") or ""), "", ""))
+                        edge_batch.append(
+                            (page, target, "hyperlink", str(item.get("text") or ""), "", "")
+                        )
                 for item in row.get("assets") or []:
                     if not isinstance(item, dict):
                         continue
@@ -60,7 +62,14 @@ def build_graph(source: Path, enrichment: Path, output: Path) -> dict:
                         continue
                     relation = "image" if item.get("role") == "inline_image" else "asset"
                     edge_batch.append(
-                        (page, target, relation, "", str(item.get("alt") or ""), str(item.get("caption") or ""))
+                        (
+                            page,
+                            target,
+                            relation,
+                            "",
+                            str(item.get("alt") or ""),
+                            str(item.get("caption") or ""),
+                        )
                     )
                     if relation == "image":
                         image_batch.append((target,))
@@ -74,13 +83,33 @@ def build_graph(source: Path, enrichment: Path, output: Path) -> dict:
                     relation = (
                         "image"
                         if kind == "file"
-                        and target.lower().split("?", 1)[0].endswith(
-                            (".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp", ".tif", ".tiff", ".avif")
+                        and target.lower()
+                        .split("?", 1)[0]
+                        .endswith(
+                            (
+                                ".jpg",
+                                ".jpeg",
+                                ".png",
+                                ".gif",
+                                ".webp",
+                                ".svg",
+                                ".bmp",
+                                ".tif",
+                                ".tiff",
+                                ".avif",
+                            )
                         )
                         else "observed"
                     )
                     edge_batch.append(
-                        (page, target, relation, str(item.get("text") or ""), str(item.get("alt") or ""), "")
+                        (
+                            page,
+                            target,
+                            relation,
+                            str(item.get("text") or ""),
+                            str(item.get("alt") or ""),
+                            "",
+                        )
                     )
                     if relation == "image":
                         image_batch.append((target,))

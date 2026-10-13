@@ -2,11 +2,16 @@ from hust_crawler.crawl.resources import ResourceSampler
 
 
 def test_first_cpu_sample_is_unavailable_and_second_is_percentage() -> None:
-    values = iter([
-        "cpu  100 0 100 800 0 0 0 0 0 0\n",
-        "cpu  120 0 110 830 0 0 0 0 0 0\n",
-    ])
-    sampler = ResourceSampler(read_text=lambda path: next(values), meminfo_text=lambda: "MemTotal: 100 kB\nMemAvailable: 25 kB\n")
+    values = iter(
+        [
+            "cpu  100 0 100 800 0 0 0 0 0 0\n",
+            "cpu  120 0 110 830 0 0 0 0 0 0\n",
+        ]
+    )
+    sampler = ResourceSampler(
+        read_text=lambda path: next(values),
+        meminfo_text=lambda: "MemTotal: 100 kB\nMemAvailable: 25 kB\n",
+    )
     assert sampler.sample().cpu_percent is None
     assert sampler.sample().cpu_percent == 50.0
 

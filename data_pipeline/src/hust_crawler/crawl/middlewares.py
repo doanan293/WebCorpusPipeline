@@ -25,8 +25,7 @@ from ..policies.url import UrlPolicy
 
 
 _RETRYABLE_EXCEPTIONS = tuple(
-    load_object(value) if isinstance(value, str) else value
-    for value in RETRY_EXCEPTIONS
+    load_object(value) if isinstance(value, str) else value for value in RETRY_EXCEPTIONS
 )
 
 
@@ -188,7 +187,13 @@ class PoliteRetryMiddleware:
                 except ValueError:
                     try:
                         from datetime import datetime, timezone
-                        return max(0.0, (parsedate_to_datetime(raw) - datetime.now(timezone.utc)).total_seconds())
+
+                        return max(
+                            0.0,
+                            (
+                                parsedate_to_datetime(raw) - datetime.now(timezone.utc)
+                            ).total_seconds(),
+                        )
                     except (TypeError, ValueError, OverflowError):
                         pass
         exponential = min(self.max_delay, self.base_delay * (2**retry_count))
@@ -206,8 +211,12 @@ class PoliteRetryMiddleware:
         delay = self._delay(response, retry_count)
         logging.getLogger(__name__).info(
             "retry | host=%s | attempt=%s/%s | wait=%.2fs | reason=%s | url=%s",
-            urlsplit(request.url).hostname, retry_count + 1, self.max_retries,
-            delay, response.status if response is not None else reason, request.url[:240],
+            urlsplit(request.url).hostname,
+            retry_count + 1,
+            self.max_retries,
+            delay,
+            response.status if response is not None else reason,
+            request.url[:240],
         )
         clock = self.clock if self.clock is not None else _reactor_clock()
         delayed = deferLater(clock, delay, lambda: retry)
@@ -228,9 +237,7 @@ class PoliteRetryMiddleware:
     async def process_exception(self, request: Request, exception):
         if not isinstance(exception, _RETRYABLE_EXCEPTIONS):
             return None
-        if urlsplit(request.url).scheme == "http" and not request.meta.get(
-            "https_fallback"
-        ):
+        if urlsplit(request.url).scheme == "http" and not request.meta.get("https_fallback"):
             meta = dict(request.meta)
             meta["https_fallback"] = True
             fallback = request.replace(
@@ -276,11 +283,13 @@ class PlaywrightFallbackMiddleware:
             if decision.use_playwright and not rendered:
                 meta = dict(request.meta)
                 hostname = (urlsplit(response.url).hostname or "").lower().rstrip(".")
-                meta.update({
-                    "playwright": True,
-                    "rendered": True,
-                    "download_slot": f"playwright:{hostname}",
-                })
+                meta.update(
+                    {
+                        "playwright": True,
+                        "rendered": True,
+                        "download_slot": f"playwright:{hostname}",
+                    }
+                )
                 return request.replace(meta=meta, dont_filter=True)
             raise IgnoreRequest(f"{decision.outcome}:{decision.reason or 'access_gate'}")
         if rendered:
@@ -289,14 +298,16 @@ class PlaywrightFallbackMiddleware:
             return response
         meta = dict(request.meta)
         hostname = (urlsplit(response.url).hostname or "").lower().rstrip(".")
-        meta.update({
-            "playwright": True,
-            "rendered": True,
-            "download_slot": f"playwright:{hostname}",
-            "playwright_page_methods": {
-                "stable_body": PageMethod(_wait_for_stable_body),
-            },
-        })
+        meta.update(
+            {
+                "playwright": True,
+                "rendered": True,
+                "download_slot": f"playwright:{hostname}",
+                "playwright_page_methods": {
+                    "stable_body": PageMethod(_wait_for_stable_body),
+                },
+            }
+        )
         return request.replace(meta=meta, dont_filter=True)
 
 

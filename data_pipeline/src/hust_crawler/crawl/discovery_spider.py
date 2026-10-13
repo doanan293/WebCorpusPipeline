@@ -96,7 +96,7 @@ class DiscoverySpider(scrapy.Spider):
 
     def _http_retry(self, request: scrapy.Request) -> scrapy.Request | None:
         if request.url.startswith("https://") and not request.meta.get("http_fallback"):
-            http_url = f"http://{request.url[len('https://'):]}"
+            http_url = f"http://{request.url[len('https://') :]}"
             if http_url in self._scheduled_urls:
                 return None
             self._scheduled_urls.add(http_url)
@@ -167,9 +167,7 @@ class DiscoverySpider(scrapy.Spider):
                         "message": str(exc),
                     }
                 )
-                self.coordinator.complete_sitemap(
-                    hostname, logical_url, result="failed", targets=0
-                )
+                self.coordinator.complete_sitemap(hostname, logical_url, result="failed", targets=0)
                 return
 
             if parsed.kind == "index":
@@ -215,9 +213,7 @@ class DiscoverySpider(scrapy.Spider):
             if purpose == "robots":
                 self.coordinator.complete_robots(hostname)
             elif purpose == "sitemap":
-                self.coordinator.complete_sitemap(
-                    hostname, logical_url, result="absent", targets=0
-                )
+                self.coordinator.complete_sitemap(hostname, logical_url, result="absent", targets=0)
             self.writer.record_probe(
                 {
                     "url": input_url,
@@ -236,9 +232,7 @@ class DiscoverySpider(scrapy.Spider):
             if purpose == "robots":
                 self.coordinator.complete_robots(hostname)
             elif purpose == "sitemap":
-                self.coordinator.complete_sitemap(
-                    hostname, logical_url, result="failed", targets=0
-                )
+                self.coordinator.complete_sitemap(hostname, logical_url, result="failed", targets=0)
             self.writer.write_error(
                 {
                     "url": input_url,

@@ -98,7 +98,11 @@ class HostHealth:
         if healthy and now - self._last_change >= self.change_interval:
             self.current = min(self.hard_ceiling, self.current + 1)
             self._last_change = now
-        cooldown = self._cooldown_until if self._cooldown_until is not None and now < self._cooldown_until else None
+        cooldown = (
+            self._cooldown_until
+            if self._cooldown_until is not None and now < self._cooldown_until
+            else None
+        )
         return HostDecision(min(self.current, self.hard_ceiling), cooldown)
 
 
@@ -226,10 +230,15 @@ class AdaptiveConcurrencyMiddleware:
     ) -> None:
         host = self._host(request)
         health = self._health(host, request)
-        health.observe(Observation(
-            at=monotonic(), latency=latency, status=status, error=error,
-            retry_after_seconds=retry_after_seconds,
-        ))
+        health.observe(
+            Observation(
+                at=monotonic(),
+                latency=latency,
+                status=status,
+                error=error,
+                retry_after_seconds=retry_after_seconds,
+            )
+        )
         stats = getattr(self._crawler, "stats", None)
         if stats is not None and hasattr(stats, "inc_value"):
             if status == 429:
@@ -239,7 +248,9 @@ class AdaptiveConcurrencyMiddleware:
             elif error:
                 stats.inc_value(f"hust/host/{host}/{error}")
 
-    def reconcile_host(self, host: str, request: Request | None = None, *, now: float | None = None) -> None:
+    def reconcile_host(
+        self, host: str, request: Request | None = None, *, now: float | None = None
+    ) -> None:
         health = self._health(host, request)
         current_time = monotonic() if now is None else now
         decision = health.recommend(current_time)
@@ -254,7 +265,11 @@ class AdaptiveConcurrencyMiddleware:
             slot = slots.get(slot_key)
             if slot is None:
                 continue
-            ceiling = min(2, self._max_per_host) if slot_key.startswith("playwright:") else self._max_per_host
+            ceiling = (
+                min(2, self._max_per_host)
+                if slot_key.startswith("playwright:")
+                else self._max_per_host
+            )
             slot.concurrency = min(ceiling, max(1, decision.concurrency))
             if decision.cooldown_until is not None:
                 baseline = self._slot_delays.setdefault(slot_key, float(slot.delay))

@@ -121,9 +121,23 @@ def is_recognizable_binary(url: str) -> bool:
         path = ""
     suffix = PurePosixPath(path).suffix.lower()
     return suffix in EXTENSION_GROUPS or suffix in {
-        ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz",
-        ".exe", ".msi", ".dmg", ".iso", ".apk",
-        ".woff", ".woff2", ".ttf", ".otf", ".eot",
+        ".zip",
+        ".rar",
+        ".7z",
+        ".tar",
+        ".gz",
+        ".bz2",
+        ".xz",
+        ".exe",
+        ".msi",
+        ".dmg",
+        ".iso",
+        ".apk",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".otf",
+        ".eot",
     }
 
 

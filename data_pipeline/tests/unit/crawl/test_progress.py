@@ -84,14 +84,21 @@ def test_progress_reports_downloader_queue_and_retry_waits() -> None:
 
     output = io.StringIO()
     slot = SimpleNamespace(
-        active={1, 2, 3}, transferring={1}, queue=[2, 3], concurrency=2, delay=17.0,
+        active={1, 2, 3},
+        transferring={1},
+        queue=[2, 3],
+        concurrency=2,
+        delay=17.0,
     )
     stats = {"hust/retry/count": 4, "hust/retry/waiting": 2}
     crawler = SimpleNamespace(
         stats=SimpleNamespace(get_value=lambda key, default=0: stats.get(key, default)),
-        engine=SimpleNamespace(downloader=SimpleNamespace(
-            active={1, 2, 3, 4, 5}, slots={"hust.edu.vn": slot},
-        )),
+        engine=SimpleNamespace(
+            downloader=SimpleNamespace(
+                active={1, 2, 3, 4, 5},
+                slots={"hust.edu.vn": slot},
+            )
+        ),
     )
     CrawlProgressReporter(crawler, output=output).report()
     log = output.getvalue()

@@ -59,7 +59,9 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
     config_file = root / "config.yaml"
     if not config_file.exists():
         values = yaml.safe_load(Path("config/crawler.yaml").read_text(encoding="utf-8"))
-        values.update(contact="ops@example.org", retry_backoff_base_seconds=0.01, download_delay_seconds=0.001)
+        values.update(
+            contact="ops@example.org", retry_backoff_base_seconds=0.01, download_delay_seconds=0.001
+        )
         if mode == "policy_recovery_initial":
             values.update(
                 access_policy_revision=1,
@@ -80,7 +82,9 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
     original_build_settings = crawl_settings.build_settings
     request_log_path = root / "requested_urls.txt"
 
-    def fixture_build_settings(cfg, *, state_dir, phase: str = "crawl", tuning=None, extensions=None):
+    def fixture_build_settings(
+        cfg, *, state_dir, phase: str = "crawl", tuning=None, extensions=None
+    ):
         vals = original_build_settings(
             cfg, state_dir=state_dir, phase=phase, tuning=tuning, extensions=extensions
         )
@@ -91,7 +95,9 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
         vals["FIXTURE_REQUEST_LOG"] = str(request_log_path)
         vals["FIXTURE_MODE"] = mode
 
-        async def fixture_resolver(hostname: str, port: int = 443, timeout_seconds: float = 5.0) -> None:
+        async def fixture_resolver(
+            hostname: str, port: int = 443, timeout_seconds: float = 5.0
+        ) -> None:
             if mode == "reuse_private_dns" and hostname == "cdn.test":
                 raise NonPublicAddressError("hostname resolves to non-public address")
             return None

@@ -125,8 +125,13 @@ _BLOCK_TAGS = {
     "th",
     "tr",
 }
-_POSITIVE_HINT = re.compile(r"(?:^|[-_\s])(article|content|detail|entry|main|news|post|story)(?:$|[-_\s])", re.I)
-_NEGATIVE_HINT = re.compile(r"(?:^|[-_\s])(breadcrumb|comment|footer|header|menu|nav|related|share|sidebar|social)(?:$|[-_\s])", re.I)
+_POSITIVE_HINT = re.compile(
+    r"(?:^|[-_\s])(article|content|detail|entry|main|news|post|story)(?:$|[-_\s])", re.I
+)
+_NEGATIVE_HINT = re.compile(
+    r"(?:^|[-_\s])(breadcrumb|comment|footer|header|menu|nav|related|share|sidebar|social)(?:$|[-_\s])",
+    re.I,
+)
 
 
 def _clean_query(query: str) -> str:
@@ -226,7 +231,9 @@ def _extract_links(root: etree._Element, base_url: str) -> list[dict[str, str]]:
 def _candidate_score(element: etree._Element) -> int:
     text_length = len(_normalized_text(list(element.itertext())))
     paragraph_bonus = 80 * len(element.xpath(".//p"))
-    link_penalty = sum(len(_normalized_text(list(link.itertext()))) for link in element.xpath(".//a"))
+    link_penalty = sum(
+        len(_normalized_text(list(link.itertext()))) for link in element.xpath(".//a")
+    )
     return text_length + paragraph_bonus - link_penalty
 
 
@@ -251,7 +258,9 @@ def _remove_noncontent(element: etree._Element) -> None:
     for child in list(element.iterdescendants()):
         tag = child.tag.lower() if isinstance(child.tag, str) else ""
         hints = f"{child.get('id', '')} {child.get('class', '')}"
-        is_hidden = child.get("hidden") is not None or (child.get("aria-hidden") or "").lower() == "true"
+        is_hidden = (
+            child.get("hidden") is not None or (child.get("aria-hidden") or "").lower() == "true"
+        )
         if not tag or tag in _NONCONTENT_TAGS or _NEGATIVE_HINT.search(hints) or is_hidden:
             child.drop_tree()
 
@@ -382,12 +391,14 @@ def _discoveries_from_root(root: etree._Element, base_url: str) -> list[HtmlDisc
         sorted_rel = tuple(sorted(rel))
         identity = (normalized, text, kind, sorted_rel)
         if identity not in seen:
-            discoveries.append({
-                "url": normalized,
-                "text": text,
-                "kind": kind,
-                "rel": list(sorted_rel),
-            })
+            discoveries.append(
+                {
+                    "url": normalized,
+                    "text": text,
+                    "kind": kind,
+                    "rel": list(sorted_rel),
+                }
+            )
             seen.add(identity)
 
     for element in root.iter():

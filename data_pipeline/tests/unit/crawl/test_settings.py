@@ -22,13 +22,18 @@ def test_settings_enable_async_concurrency_and_bounded_browser(tmp_path: Path) -
     assert values["RETRY_ENABLED"] is False
     assert values["PLAYWRIGHT_MAX_PAGES_PER_CONTEXT"] == 8
     assert values["JOBDIR"] == str(tmp_path / "job")
-    assert values["DOWNLOAD_HANDLERS"]["https"] == "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler"
+    assert (
+        values["DOWNLOAD_HANDLERS"]["https"]
+        == "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler"
+    )
     assert AdaptiveConcurrencyMiddleware in values["DOWNLOADER_MIDDLEWARES"]
 
 
 def test_multi_request_profile_registers_adaptive_middleware(tmp_path: Path) -> None:
     values = build_settings(
-        CrawlerConfig(hostnames=frozenset({"a.test"}), contact="ops@example.org", concurrent_per_host=4),
+        CrawlerConfig(
+            hostnames=frozenset({"a.test"}), contact="ops@example.org", concurrent_per_host=4
+        ),
         state_dir=tmp_path / "job",
     )
     assert AdaptiveConcurrencyMiddleware in values["DOWNLOADER_MIDDLEWARES"]

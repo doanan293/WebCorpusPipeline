@@ -34,9 +34,7 @@ def route_response(
     if status >= 400:
         if purpose in {"robots", "sitemap"} and status in {404, 410}:
             return ResponseRoute("optional_absent", purpose, status, normalized_type)
-        return ResponseRoute(
-            "http_error", purpose, status, normalized_type, f"http_{status}"
-        )
+        return ResponseRoute("http_error", purpose, status, normalized_type, f"http_{status}")
     if purpose == "robots":
         return ResponseRoute("robots", "robots", status, normalized_type)
     if purpose == "sitemap":

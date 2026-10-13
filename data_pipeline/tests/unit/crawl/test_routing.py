@@ -13,9 +13,10 @@ from hust_crawler.crawl.routing import ResponseRoute, route_response
     ],
 )
 def test_page_routes_use_mime_before_extension(url, content_type, action) -> None:
-    assert route_response(
-        url=url, status=200, content_type=content_type, purpose="page"
-    ).action == action
+    assert (
+        route_response(url=url, status=200, content_type=content_type, purpose="page").action
+        == action
+    )
 
 
 @pytest.mark.parametrize("purpose", ["robots", "sitemap"])

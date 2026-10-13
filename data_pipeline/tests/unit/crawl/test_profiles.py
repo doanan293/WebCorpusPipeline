@@ -31,10 +31,14 @@ def test_custom_concurrency_overrides() -> None:
 
 def test_runtime_tuning_uses_config_values() -> None:
     config = CrawlerConfig(
-        hostnames=frozenset({"a.test"}), contact="ops@example.org",
-        concurrent_requests=11, concurrent_per_host=3,
-        resource_limit_percent=65, playwright_max_pages=5,
-        journal_batch_size=17, journal_flush_seconds=1.5,
+        hostnames=frozenset({"a.test"}),
+        contact="ops@example.org",
+        concurrent_requests=11,
+        concurrent_per_host=3,
+        resource_limit_percent=65,
+        playwright_max_pages=5,
+        journal_batch_size=17,
+        journal_flush_seconds=1.5,
         progress_interval_seconds=4.0,
     )
     tuning = resolve_runtime_tuning(config=config, profile="safe-fast")

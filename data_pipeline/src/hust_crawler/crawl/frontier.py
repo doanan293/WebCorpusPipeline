@@ -47,9 +47,7 @@ class FrontierPolicy:
         seeds: SeedSet,
         options: CrawlOptions,
         trap_exceptions: (
-            Mapping[str, tuple[str, ...]]
-            | tuple[tuple[str, tuple[str, ...]], ...]
-            | None
+            Mapping[str, tuple[str, ...]] | tuple[tuple[str, tuple[str, ...]], ...] | None
         ) = None,
         route_families: Iterable[RouteFamilyState] = (),
     ) -> None:
@@ -98,15 +96,9 @@ class FrontierPolicy:
         new_targets = tuple(
             sorted(set(observation.content_targets) - set(current.accepted_targets))
         )
-        repeated_content = (
-            observation.content_fingerprint in current.content_fingerprints
-        )
-        repeated_targets = (
-            observation.target_fingerprint in current.target_fingerprints
-        )
-        zero_count = (
-            current.consecutive_zero_novelty + 1 if not new_targets else 0
-        )
+        repeated_content = observation.content_fingerprint in current.content_fingerprints
+        repeated_targets = observation.target_fingerprint in current.target_fingerprints
+        zero_count = current.consecutive_zero_novelty + 1 if not new_targets else 0
         closure_reason = (
             "repeated_content_fingerprint"
             if repeated_content
@@ -190,8 +182,7 @@ class FrontierPolicy:
             return "navigation"
         if "pagination" in query_kinds:
             is_wordpress_content_id = link_kind == "content" and all(
-                query_key_kind(key) != "pagination" or key.casefold() == "p"
-                for key, _ in pairs
+                query_key_kind(key) != "pagination" or key.casefold() == "p" for key, _ in pairs
             )
             if not is_wordpress_content_id:
                 return "navigation"
@@ -206,7 +197,6 @@ class FrontierPolicy:
         if len(segments) >= 2 and segments[-2] in {"page", "p", "pages"} and segments[-1].isdigit():
             return "navigation"
         return "content"
-
 
     def consider(self, candidate: Candidate) -> FrontierDecision:
         canonical, hostname, reason = canonicalize_url(
@@ -234,7 +224,9 @@ class FrontierPolicy:
                 if candidate.source_mode != "recursive":
                     return FrontierDecision("reject", canonical, "exact_seed_no_expansion", 0)
                 if candidate.discovered_from:
-                    parent_host = (urlsplit(candidate.discovered_from).hostname or "").lower().rstrip(".")
+                    parent_host = (
+                        (urlsplit(candidate.discovered_from).hostname or "").lower().rstrip(".")
+                    )
                     if parent_host not in self.seeds.recursive_hostnames or hostname != parent_host:
                         return FrontierDecision("reject", canonical, "host_out_of_scope", 0)
                 else:

@@ -36,9 +36,7 @@ PRESENTATION_QUERY_KEYS: Final[frozenset[str]] = frozenset(
         "tab",
     }
 )
-SEARCH_QUERY_KEYS: Final[frozenset[str]] = frozenset(
-    {"q", "query", "keyword", "search"}
-)
+SEARCH_QUERY_KEYS: Final[frozenset[str]] = frozenset({"q", "query", "keyword", "search"})
 FACET_QUERY_NAMESPACES: Final[frozenset[str]] = frozenset(
     {"f", "filter", "filters", "facet", "facets", "refine", "refinement", "taxonomy"}
 )
@@ -118,9 +116,7 @@ NAVIGATION_PATH_SEGMENTS: Final[frozenset[str]] = frozenset(
     }
 )
 
-_PATH_PAGINATION_RE: Final[re.Pattern[str]] = re.compile(
-    r"/(?:page|p)/(\d+)(?:/)?$", re.IGNORECASE
-)
+_PATH_PAGINATION_RE: Final[re.Pattern[str]] = re.compile(r"/(?:page|p)/(\d+)(?:/)?$", re.IGNORECASE)
 _CALENDAR_DATE_RE: Final[re.Pattern[str]] = re.compile(
     r"/(\d{4})/(\d{1,2})(?:/(\d{1,2}))?(?:/)?$", re.IGNORECASE
 )
@@ -207,7 +203,9 @@ def _classify_navigation(
                 if "shortlink" in rel_tokens:
                     return "content", None
                 label = " ".join(text.split())
-                if not ({"next", "prev"} & rel_tokens or label == val or label in PAGINATION_LABELS):
+                if not (
+                    {"next", "prev"} & rel_tokens or label == val or label in PAGINATION_LABELS
+                ):
                     continue
             ordinal = int(val) if val.isdigit() else None
             return "pagination", ordinal

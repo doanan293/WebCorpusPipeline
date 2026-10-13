@@ -152,7 +152,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "evaluate-extraction":
             from hust_crawler.crawl.evaluation import evaluate
 
-            print(json.dumps(evaluate(Path(args.fixtures), Path(args.output)), ensure_ascii=False, indent=2))
+            print(
+                json.dumps(
+                    evaluate(Path(args.fixtures), Path(args.output)), ensure_ascii=False, indent=2
+                )
+            )
             return 0
         if args.command == "reconcile-job":
             root = _repo_root()
@@ -160,11 +164,18 @@ def main(argv: list[str] | None = None) -> int:
             import sqlite3
 
             conn = sqlite3.connect(settings.work_path / "state.sqlite3")
-            row = conn.execute("select * from cloud_jobs where request_id=?", (args.request_id,)).fetchone()
+            row = conn.execute(
+                "select * from cloud_jobs where request_id=?", (args.request_id,)
+            ).fetchone()
             conn.close()
             if not row or row[3] != args.job_id:
                 raise ValueError("request/job pair is not present in this work directory")
-            print(json.dumps({"request_id": args.request_id, "job_id": args.job_id, "status": row[6]}, indent=2))
+            print(
+                json.dumps(
+                    {"request_id": args.request_id, "job_id": args.job_id, "status": row[6]},
+                    indent=2,
+                )
+            )
             return 0
         root, settings = _settings(args)
         source = settings.source_path
@@ -174,7 +185,9 @@ def main(argv: list[str] | None = None) -> int:
             work, fp, crawl_id=read_crawl_id(source), rebind=args.rebind_source
         ) as state:
             state.recover()
-            state.migrate_legacy_cursor(source_key(settings.project_root / "data" / "crawl" / "final"))
+            state.migrate_legacy_cursor(
+                source_key(settings.project_root / "data" / "crawl" / "final")
+            )
             if args.command == "inventory":
                 summary = index_inventory(source, state)
                 print(json.dumps(jsonable(summary), ensure_ascii=False, indent=2))
