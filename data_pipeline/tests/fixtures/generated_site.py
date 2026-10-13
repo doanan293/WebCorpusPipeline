@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlsplit
@@ -11,12 +12,13 @@ from scrapy.http import HtmlResponse, Request, Response, TextResponse
 from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.frontier.assets import AssetPolicy
 from data_pipeline.crawl.frontier.frontier import FrontierPolicy
-from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
-from data_pipeline.crawl.spider.unified import UnifiedSpider
-from data_pipeline.crawl.state.store import CrawlState
+from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.output.writer import CrawlWriter
+from data_pipeline.crawl.spider.unified import UnifiedSpider
+from data_pipeline.crawl.state.discovery import upsert_host_discovery
+from data_pipeline.crawl.state.store import CrawlState
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +129,7 @@ def run_generated_site(
     policy = AssetPolicy(options)
     coordinator = SitemapDiscoveryCoordinator(
         exact_hostnames=frozenset(),
-        on_change=state.upsert_host_discovery,
+        on_change=partial(upsert_host_discovery, state),
         strategy="hybrid-unified",
     )
     spider = UnifiedSpider(

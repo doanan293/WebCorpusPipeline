@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 
 from data_pipeline.crawl.frontier.frontier import Candidate, FrontierDecision, FrontierPolicy
-from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.frontier.seeds import SeedSet
-from data_pipeline.crawl.state.store import FamilyObservation
+from data_pipeline.crawl.options import CrawlOptions
+from data_pipeline.crawl.state.discovery import FamilyObservation
 
 
 def candidate(

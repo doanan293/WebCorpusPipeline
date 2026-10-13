@@ -9,7 +9,6 @@ from xml.etree import ElementTree
 from data_pipeline.core.policies.url import canonicalize_url
 from data_pipeline.crawl.extract.content import normalize_url
 
-
 DiscoveryStrategy = Literal["sitemap-only", "hybrid-unified"]
 
 

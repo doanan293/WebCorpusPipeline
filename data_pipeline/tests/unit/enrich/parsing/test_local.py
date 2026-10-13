@@ -7,8 +7,8 @@ from openpyxl import Workbook
 from pptx import Presentation
 from pptx.util import Inches
 
-from data_pipeline.enrich.models import DownloadedFile
 from data_pipeline.enrich.download.artifacts import extension_for
+from data_pipeline.enrich.models import DownloadedFile
 from data_pipeline.enrich.parsing.local import parse_local
 from data_pipeline.enrich.parsing.local.pdf import cloud_part_indices, parse_pdf
 

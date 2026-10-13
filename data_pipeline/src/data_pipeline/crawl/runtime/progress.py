@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections import deque
-from dataclasses import dataclass
 import sys
 import time
+from collections import deque
+from dataclasses import dataclass
 from typing import Callable, TextIO
 
 
@@ -81,8 +81,8 @@ class CrawlProgressReporter:
         tuning = crawler.settings.get("HUST_TUNING")
         interval = float(getattr(tuning, "progress_interval_seconds", 0.0) or 0.0)
         if interval > 0:
-            from twisted.internet.task import LoopingCall
             from scrapy import signals
+            from twisted.internet.task import LoopingCall
 
             reporter._loop = LoopingCall(reporter.report)
             reporter._loop.start(interval, now=False)

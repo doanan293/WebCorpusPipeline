@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Final, Literal
 
-from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.config import CrawlerConfig
+from data_pipeline.crawl.frontier.seeds import SeedSet
 
 AssetMode = Literal["content-only", "all"]
 ASSET_POLICY_VERSION: Final[int] = 2

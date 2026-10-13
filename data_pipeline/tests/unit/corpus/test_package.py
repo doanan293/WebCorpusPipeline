@@ -3,8 +3,8 @@ import sqlite3
 
 import pytest
 
-from data_pipeline.corpus.package import package_corpus, verify_corpus
 from data_pipeline.corpus.mongo import _page_value, _record_id
+from data_pipeline.corpus.package import package_corpus, verify_corpus
 
 
 def test_package_and_verify(tmp_path):

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections import defaultdict
 import hashlib
+from collections import defaultdict
 from types import SimpleNamespace
-from typing import Any, Iterator
+from typing import Any
 
 from scrapy.exceptions import IgnoreRequest
 from scrapy.http import HtmlResponse, Request, Response
@@ -12,9 +12,9 @@ from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.extract.article import ArticleAsset
 from data_pipeline.crawl.frontier.assets import AssetPolicy
 from data_pipeline.crawl.frontier.frontier import Candidate, FrontierPolicy
-from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
+from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.spider.unified import UnifiedSpider
 
 
@@ -28,7 +28,6 @@ class FakeState:
         self.skipped: list[dict[str, Any]] = []
         self.url_records: dict[str, dict[str, Any]] = {}
         self.content_owners: dict[str, str] = {}
-        self.route_families: dict[str, Any] = {}
         self._asset_referrers: dict[str, set[tuple[str, str]]] = defaultdict(set)
 
     def is_complete(self, url: str) -> bool:
@@ -82,12 +81,6 @@ class FakeState:
 
     def asset_referrers(self, url: str) -> tuple[str, ...]:
         return tuple(sorted({page for page, _ in self._asset_referrers.get(url, ())}))
-
-    def put_route_family(self, state: Any) -> None:
-        self.route_families[state.family_key] = state
-
-    def iter_route_families(self) -> Iterator[Any]:
-        return iter(self.route_families.values())
 
 
 class FakeCrawlWriter:

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from email.utils import parsedate_to_datetime
-import random
 import logging
+import random
 from collections.abc import Callable
+from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
-from twisted.internet import task
-
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from scrapy import signals
 from scrapy.exceptions import IgnoreRequest, StopDownload
 from scrapy.http import Request, Response
@@ -15,14 +15,12 @@ from scrapy.settings.default_settings import RETRY_EXCEPTIONS
 from scrapy.utils.defer import maybe_deferred_to_future
 from scrapy.utils.misc import load_object
 from scrapy.utils.response import response_status_message
-from playwright.async_api import Error as PlaywrightError
-from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from scrapy_playwright.page import PageMethod
+from twisted.internet import task
 
 from data_pipeline.core.policies.access import classify_access
 from data_pipeline.core.policies.network import resolve_public_hostname, validate_public_web_url
 from data_pipeline.core.policies.url import UrlPolicy
-
 
 _RETRYABLE_EXCEPTIONS = tuple(
     load_object(value) if isinstance(value, str) else value for value in RETRY_EXCEPTIONS

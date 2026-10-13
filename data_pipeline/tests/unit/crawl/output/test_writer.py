@@ -1,9 +1,10 @@
 from pathlib import Path
+
 import pytest
 
 from data_pipeline.crawl.options import CrawlOptions
-from data_pipeline.crawl.state.store import CrawlState
 from data_pipeline.crawl.output.writer import CrawlWriter, StorageLimit
+from data_pipeline.crawl.state.store import CrawlState
 
 
 def make_writer(

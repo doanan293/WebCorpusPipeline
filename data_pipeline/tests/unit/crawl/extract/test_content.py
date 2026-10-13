@@ -7,7 +7,6 @@ from data_pipeline.crawl.extract.content import (
     resource_kind,
 )
 
-
 DECLARED_UTF8_HTML = (
     '<?xml version="1.0" encoding="utf-8"?>'
     "<html><head><title>Thông báo</title></head>"

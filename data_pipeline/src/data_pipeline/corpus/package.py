@@ -8,7 +8,6 @@ from pathlib import Path
 
 from data_pipeline.corpus.graph import build_graph
 
-
 PAYLOAD = (
     "articles.jsonl",
     "urls.txt",

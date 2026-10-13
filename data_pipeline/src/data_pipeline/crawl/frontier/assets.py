@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Literal, TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlsplit
 
 from data_pipeline.crawl.options import CrawlOptions

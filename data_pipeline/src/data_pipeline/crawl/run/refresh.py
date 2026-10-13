@@ -1,20 +1,22 @@
 from __future__ import annotations
 
+import json
+import os
+import shutil
+import sqlite3
+import time
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import json
-import os
 from pathlib import Path
-import shutil
-import sqlite3
-import time
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from data_pipeline.crawl.config import CrawlerConfig
+from data_pipeline.crawl.state.export import iter_final_articles
 from data_pipeline.crawl.state.refresh_store import CONTINUABLE_RUN_STATUSES, RefreshStore
+from data_pipeline.crawl.state.requeue import restore_status
 from data_pipeline.crawl.state.store import CrawlState
 
 RefreshReason = Literal[
@@ -327,7 +329,7 @@ def prepare_refresh_run(
         store.start_run(run_id)
         store.add_targets(run_id, targets)
     except Exception:
-        state.restore_status()
+        restore_status(state)
         raise
     state.refresh_run_id = run_id
     return run_id, store.pending_targets(run_id)
@@ -347,7 +349,7 @@ def _export_changes(
         for change in changes:
             file.write(json.dumps(change, ensure_ascii=False) + "\n")
     with (temporary / "articles.jsonl").open("w", encoding="utf-8") as file:
-        for _, payload in state.iter_final_articles(str(change["url"]) for change in changes):
+        for _, payload in iter_final_articles(state, (str(change["url"]) for change in changes)):
             file.write(f"{payload}\n")
     (temporary / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

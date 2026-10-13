@@ -2,7 +2,10 @@ from pathlib import Path
 
 from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware
-from data_pipeline.crawl.runtime.middlewares import PublicAssetAddressMiddleware, SafeRedirectMiddleware
+from data_pipeline.crawl.runtime.middlewares import (
+    PublicAssetAddressMiddleware,
+    SafeRedirectMiddleware,
+)
 from data_pipeline.crawl.runtime.settings import build_settings
 
 

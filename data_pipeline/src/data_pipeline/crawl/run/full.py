@@ -1,19 +1,26 @@
 from __future__ import annotations
 
-from pathlib import Path
 import shutil
 import time
+from functools import partial
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
 from scrapy.crawler import CrawlerProcess
 from scrapy.settings import Settings
 
-from data_pipeline.crawl.config import CrawlerConfig, runtime_config_snapshot, semantic_config_snapshot
+from data_pipeline.crawl.config import (
+    CrawlerConfig,
+    runtime_config_snapshot,
+    semantic_config_snapshot,
+)
 from data_pipeline.crawl.frontier.assets import AssetPolicy
 from data_pipeline.crawl.frontier.frontier import FrontierPolicy
+from data_pipeline.crawl.frontier.seeds import SeedSet
+from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
 from data_pipeline.crawl.options import CrawlOptions
-from data_pipeline.crawl.runtime.profiles import RuntimeTuning
+from data_pipeline.crawl.output.writer import CrawlWriter
 from data_pipeline.crawl.run.refresh import (
     RefreshSession,
     RefreshSettings,
@@ -21,20 +28,35 @@ from data_pipeline.crawl.run.refresh import (
     preflight,
     prepare_refresh_run,
 )
-from data_pipeline.crawl.state.refresh_store import RefreshStore
 from data_pipeline.crawl.run.reuse import (
     import_reused_content,
     prepare_reused_asset_targets,
     reused_asset_targets,
     validate_reuse_source,
 )
-from data_pipeline.crawl.spider.reuse import ReusedAssetSpider
-from data_pipeline.crawl.frontier.seeds import SeedSet
+from data_pipeline.crawl.runtime.profiles import RuntimeTuning
 from data_pipeline.crawl.runtime.settings import build_settings
-from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
+from data_pipeline.crawl.spider.reuse import ReusedAssetSpider
 from data_pipeline.crawl.spider.unified import UnifiedSpider
-from data_pipeline.crawl.state.store import CrawlState, validate_resume_workflow
-from data_pipeline.crawl.output.writer import CrawlWriter
+from data_pipeline.crawl.state.discovery import (
+    host_completion as completion_by_host,
+)
+from data_pipeline.crawl.state.discovery import (
+    iter_host_discovery,
+    iter_route_families,
+    upsert_host_discovery,
+)
+from data_pipeline.crawl.state.export import reason_counts
+from data_pipeline.crawl.state.refresh_store import RefreshStore
+from data_pipeline.crawl.state.requeue import (
+    requeue_access_gates,
+    requeue_policy_skips,
+    requeue_query_variant_truncations,
+    requeue_retryable_failures,
+    requeue_zero_content_bootstrap,
+)
+from data_pipeline.crawl.state.resume import validate_resume_workflow
+from data_pipeline.crawl.state.store import CrawlState
 
 TRUNCATION_REASONS = frozenset(
     {
@@ -190,27 +212,27 @@ def run_crawl(
 
         coordinator = SitemapDiscoveryCoordinator(
             exact_hostnames=exact_hosts,
-            on_change=state.upsert_host_discovery,
+            on_change=partial(upsert_host_discovery, state),
             strategy="hybrid-unified",
         )
         frontier = FrontierPolicy(
-            seeds, options, route_families=() if refresh else state.iter_route_families()
+            seeds, options, route_families=() if refresh else iter_route_families(state)
         )
         resume_records: tuple[dict[str, object], ...] = ()
 
         if resume or refresh:
             if retry_failed:
-                state.requeue_retryable_failures()
+                requeue_retryable_failures(state)
             if retry_truncated:
-                state.requeue_query_variant_truncations()
+                requeue_query_variant_truncations(state)
             if retry_access_gates:
-                state.requeue_access_gates()
+                requeue_access_gates(state)
             if retry_policy_skips:
-                state.requeue_policy_skips(seeds.recursive_hostnames)
-                state.requeue_retryable_failures()
-                state.requeue_zero_content_bootstrap(seeds.recursive_hostnames)
+                requeue_policy_skips(state, seeds.recursive_hostnames)
+                requeue_retryable_failures(state)
+                requeue_zero_content_bootstrap(state, seeds.recursive_hostnames)
             frontier.restore(state.iter_url_records())
-            coordinator.restore(state.iter_host_discovery())
+            coordinator.restore(iter_host_discovery(state))
             resume_records = tuple(state.iter_pending_scheduled_records())
 
         # Record invalid seeds
@@ -292,13 +314,13 @@ def run_crawl(
 
         counts = state.counts()
         failed = counts.get("errors", 0)
-        host_completion = state.host_completion(seeds.recursive_hostnames)
+        host_completion = completion_by_host(state, seeds.recursive_hostnames)
         zero_content_hosts = sorted(
             hostname
             for hostname, summary in host_completion.items()
             if summary["status"] == "zero_content"
         )
-        truncation_counts = state.reason_counts(TRUNCATION_REASONS)
+        truncation_counts = reason_counts(state, TRUNCATION_REASONS)
         truncated = sum(truncation_counts.values())
         if refresh_session is not None:
             failed, truncated = refresh_session.store.failure_counts(

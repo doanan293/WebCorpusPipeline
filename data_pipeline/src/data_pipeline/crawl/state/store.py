@@ -1,97 +1,22 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
 import os
 import sqlite3
 import time
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Iterator, Literal, TYPE_CHECKING
-from collections.abc import Iterable, Mapping
-from collections import Counter, defaultdict
-from urllib.parse import urlsplit
+from typing import TYPE_CHECKING, Any, Iterator, Literal
 
-from data_pipeline.crawl.frontier.link_policy import classify_link
+from data_pipeline.crawl.state.export import asset_metrics, export_final, skipped_reasons
 from data_pipeline.crawl.state.resume import (
-    POLICY_RETRY_REASONS,
-    scheduled_retry,
+    normalize_legacy_semantic_config,
     validate_policy_migration,
 )
 
 if TYPE_CHECKING:
     from data_pipeline.crawl.frontier.assets import AssetRole
-
-FamilyKind = Literal["pagination", "search_filter", "calendar_archive", "action_auth"]
-
-_RETRYABLE_REQUEST_FAILURE_MARKERS = (
-    "an error occurred while connecting",
-    "connection failure",
-    "connection refused",
-    "connection reset",
-    "connection timed out",
-    "connection to the other side was lost",
-    "connection was closed cleanly",
-    "dns lookup failed",
-    "name or service not known",
-    "network is unreachable",
-    "no route to host",
-    "temporary failure in name resolution",
-    "timeout",
-    "timed out",
-    "took longer than",
-)
-
-LEGACY_V4_SEMANTIC_DEFAULTS = {
-    "robots_txt_obey": True,
-    "cookies_enabled": False,
-    "redirect_max_times": 20,
-    "user_agent_name": "HUSTPublicCrawler",
-    "user_agent_version": "1.0",
-}
-
-LEGACY_V4_RECLASSIFIED_RUNTIME_KEYS = frozenset(
-    {
-        "download_timeout_seconds",
-        "retry_times",
-        "retry_backoff_base_seconds",
-        "retry_max_delay_seconds",
-    }
-)
-
-
-def normalize_legacy_semantic_config(snapshot: Mapping[str, object]) -> dict[str, object]:
-    normalized = {
-        name: value
-        for name, value in snapshot.items()
-        if name not in LEGACY_V4_RECLASSIFIED_RUNTIME_KEYS
-    }
-    for name, value in LEGACY_V4_SEMANTIC_DEFAULTS.items():
-        normalized.setdefault(name, value)
-    return normalized
-
-
-@dataclass(frozen=True, slots=True)
-class RouteFamilyState:
-    family_key: str
-    kind: FamilyKind
-    scheduled_next_ordinal: int | None
-    content_fingerprints: tuple[str, ...]
-    target_fingerprints: tuple[str, ...]
-    accepted_targets: tuple[str, ...]
-    consecutive_zero_novelty: int
-    closed: bool
-    closure_reason: str | None
-
-
-@dataclass(frozen=True, slots=True)
-class FamilyObservation:
-    family_key: str
-    kind: FamilyKind
-    ordinal: int | None
-    content_fingerprint: str
-    target_fingerprint: str
-    content_targets: tuple[str, ...]
 
 
 class CrawlState:
@@ -205,7 +130,7 @@ class CrawlState:
             cls._init_db(connection)
 
             instance = cls(root, manifest, connection)
-            instance._write_manifest(manifest)
+            instance.write_manifest(manifest)
             return instance
         except Exception:
             lock_path.unlink(missing_ok=True)
@@ -268,7 +193,7 @@ class CrawlState:
             """
         )
 
-    def _write_manifest(self, value: dict[str, Any]) -> None:
+    def write_manifest(self, value: dict[str, Any]) -> None:
         temporary = self.manifest_path.with_suffix(".tmp")
         temporary.write_text(
             json.dumps(value, ensure_ascii=False, indent=2, default=str) + "\n",
@@ -454,13 +379,6 @@ class CrawlState:
             self.connection.execute("ROLLBACK;")
             raise
 
-    def restore_status(self) -> None:
-        """Undo the 'running' mark of a resumed open when the run never started."""
-        previous = self.manifest.get("resumed_from_status")
-        if previous:
-            self.manifest["status"] = previous
-            self._write_manifest(self.manifest)
-
     def backup_to(self, destination: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         target = sqlite3.connect(str(destination))
@@ -525,47 +443,6 @@ class CrawlState:
         for row in cursor:
             yield json.loads(row[0])
 
-    def put_route_family(self, state: RouteFamilyState) -> None:
-        payload = json.dumps(
-            {
-                "family_key": state.family_key,
-                "kind": state.kind,
-                "scheduled_next_ordinal": state.scheduled_next_ordinal,
-                "content_fingerprints": list(state.content_fingerprints),
-                "target_fingerprints": list(state.target_fingerprints),
-                "accepted_targets": list(state.accepted_targets),
-                "consecutive_zero_novelty": state.consecutive_zero_novelty,
-                "closed": state.closed,
-                "closure_reason": state.closure_reason,
-            },
-            ensure_ascii=False,
-        )
-        self.connection.execute(
-            """
-            INSERT INTO route_families (family_key, payload) VALUES (?, ?)
-            ON CONFLICT(family_key) DO UPDATE SET payload = excluded.payload;
-            """,
-            (state.family_key, payload),
-        )
-
-    def iter_route_families(self) -> Iterator[RouteFamilyState]:
-        cursor = self.connection.execute(
-            "SELECT payload FROM route_families ORDER BY family_key ASC;"
-        )
-        for (payload_str,) in cursor.fetchall():
-            d = json.loads(payload_str)
-            yield RouteFamilyState(
-                family_key=d["family_key"],
-                kind=d["kind"],
-                scheduled_next_ordinal=d["scheduled_next_ordinal"],
-                content_fingerprints=tuple(d["content_fingerprints"]),
-                target_fingerprints=tuple(d["target_fingerprints"]),
-                accepted_targets=tuple(d["accepted_targets"]),
-                consecutive_zero_novelty=d["consecutive_zero_novelty"],
-                closed=d["closed"],
-                closure_reason=d["closure_reason"],
-            )
-
     def add_asset_referrer(self, url: str, page_url: str, role: AssetRole) -> None:
         self.connection.execute(
             """
@@ -612,449 +489,6 @@ class CrawlState:
             if record.get("frontier_action") == "scheduled":
                 yield record
 
-    def requeue_retryable_failures(self) -> int:
-        rows = self.connection.execute(
-            """
-            SELECT url_records.url, url_records.payload, errors.payload
-            FROM url_records
-            JOIN errors ON errors.url = url_records.url
-            WHERE url_records.completed = 1 AND url_records.status = 'failed';
-            """
-        ).fetchall()
-        retryable: list[tuple[str, dict[str, object]]] = []
-        for url, record_payload, error_payload in rows:
-            error = json.loads(error_payload)
-            message = str(error.get("message", "")).lower()
-            if error.get("error") != "request_failed" or not any(
-                marker in message for marker in _RETRYABLE_REQUEST_FAILURE_MARKERS
-            ):
-                continue
-            record = json.loads(record_payload)
-            record["status"] = "scheduled"
-            for key in ("completed", "final_url", "http_status", "reason"):
-                record.pop(key, None)
-            retryable.append((str(url), record))
-
-        self.connection.execute("BEGIN IMMEDIATE;")
-        try:
-            for url, record in retryable:
-                self.connection.execute(
-                    """
-                    UPDATE url_records
-                    SET payload = ?, status = 'scheduled', completed = 0
-                    WHERE url = ?;
-                    """,
-                    (json.dumps(record, ensure_ascii=False), url),
-                )
-                self.connection.execute("DELETE FROM errors WHERE url = ?;", (url,))
-            self.connection.execute("COMMIT;")
-        except Exception:
-            self.connection.execute("ROLLBACK;")
-            raise
-        return len(retryable)
-
-    def requeue_query_variant_truncations(self) -> int:
-        rows = self.connection.execute(
-            """
-            SELECT url, payload
-            FROM url_records
-            WHERE completed = 1 AND status = 'skipped';
-            """
-        ).fetchall()
-        recoverable: list[tuple[str, dict[str, object]]] = []
-        for url, payload in rows:
-            record = json.loads(payload)
-            if record.get("reason") != "query_variant_limit":
-                continue
-            classified = classify_link(str(url), source_url=str(url))
-            if classified.kind not in {"content", "pagination"}:
-                continue
-            record.update(
-                {
-                    "status": "scheduled",
-                    "seed_type": "recursive",
-                    "frontier_action": "scheduled",
-                    "discovery_source": "html_link",
-                    "response_purpose": "page",
-                    "explicit": False,
-                    "link_kind": classified.kind,
-                    "family_key": classified.family_key,
-                    "ordinal": classified.ordinal,
-                    "priority": 500 if classified.kind == "content" else 100,
-                }
-            )
-            for key in ("completed", "final_url", "http_status", "reason"):
-                record.pop(key, None)
-            recoverable.append((str(url), record))
-
-        self.connection.execute("BEGIN IMMEDIATE;")
-        try:
-            for url, record in recoverable:
-                self.connection.execute(
-                    """
-                    UPDATE url_records
-                    SET payload = ?, status = 'scheduled', completed = 0
-                    WHERE url = ?;
-                    """,
-                    (json.dumps(record, ensure_ascii=False), url),
-                )
-            self.connection.execute("COMMIT;")
-        except Exception:
-            self.connection.execute("ROLLBACK;")
-            raise
-        return len(recoverable)
-
-    def requeue_access_gates(self) -> int:
-        rows = self.connection.execute(
-            """
-            SELECT url, payload
-            FROM url_records
-            WHERE completed = 1 AND status = 'skipped';
-            """
-        ).fetchall()
-        recoverable: list[tuple[str, dict[str, object]]] = []
-        for url, payload in rows:
-            record = json.loads(payload)
-            if record.get("reason") != "captcha_blocked":
-                continue
-            record["status"] = "scheduled"
-            for key in ("completed", "final_url", "http_status", "reason"):
-                record.pop(key, None)
-            recoverable.append((str(url), record))
-
-        self.connection.execute("BEGIN IMMEDIATE;")
-        try:
-            for url, record in recoverable:
-                self.connection.execute(
-                    """
-                    UPDATE url_records
-                    SET payload = ?, status = 'scheduled', completed = 0
-                    WHERE url = ?;
-                    """,
-                    (json.dumps(record, ensure_ascii=False), url),
-                )
-            self.connection.execute("COMMIT;")
-        except Exception:
-            self.connection.execute("ROLLBACK;")
-            raise
-        return len(recoverable)
-
-    def requeue_policy_skips(self, recursive_hostnames: frozenset[str]) -> int:
-        rows = self.connection.execute(
-            "SELECT url, payload FROM url_records WHERE completed = 1 AND status = 'skipped';"
-        ).fetchall()
-        recoverable: list[tuple[str, dict[str, object]]] = []
-        for url, payload in rows:
-            record = json.loads(payload)
-            hostname = (urlsplit(str(url)).hostname or "").lower().rstrip(".")
-            if hostname not in recursive_hostnames:
-                continue
-            if record.get("reason") not in POLICY_RETRY_REASONS:
-                continue
-            recoverable.append((str(url), scheduled_retry(record)))
-
-        self.connection.execute("BEGIN IMMEDIATE;")
-        try:
-            for url, record in recoverable:
-                self.connection.execute(
-                    """
-                    UPDATE url_records
-                    SET payload = ?, status = 'scheduled', completed = 0
-                    WHERE url = ? AND status = 'skipped' AND completed = 1;
-                    """,
-                    (json.dumps(record, ensure_ascii=False), url),
-                )
-                self.connection.execute("DELETE FROM errors WHERE url = ?;", (url,))
-            self.connection.execute("COMMIT;")
-        except Exception:
-            self.connection.execute("ROLLBACK;")
-            raise
-        return len(recoverable)
-
-    def requeue_zero_content_bootstrap(self, recursive_hostnames: frozenset[str]) -> int:
-        records = list(self.iter_url_records())
-        extracted_hosts = {
-            (urlsplit(str(record["url"])).hostname or "").lower().rstrip(".")
-            for record in records
-            if record.get("status") in {"extracted", "file_saved"}
-        }
-        by_url = {str(record["url"]): record for record in records}
-        recoverable: list[tuple[str, dict[str, object]]] = []
-        for hostname in sorted(recursive_hostnames - extracted_hosts):
-            root = f"https://{hostname}/"
-            record = by_url.get(root)
-            if record is None:
-                recoverable.append(
-                    (
-                        root,
-                        {
-                            "url": root,
-                            "status": "scheduled",
-                            "seed_type": "recursive",
-                            "frontier_action": "scheduled",
-                            "discovery_source": "seed",
-                            "response_purpose": "page",
-                        },
-                    )
-                )
-            elif record.get("status") == "skipped" and record.get("reason") in POLICY_RETRY_REASONS:
-                recoverable.append((root, scheduled_retry(record)))
-            elif record.get("status") == "failed" and record.get("reason") in {
-                "request_failed",
-                "sitemap_parse_error",
-            }:
-                recoverable.append((root, scheduled_retry(record)))
-
-        self.connection.execute("BEGIN IMMEDIATE;")
-        try:
-            for url, record in recoverable:
-                self.connection.execute(
-                    """
-                    INSERT INTO url_records(url, payload, status, completed)
-                    VALUES (?, ?, 'scheduled', 0)
-                    ON CONFLICT(url) DO UPDATE SET
-                      payload = excluded.payload,
-                      status = 'scheduled',
-                      completed = 0;
-                    """,
-                    (url, json.dumps(record, ensure_ascii=False)),
-                )
-                self.connection.execute("DELETE FROM errors WHERE url = ?;", (url,))
-            self.connection.execute("COMMIT;")
-        except Exception:
-            self.connection.execute("ROLLBACK;")
-            raise
-        return len(recoverable)
-
-    def reason_counts(self, reasons: frozenset[str] | None = None) -> dict[str, int]:
-        counts: dict[str, int] = {}
-        cursor = self.connection.execute("SELECT payload FROM url_records;")
-        for row in cursor:
-            rec = json.loads(row[0])
-            r = rec.get("reason")
-            if not r:
-                continue
-            if reasons is None or r in reasons:
-                counts[str(r)] = counts.get(str(r), 0) + 1
-        return counts
-
-    def skipped_reasons(self) -> dict[str, int]:
-        counts: dict[str, int] = {}
-        cursor = self.connection.execute("SELECT payload FROM url_records;")
-        for row in cursor:
-            rec = json.loads(row[0])
-            if rec.get("status") == "skipped":
-                r = rec.get("reason")
-                if r:
-                    counts[str(r)] = counts.get(str(r), 0) + 1
-        return counts
-
-    def host_completion(self, hostnames: frozenset[str]) -> dict[str, dict[str, object]]:
-        extracted = Counter()
-        terminal_reasons: dict[str, Counter[str]] = defaultdict(Counter)
-        for record in self.iter_url_records():
-            hostname = (urlsplit(str(record.get("url", ""))).hostname or "").lower().rstrip(".")
-            if hostname not in hostnames:
-                continue
-            if record.get("status") in {"extracted", "file_saved"}:
-                extracted[hostname] += 1
-            reason = record.get("reason")
-            if reason and record.get("status") in {"skipped", "failed"}:
-                terminal_reasons[hostname][str(reason)] += 1
-
-        return {
-            hostname: {
-                "status": "complete" if extracted[hostname] else "zero_content",
-                "extracted_pages": extracted[hostname],
-                "terminal_reasons": dict(sorted(terminal_reasons[hostname].items())),
-            }
-            for hostname in sorted(hostnames)
-        }
-
-    def upsert_host_discovery(self, record: dict[str, object]) -> None:
-        hostname = str(record["hostname"])
-        payload = json.dumps(record, ensure_ascii=False)
-        self.connection.execute(
-            """
-            INSERT INTO host_discovery (hostname, payload)
-            VALUES (?, ?)
-            ON CONFLICT(hostname) DO UPDATE SET payload = excluded.payload;
-            """,
-            (hostname, payload),
-        )
-
-    def iter_host_discovery(self) -> Iterator[dict[str, object]]:
-        cursor = self.connection.execute("SELECT payload FROM host_discovery ORDER BY hostname;")
-        for row in cursor:
-            yield json.loads(row[0])
-
-    def export_discovery(self, output: Path) -> None:
-        output.mkdir(parents=True, exist_ok=True)
-
-        urls_txt = output / "urls.txt"
-        tmp_urls = urls_txt.with_suffix(".tmp")
-        cursor = self.connection.execute("SELECT url FROM targets ORDER BY url;")
-        with tmp_urls.open("w", encoding="utf-8") as file:
-            for (url,) in cursor:
-                file.write(f"{url}\n")
-        os.replace(tmp_urls, urls_txt)
-
-        errors_jsonl = output / "errors.jsonl"
-        tmp_errors = errors_jsonl.with_suffix(".tmp")
-        cursor = self.connection.execute("SELECT payload FROM errors ORDER BY url;")
-        with tmp_errors.open("w", encoding="utf-8") as file:
-            for (payload,) in cursor:
-                file.write(f"{payload}\n")
-        os.replace(tmp_errors, errors_jsonl)
-
-    def export_crawl(self, output: Path) -> None:
-        output.mkdir(parents=True, exist_ok=True)
-
-        urls_txt = output / "urls.txt"
-        tmp_urls = urls_txt.with_suffix(".tmp")
-        cursor = self.connection.execute(
-            """
-            SELECT url
-            FROM url_records
-            WHERE status IN ('extracted', 'file_saved')
-            ORDER BY url;
-            """
-        )
-        with tmp_urls.open("w", encoding="utf-8") as file:
-            for (url,) in cursor:
-                file.write(f"{url}\n")
-        os.replace(tmp_urls, urls_txt)
-
-        def _export_table(table: str, target: Path) -> None:
-            tmp = target.with_suffix(".tmp")
-            cursor = self.connection.execute(f"SELECT payload FROM {table} ORDER BY url;")
-            with tmp.open("w", encoding="utf-8") as file:
-                for row in cursor:
-                    file.write(f"{row[0]}\n")
-            os.replace(tmp, target)
-
-        _export_table("url_records", output / "url_records.jsonl")
-        _export_table("articles", output / "articles.jsonl")
-        _export_table("files", output / "files.jsonl")
-        _export_table("errors", output / "errors.jsonl")
-
-    def export(self, output: Path) -> None:
-        self.export_crawl(output)
-
-    def iter_final_articles(self, urls: Iterable[str] | None = None) -> Iterator[tuple[str, str]]:
-        """Yield (url, payload) for extracted articles, inlining excluded owner text."""
-        query = """
-            SELECT a.url, a.payload
-            FROM articles AS a
-            JOIN url_records AS r ON r.url = a.url
-            WHERE r.status = 'extracted'
-        """
-        if urls is None:
-            rows: Iterable[tuple[str, str]] = self.connection.execute(query + " ORDER BY a.url;")
-        else:
-
-            def selected() -> Iterator[tuple[str, str]]:
-                for url in sorted(set(urls)):
-                    row = self.connection.execute(query + " AND a.url = ?;", (url,)).fetchone()
-                    if row is not None:
-                        yield row
-
-            rows = selected()
-        owner_text: dict[str, str] = {}
-        for url, payload in rows:
-            if '"duplicate_of"' in payload:
-                article = json.loads(payload)
-                owner_url = article.get("duplicate_of")
-                if owner_url:
-                    owner_status = self.connection.execute(
-                        "SELECT status FROM url_records WHERE url = ?", (owner_url,)
-                    ).fetchone()
-                    if owner_status is None or owner_status[0] != "extracted":
-                        if owner_url not in owner_text:
-                            owner_row = self.connection.execute(
-                                "SELECT payload FROM articles WHERE url = ?", (owner_url,)
-                            ).fetchone()
-                            if owner_row is None:
-                                raise ValueError(f"missing duplicate owner article: {owner_url}")
-                            text = json.loads(owner_row[0]).get("text")
-                            if text is None:
-                                raise ValueError(f"duplicate owner has no text: {owner_url}")
-                            owner_text[owner_url] = str(text)
-                        article["text"] = owner_text[owner_url]
-                        article.pop("duplicate_of", None)
-                        payload = json.dumps(article, ensure_ascii=False)
-            yield url, payload
-
-    def export_final(self, output: Path) -> None:
-        final = output / "final"
-        final.mkdir(parents=True, exist_ok=True)
-        articles_path = final / "articles.jsonl"
-        urls_path = final / "urls.txt"
-        tmp_articles = final / "articles.jsonl.tmp"
-        tmp_urls = final / "urls.txt.tmp"
-
-        count = 0
-        with (
-            tmp_articles.open("w", encoding="utf-8") as articles_file,
-            tmp_urls.open("w", encoding="utf-8") as urls_file,
-        ):
-            for url, payload in self.iter_final_articles():
-                articles_file.write(f"{payload}\n")
-                urls_file.write(f"{url}\n")
-                count += 1
-        os.replace(tmp_articles, articles_path)
-        os.replace(tmp_urls, urls_path)
-
-        summary = {
-            "description": "Bộ dữ liệu bài viết đã lọc theo URL crawl thành công",
-            "crawl_id": self.crawl_id,
-            "source_crawl_finished_at_utc": time.strftime(
-                "%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.manifest["finished_at"])
-            ),
-            "article_count": count,
-            "url_count": count,
-            "files": {
-                "articles.jsonl": "Mỗi dòng là một bài viết JSON; chỉ gồm URL trong urls.txt",
-                "urls.txt": "Danh sách URL tương ứng, một URL mỗi dòng",
-            },
-            "crawl_failed_url_count": self.manifest["counts"].get("url_status_failed", 0),
-            "note": "Các URL crawl thất bại không nằm trong bộ dữ liệu này.",
-        }
-        if self.manifest.get("last_refresh_run_id"):
-            summary["last_refresh_run_id"] = self.manifest["last_refresh_run_id"]
-        tmp_summary = final / "README.json.tmp"
-        tmp_summary.write_text(
-            json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
-        os.replace(tmp_summary, final / "README.json")
-
-    def asset_metrics(self) -> dict[str, dict[str, int]]:
-        from data_pipeline.crawl.frontier.assets import classify_asset
-
-        groups: dict[str, dict[str, int]] = {
-            "image": {"file_count": 0, "unique_bytes": 0},
-            "document": {"file_count": 0, "unique_bytes": 0},
-            "media": {"file_count": 0, "unique_bytes": 0},
-        }
-        seen_blobs: set[tuple[str, str]] = set()
-        rows = self.connection.execute("SELECT payload FROM files").fetchall()
-        for (payload_json,) in rows:
-            payload = json.loads(payload_json)
-            url = payload.get("final_url") or payload.get("url", "")
-            content_type = payload.get("content_type", "")
-            asset_role = payload.get("asset_role")
-            group = payload.get("asset_group") or classify_asset(content_type, url, asset_role)
-            if group not in groups:
-                group = "document"
-            groups[group]["file_count"] += 1
-            sha256 = payload.get("sha256")
-            size = int(payload.get("size", 0))
-            blob_id = (group, sha256) if sha256 else (group, url)
-            if blob_id not in seen_blobs:
-                seen_blobs.add(blob_id)
-                groups[group]["unique_bytes"] += size
-        return groups
-
     def finish(
         self,
         status: str,
@@ -1086,12 +520,12 @@ class CrawlState:
         elif "frontier" in metrics and isinstance(metrics["frontier"], dict):
             finish_data["frontier"] = metrics["frontier"]
         if self.manifest.get("phase") != "discover":
-            finish_data["assets"] = self.asset_metrics()
-            finish_data["skipped"] = self.skipped_reasons()
+            finish_data["assets"] = asset_metrics(self)
+            finish_data["skipped"] = skipped_reasons(self)
             finish_data["host_completion"] = host_completion or {}
 
         self.manifest.update(finish_data)
-        self._write_manifest(self.manifest)
+        self.write_manifest(self.manifest)
         if public_output is not None:
             public_output.mkdir(parents=True, exist_ok=True)
             pub_manifest = public_output / "manifest.json"
@@ -1102,7 +536,7 @@ class CrawlState:
             )
             os.replace(tmp, pub_manifest)
             if self.manifest.get("phase") == "crawl":
-                self.export_final(public_output)
+                export_final(self, public_output)
 
     def close(self) -> None:
         try:
@@ -1111,15 +545,3 @@ class CrawlState:
             if self._lock_acquired:
                 self.lock_path.unlink(missing_ok=True)
                 self._lock_acquired = False
-
-
-def validate_resume_workflow(state_root: Path, expected: str) -> None:
-    manifest_path = state_root / "manifest.json"
-    if not manifest_path.exists():
-        return
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    actual = manifest.get("semantic_config", {}).get("crawl_strategy")
-    if actual != expected:
-        raise ValueError(
-            f"cannot resume {actual or 'legacy'} state as {expected}; use a new output directory"
-        )

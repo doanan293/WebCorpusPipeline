@@ -1,4 +1,5 @@
 from pathlib import Path
+
 import yaml
 
 from data_pipeline.cli import discover as discovery_cli

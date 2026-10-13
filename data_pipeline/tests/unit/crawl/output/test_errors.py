@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from unittest.mock import MagicMock
+
 from scrapy.http import Request, Response
 
 from data_pipeline.crawl.output.errors import SpiderErrorRecorder

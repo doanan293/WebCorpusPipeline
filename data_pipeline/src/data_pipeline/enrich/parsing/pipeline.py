@@ -4,10 +4,10 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from data_pipeline.enrich.parsing.cloud.key_pool import KeyPool
-from data_pipeline.enrich.parsing.cloud.llamaparse import merge_parts, parse_cloud_subset
 from data_pipeline.enrich.models import ParseResult, RunSummary
 from data_pipeline.enrich.parsing.cache import cache_key, read_cached, write_cached
+from data_pipeline.enrich.parsing.cloud.key_pool import KeyPool
+from data_pipeline.enrich.parsing.cloud.llamaparse import merge_parts, parse_cloud_subset
 from data_pipeline.enrich.parsing.local import parse_local
 from data_pipeline.enrich.parsing.local.pdf import build_pdf_subset, cloud_part_indices
 from data_pipeline.enrich.state import WorkState
@@ -15,7 +15,9 @@ from data_pipeline.enrich.state import WorkState
 
 def extract_documents(state: WorkState, settings, repo_root: Path) -> RunSummary:
     keys = KeyPool(
-        __import__("data_pipeline.core.settings", fromlist=["load_api_keys"]).load_api_keys(repo_root)
+        __import__("data_pipeline.core.settings", fromlist=["load_api_keys"]).load_api_keys(
+            repo_root
+        )
     )
     cache_root = state.root / "cache"
     pending = list(state.pending_parse())

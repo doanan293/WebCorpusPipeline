@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 from data_pipeline.crawl.config import CrawlerConfig
+from data_pipeline.crawl.frontier.seeds import parse_seed_file
 from data_pipeline.crawl.run.discovery import run_discovery
 from data_pipeline.crawl.runtime.profiles import resolve_runtime_tuning
-from data_pipeline.crawl.frontier.seeds import parse_seed_file
 
 
 def build_parser() -> argparse.ArgumentParser:

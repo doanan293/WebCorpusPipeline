@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 from data_pipeline.crawl.frontier.assets import AssetGroup, AssetRole
 from data_pipeline.crawl.options import CrawlOptions
+from data_pipeline.crawl.state.export import export_crawl
 from data_pipeline.crawl.state.store import CrawlState
 
 _MIME_TO_EXT = {
@@ -209,7 +210,7 @@ class CrawlWriter:
         self.state.checkpoint(url)
 
     def publish(self) -> None:
-        self.state.export_crawl(self.root)
+        export_crawl(self.state, self.root)
 
     def close(self) -> None:
         self.state.close()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from data_pipeline.crawl.state.export import export_discovery
 from data_pipeline.crawl.state.store import CrawlState
 
 
@@ -26,7 +27,7 @@ class DiscoveryWriter:
         self.state.checkpoint(url)
 
     def publish(self) -> None:
-        self.state.export_discovery(self.root)
+        export_discovery(self.state, self.root)
 
     def close(self) -> None:
         self.state.close()

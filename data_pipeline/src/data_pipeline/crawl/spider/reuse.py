@@ -6,12 +6,11 @@ from urllib.parse import urlsplit
 import scrapy
 
 from data_pipeline.crawl.config import CrawlerConfig
-
 from data_pipeline.crawl.frontier.assets import AssetPolicy
 from data_pipeline.crawl.options import CrawlOptions
+from data_pipeline.crawl.output.writer import CrawlWriter
 from data_pipeline.crawl.run.reuse import ReusedAssetTarget
 from data_pipeline.crawl.spider.unified import UnifiedSpider
-from data_pipeline.crawl.output.writer import CrawlWriter
 
 
 class ReusedAssetSpider(UnifiedSpider):

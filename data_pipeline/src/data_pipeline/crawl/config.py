@@ -1,17 +1,14 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from urllib.parse import urlsplit
-from collections.abc import Mapping
+from typing import TYPE_CHECKING, Literal
 
 import yaml
 
 from data_pipeline.core.hostnames import load_hostnames
-
-from typing import TYPE_CHECKING
-from typing import Literal
 
 if TYPE_CHECKING:
     from data_pipeline.crawl.runtime.profiles import RuntimeTuning

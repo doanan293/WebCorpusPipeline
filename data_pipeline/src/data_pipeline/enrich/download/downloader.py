@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 from data_pipeline.enrich.download.artifacts import extension_for, looks_like_document, sha256_file
 from data_pipeline.enrich.download.transport import PublicTransport
-from data_pipeline.enrich.models import DownloadJob, DownloadedFile
+from data_pipeline.enrich.models import DownloadedFile, DownloadJob
 
 
 class RetryableDownloadError(RuntimeError):

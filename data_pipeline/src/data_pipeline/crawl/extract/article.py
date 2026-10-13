@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-import re
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
@@ -13,12 +13,12 @@ from lxml import html as lxml_html
 from data_pipeline.crawl.extract.content import (
     _NEGATIVE_HINT,
     _NONCONTENT_TAGS,
+    HtmlDiscovery,
     _discoveries_from_root,
     _document_base,
     _extract_links,
     _normalized_text,
     _select_content,
-    HtmlDiscovery,
     normalize_url,
 )
 

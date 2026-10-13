@@ -1,10 +1,10 @@
 from pathlib import Path
 
 from data_pipeline.crawl.config import CrawlerConfig
+from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.run import discovery as discovery_runner
 from data_pipeline.crawl.run.discovery import run_discovery
 from data_pipeline.crawl.spider.discovery import DiscoverySpider
-from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.state.store import CrawlState
 
 

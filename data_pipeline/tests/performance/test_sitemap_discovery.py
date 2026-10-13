@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import time
+
 import pytest
 
-from data_pipeline.crawl.frontier.sitemaps import parse_sitemap
 from data_pipeline.core.policies.url import canonicalize_url
+from data_pipeline.crawl.frontier.sitemaps import parse_sitemap
 
 
 @pytest.mark.performance

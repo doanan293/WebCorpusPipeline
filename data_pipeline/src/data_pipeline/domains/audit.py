@@ -10,24 +10,24 @@ import json
 import re
 import socket  # noqa: F401
 import ssl
-from http.cookiejar import CookieJar
-
-from data_pipeline.core.policies.network import NonPublicAddressError, resolve_hostname
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from functools import partial
+from http.cookiejar import CookieJar
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
 from urllib.error import HTTPError, URLError
+from urllib.parse import urljoin, urlparse
 from urllib.request import (
-    HTTPSHandler,
     HTTPCookieProcessor,
     HTTPRedirectHandler,
+    HTTPSHandler,
     ProxyHandler,
     Request,
     build_opener,
 )
+
+from data_pipeline.core.policies.network import NonPublicAddressError, resolve_hostname
 
 
 def _utc_now() -> str:

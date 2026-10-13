@@ -3,14 +3,14 @@ from pathlib import Path
 import pytest
 import yaml
 
+from data_pipeline.core.hostnames import load_hostnames
 from data_pipeline.crawl.config import (
     CrawlerConfig,
     config_snapshot,
-    validate_network_contact,
     runtime_config_snapshot,
     semantic_config_snapshot,
+    validate_network_contact,
 )
-from data_pipeline.core.hostnames import load_hostnames
 from data_pipeline.crawl.runtime.profiles import RuntimeTuning
 
 

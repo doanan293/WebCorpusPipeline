@@ -1,8 +1,8 @@
-from collections import Counter
 import json
-from pathlib import Path
 import subprocess
 import sys
+from collections import Counter
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlsplit
 

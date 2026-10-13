@@ -1,12 +1,10 @@
 import asyncio
-
-import pytest
-from twisted.internet import task
-
 from types import SimpleNamespace
 
+import pytest
 from scrapy.exceptions import IgnoreRequest, StopDownload
 from scrapy.http import Headers, HtmlResponse, Request, Response
+from twisted.internet import task
 from twisted.internet.error import ConnectError
 
 import data_pipeline.crawl.runtime.middlewares as middlewares

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from collections import Counter
-from collections.abc import Iterable, Iterator
 import json
 import sqlite3
 import time
+from collections import Counter
+from collections.abc import Iterable, Iterator
 
 SUCCESS_OUTCOMES = frozenset({"new", "unchanged", "modified", "not_modified", "fetched"})
 CONTINUABLE_RUN_STATUSES = frozenset({"running", "interrupted", "failed"})

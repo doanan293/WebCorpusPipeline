@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Final, Iterable, Literal
 from urllib.parse import parse_qsl, urlsplit
 
-from data_pipeline.crawl.frontier.assets import recognizable_asset
 from data_pipeline.crawl.extract.content import normalize_url
+from data_pipeline.crawl.frontier.assets import recognizable_asset
 
 LinkKind = Literal[
     "content",

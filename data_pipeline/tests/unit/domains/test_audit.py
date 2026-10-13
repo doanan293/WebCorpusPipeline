@@ -1,5 +1,5 @@
-import json
 import asyncio
+import json
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -10,8 +10,8 @@ import data_pipeline.domains.audit as domain_audit
 from data_pipeline.domains.audit import (
     ProbeAttempt,
     ProbeResult,
-    classify_response,
     classify_http_status,
+    classify_response,
     fetch_url,
     load_candidate_hostnames,
     main,

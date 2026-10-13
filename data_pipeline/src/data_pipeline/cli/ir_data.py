@@ -6,13 +6,12 @@ import json
 import sys
 from pathlib import Path
 
-from data_pipeline.enrich.parsing.pipeline import extract_documents_sync
+from data_pipeline.core.settings import load_settings
 from data_pipeline.enrich.export import export_enrichment
 from data_pipeline.enrich.inventory import index_inventory, source_key
 from data_pipeline.enrich.models import jsonable
-from data_pipeline.core.settings import load_settings
+from data_pipeline.enrich.parsing.pipeline import extract_documents_sync
 from data_pipeline.enrich.state import WorkState, fingerprint_source, read_crawl_id
-
 
 REBIND_HELP = (
     "accept a changed source for this work directory (needed once after upgrading, "
@@ -128,8 +127,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.command == "publish":
-            from data_pipeline.corpus.kaggle import publish_corpus
             from dotenv import load_dotenv
+
+            from data_pipeline.corpus.kaggle import publish_corpus
 
             root = _repo_root()
             load_dotenv(root / ".env", override=False)
@@ -139,8 +139,9 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(result, indent=2))
             return 0
         if args.command == "pull":
-            from data_pipeline.corpus.kaggle import pull_corpus
             from dotenv import load_dotenv
+
+            from data_pipeline.corpus.kaggle import pull_corpus
 
             root = _repo_root()
             load_dotenv(root / ".env", override=False)

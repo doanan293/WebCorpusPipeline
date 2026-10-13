@@ -5,17 +5,17 @@ from urllib.parse import urlsplit
 
 import scrapy
 
-from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.core.policies.url import canonicalize_url
+from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.extract.content import normalize_url
-from data_pipeline.crawl.output.discovery_writer import DiscoveryWriter
-from data_pipeline.crawl.spider.routing import route_response
 from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.frontier.sitemaps import (
     SitemapDiscoveryCoordinator,
     SitemapParseError,
     parse_sitemap,
 )
+from data_pipeline.crawl.output.discovery_writer import DiscoveryWriter
+from data_pipeline.crawl.spider.routing import route_response
 
 
 class DiscoverySpider(scrapy.Spider):

@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-import re
 from typing import Any, TypedDict
 from urllib.parse import quote, unquote_plus, urljoin, urlsplit, urlunsplit
 
 from lxml import etree
 from lxml import html as lxml_html
-
 
 _TRACKING_KEYS = {
     "_ga",

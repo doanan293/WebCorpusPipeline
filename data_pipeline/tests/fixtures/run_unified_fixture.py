@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
+
 import yaml
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
@@ -11,11 +12,12 @@ from scrapy.utils.reactor import install_reactor
 install_reactor("twisted.internet.asyncioreactor.AsyncioSelectorReactor")
 
 from scrapy import signals  # noqa: E402
-from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware  # noqa: E402
-from data_pipeline.cli import crawl as cli  # noqa: E402
-from data_pipeline.crawl.run import full as runner  # noqa: E402
+
 import data_pipeline.crawl.runtime.settings as crawl_settings  # noqa: E402
+from data_pipeline.cli import crawl as cli  # noqa: E402
 from data_pipeline.core.policies.network import NonPublicAddressError  # noqa: E402
+from data_pipeline.crawl.run import full as runner  # noqa: E402
+from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware  # noqa: E402
 
 
 class InterruptExtension:

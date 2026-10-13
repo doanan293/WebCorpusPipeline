@@ -7,10 +7,10 @@ from scrapy.http import Request, Response
 from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.frontier.assets import AssetPolicy
 from data_pipeline.crawl.options import CrawlOptions
+from data_pipeline.crawl.output.writer import CrawlWriter
 from data_pipeline.crawl.run.reuse import ReusedAssetTarget
 from data_pipeline.crawl.spider.reuse import ReusedAssetSpider
 from data_pipeline.crawl.state.store import CrawlState
-from data_pipeline.crawl.output.writer import CrawlWriter
 
 
 def make_spider(tmp_path) -> tuple[ReusedAssetSpider, CrawlState]:

@@ -4,20 +4,21 @@ from pathlib import Path
 import pytest
 
 from data_pipeline.crawl.config import CrawlerConfig, semantic_config_snapshot
-from data_pipeline.crawl.run import full as runner
 from data_pipeline.crawl.frontier.assets import AssetPolicy
 from data_pipeline.crawl.frontier.frontier import FrontierPolicy
+from data_pipeline.crawl.frontier.seeds import SeedSet
+from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
 from data_pipeline.crawl.options import CrawlOptions
-from data_pipeline.crawl.runtime.profiles import resolve_runtime_tuning
+from data_pipeline.crawl.run import full as runner
 from data_pipeline.crawl.run.full import (
     TRUNCATION_REASONS,
     finish_reason_to_exit,
     run_crawl,
 )
+from data_pipeline.crawl.runtime.profiles import resolve_runtime_tuning
 from data_pipeline.crawl.spider.reuse import ReusedAssetSpider
-from data_pipeline.crawl.frontier.seeds import SeedSet
-from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
 from data_pipeline.crawl.spider.unified import UnifiedSpider
+from data_pipeline.crawl.state.discovery import upsert_host_discovery
 from data_pipeline.crawl.state.store import CrawlState
 
 
@@ -447,7 +448,8 @@ def test_crawl_runner_resume_restores_frontier_and_coordinator(monkeypatch, tmp_
             "frontier_action": "scheduled",
         }
     )
-    state.upsert_host_discovery(
+    upsert_host_discovery(
+        state,
         {
             "hostname": "a.test",
             "mode": "sitemap",
@@ -459,7 +461,7 @@ def test_crawl_runner_resume_restores_frontier_and_coordinator(monkeypatch, tmp_
             "sitemaps_absent": 0,
             "sitemap_targets": ["https://a.test/page1"],
             "html_targets": [],
-        }
+        },
     )
     state.close()
 

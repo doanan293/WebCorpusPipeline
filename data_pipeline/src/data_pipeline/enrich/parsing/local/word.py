@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from docx import Document
 from docx.document import Document as DocumentType
-from docx.table import Table
-from docx.text.paragraph import Paragraph
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 
 from data_pipeline.enrich.models import DownloadedFile, ExtractedPart, LocalResult
 from data_pipeline.enrich.parsing.local.common import result, useful_text

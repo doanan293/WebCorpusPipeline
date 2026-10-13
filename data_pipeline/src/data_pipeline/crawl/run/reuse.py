@@ -1,20 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
 import os
-from pathlib import Path
 import shutil
 import sqlite3
 import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterator
 
 from data_pipeline.core.policies.network import validate_public_web_url
-
 from data_pipeline.crawl.frontier.assets import AssetGroup, AssetRole, classify_asset
 from data_pipeline.crawl.state.store import CrawlState
-
 
 _REUSABLE_STATUSES = frozenset({"complete", "complete_with_failures", "truncated"})
 _ASSET_ROLES = frozenset({"inline_image", "media_reference", "document_attachment"})

@@ -6,12 +6,11 @@ from typing import Iterable, Literal, Mapping, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from data_pipeline.core.policies.url import canonicalize_url, classify_frontier_trap
-
 from data_pipeline.crawl.frontier.assets import AssetGroup, AssetRole
 from data_pipeline.crawl.frontier.link_policy import LinkKind, is_navigation_path, query_key_kind
-from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.frontier.seeds import SeedMode, SeedSet
-from data_pipeline.crawl.state.store import FamilyObservation, RouteFamilyState
+from data_pipeline.crawl.options import CrawlOptions
+from data_pipeline.crawl.state.discovery import FamilyObservation, RouteFamilyState
 
 DiscoverySource = Literal["seed", "sitemap", "html_link"]
 Purpose = Literal["robots", "sitemap", "page", "asset"]

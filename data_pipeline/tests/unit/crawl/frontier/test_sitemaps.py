@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+
 import pytest
 
 from data_pipeline.crawl.frontier.sitemaps import (

@@ -8,7 +8,6 @@ from pymongo import ASCENDING, MongoClient, ReplaceOne
 
 from data_pipeline.corpus.package import verify_corpus
 
-
 COLLECTIONS = ("datasets", "pages", "documents", "images", "links")
 MAX_BATCH_BYTES = 4 * 1024 * 1024
 

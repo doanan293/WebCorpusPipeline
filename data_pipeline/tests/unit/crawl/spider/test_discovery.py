@@ -5,9 +5,9 @@ from urllib.parse import urlsplit
 from scrapy.http import Request, Response
 
 from data_pipeline.crawl.config import CrawlerConfig
-from data_pipeline.crawl.spider.discovery import DiscoverySpider
 from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
+from data_pipeline.crawl.spider.discovery import DiscoverySpider
 
 
 class FakeState:

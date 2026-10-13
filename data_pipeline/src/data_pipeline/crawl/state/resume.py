@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
-
+from pathlib import Path
 
 POLICY_RETRY_REASONS = frozenset(
     {"robots_disallowed", "login_required", "captcha_blocked", "access_denied"}
@@ -55,3 +56,44 @@ def scheduled_retry(record: Mapping[str, object]) -> dict[str, object]:
     for key in ("completed", "final_url", "http_status", "reason"):
         retry.pop(key, None)
     return retry
+
+
+LEGACY_V4_SEMANTIC_DEFAULTS = {
+    "robots_txt_obey": True,
+    "cookies_enabled": False,
+    "redirect_max_times": 20,
+    "user_agent_name": "HUSTPublicCrawler",
+    "user_agent_version": "1.0",
+}
+
+LEGACY_V4_RECLASSIFIED_RUNTIME_KEYS = frozenset(
+    {
+        "download_timeout_seconds",
+        "retry_times",
+        "retry_backoff_base_seconds",
+        "retry_max_delay_seconds",
+    }
+)
+
+
+def normalize_legacy_semantic_config(snapshot: Mapping[str, object]) -> dict[str, object]:
+    normalized = {
+        name: value
+        for name, value in snapshot.items()
+        if name not in LEGACY_V4_RECLASSIFIED_RUNTIME_KEYS
+    }
+    for name, value in LEGACY_V4_SEMANTIC_DEFAULTS.items():
+        normalized.setdefault(name, value)
+    return normalized
+
+
+def validate_resume_workflow(state_root: Path, expected: str) -> None:
+    manifest_path = state_root / "manifest.json"
+    if not manifest_path.exists():
+        return
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    actual = manifest.get("semantic_config", {}).get("crawl_strategy")
+    if actual != expected:
+        raise ValueError(
+            f"cannot resume {actual or 'legacy'} state as {expected}; use a new output directory"
+        )

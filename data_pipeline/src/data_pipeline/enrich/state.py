@@ -11,8 +11,8 @@ from typing import Iterable, Iterator
 
 from data_pipeline.enrich.models import (
     Candidate,
-    DownloadJob,
     DownloadedFile,
+    DownloadJob,
     ParseResult,
     RunSummary,
     SourceRef,

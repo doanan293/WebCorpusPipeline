@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 import ipaddress
 import socket
 import threading
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from data_pipeline.core.policies.url import canonicalize_url

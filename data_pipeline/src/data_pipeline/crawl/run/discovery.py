@@ -1,21 +1,23 @@
 from __future__ import annotations
 
-from dataclasses import asdict
-from pathlib import Path
 import time
+from dataclasses import asdict
+from functools import partial
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from scrapy.crawler import CrawlerProcess
 from scrapy.settings import Settings
 
 from data_pipeline.crawl.config import CrawlerConfig, semantic_config_snapshot
-from data_pipeline.crawl.spider.discovery import DiscoverySpider
-from data_pipeline.crawl.output.discovery_writer import DiscoveryWriter
-from data_pipeline.crawl.runtime.profiles import RuntimeTuning
-from data_pipeline.crawl.run.full import finish_reason_to_exit
 from data_pipeline.crawl.frontier.seeds import SeedSet
-from data_pipeline.crawl.runtime.settings import build_settings
 from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
+from data_pipeline.crawl.output.discovery_writer import DiscoveryWriter
+from data_pipeline.crawl.run.full import finish_reason_to_exit
+from data_pipeline.crawl.runtime.profiles import RuntimeTuning
+from data_pipeline.crawl.runtime.settings import build_settings
+from data_pipeline.crawl.spider.discovery import DiscoverySpider
+from data_pipeline.crawl.state.discovery import iter_host_discovery, upsert_host_discovery
 from data_pipeline.crawl.state.store import CrawlState
 
 
@@ -50,10 +52,10 @@ def run_discovery(
         - seeds.recursive_hostnames
     )
     coordinator = SitemapDiscoveryCoordinator(
-        exact_hostnames=exact_hosts, on_change=state.upsert_host_discovery
+        exact_hostnames=exact_hosts, on_change=partial(upsert_host_discovery, state)
     )
     if resume:
-        coordinator.restore(state.iter_host_discovery())
+        coordinator.restore(iter_host_discovery(state))
 
     for inv in seeds.invalid:
         err = {

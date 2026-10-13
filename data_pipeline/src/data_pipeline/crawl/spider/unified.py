@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections import defaultdict
 import hashlib
+from collections import defaultdict
 from typing import Any, AsyncIterator, Iterable, Iterator, Mapping, cast
 from urllib.parse import urlsplit
 
@@ -9,17 +9,17 @@ import scrapy
 from scrapy.exceptions import IgnoreRequest
 from scrapy.http import Response
 
-from data_pipeline.crawl.config import CrawlerConfig
-from data_pipeline.core.policies.url import canonicalize_url
 from data_pipeline.core.policies.access import classify_page_gate
+from data_pipeline.core.policies.url import canonicalize_url
+from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.extract.article import analyze_article
+from data_pipeline.crawl.extract.content import normalize_url, resource_kind
 from data_pipeline.crawl.frontier.assets import (
     AssetPolicy,
     classify_asset,
     is_recognizable_binary,
     recognizable_asset,
 )
-from data_pipeline.crawl.extract.content import normalize_url, resource_kind
 from data_pipeline.crawl.frontier.frontier import (
     Candidate,
     DiscoverySource,
@@ -27,8 +27,19 @@ from data_pipeline.crawl.frontier.frontier import (
     FrontierPolicy,
     Purpose,
 )
-from data_pipeline.crawl.frontier.link_policy import ClassifiedLink, classify_link, select_semantic_next
+from data_pipeline.crawl.frontier.link_policy import (
+    ClassifiedLink,
+    classify_link,
+    select_semantic_next,
+)
+from data_pipeline.crawl.frontier.seeds import SeedSet
+from data_pipeline.crawl.frontier.sitemaps import (
+    SitemapDiscoveryCoordinator,
+    SitemapParseError,
+    parse_sitemap,
+)
 from data_pipeline.crawl.options import CrawlOptions
+from data_pipeline.crawl.output.writer import CrawlWriter, StorageLimit, content_id_for
 from data_pipeline.crawl.run.refresh import (
     RefreshSession,
     classify_refetch,
@@ -36,14 +47,8 @@ from data_pipeline.crawl.run.refresh import (
     response_validators,
 )
 from data_pipeline.crawl.spider.routing import route_response
-from data_pipeline.crawl.frontier.seeds import SeedSet
-from data_pipeline.crawl.frontier.sitemaps import (
-    SitemapDiscoveryCoordinator,
-    SitemapParseError,
-    parse_sitemap,
-)
-from data_pipeline.crawl.state.store import FamilyObservation
-from data_pipeline.crawl.output.writer import CrawlWriter, StorageLimit, content_id_for
+from data_pipeline.crawl.state.discovery import FamilyObservation, put_route_family
+from data_pipeline.crawl.state.store import CrawlState
 
 
 class UnifiedSpider(scrapy.Spider):
@@ -560,8 +565,9 @@ class UnifiedSpider(scrapy.Spider):
                     content_targets=content_targets,
                 )
                 family_state = self.frontier.observe_family(observation)
-                if hasattr(self.writer, "state") and hasattr(self.writer.state, "put_route_family"):
-                    self.writer.state.put_route_family(family_state)
+                crawl_state = getattr(self.writer, "state", None)
+                if isinstance(crawl_state, CrawlState):
+                    put_route_family(crawl_state, family_state)
                 self.frontier.observe_pagination(response.url, new_scheduled_content_count)
 
             for f_key, links in pagination_by_family.items():
