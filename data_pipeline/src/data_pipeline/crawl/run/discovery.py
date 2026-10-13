@@ -13,6 +13,7 @@ from data_pipeline.crawl.config import CrawlerConfig, semantic_config_snapshot
 from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
 from data_pipeline.crawl.output.discovery_writer import DiscoveryWriter
+from data_pipeline.crawl.run.common import record_invalid_seeds
 from data_pipeline.crawl.run.exit_codes import finish_reason_to_exit
 from data_pipeline.crawl.runtime.profiles import RuntimeTuning
 from data_pipeline.crawl.runtime.settings import build_settings
@@ -58,15 +59,7 @@ def run_discovery(
     if resume:
         coordinator.restore(iter_host_discovery(state))
 
-    for inv in seeds.invalid:
-        err = {
-            "url": inv.value,
-            "line": inv.line,
-            "error": inv.reason,
-            "message": f"line {inv.line}: {inv.reason}",
-        }
-        state.put_error(err)
-        state.upsert_url({"url": inv.value, "status": "failed", "reason": inv.reason})
+    record_invalid_seeds(seeds, state)
 
     jobdir = state_dir / "scrapy-job"
     start_time = time.time()
@@ -125,7 +118,6 @@ def run_discovery(
             discovery=coordinator.snapshot(),
             public_output=output,
         )
-        return exit_code
     except KeyboardInterrupt:
         writer.publish()
         counts = state.counts()
@@ -137,7 +129,7 @@ def run_discovery(
             discovery=coordinator.snapshot(),
             public_output=output,
         )
-        return 130
+        exit_code = 130
     except Exception as exc:  # noqa: BLE001 -- any crash is recorded as a failed run before exiting
         writer.publish()
         counts = state.counts()
@@ -149,6 +141,7 @@ def run_discovery(
             discovery=coordinator.snapshot(),
             public_output=output,
         )
-        return 1
+        exit_code = 1
     finally:
         writer.close()
+    return exit_code
