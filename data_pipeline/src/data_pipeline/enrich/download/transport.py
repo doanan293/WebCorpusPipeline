@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 import aiohttp
 
 from data_pipeline.core.settings import Settings
+
+
+class _Releasable(Protocol):
+    def release(self) -> object: ...
 
 
 @dataclass
@@ -15,10 +19,16 @@ class Response:
     headers: Any
     final_url: str
     body: AsyncIterator[bytes]
-    _response: aiohttp.ClientResponse
+    _response: _Releasable
 
     async def close(self) -> None:
         self._response.release()
+
+
+class HttpClient(Protocol):
+    """What the downloader needs from a transport (satisfied by PublicTransport)."""
+
+    async def get(self, url: str, headers: dict[str, str] | None = None) -> Response: ...
 
 
 class PublicTransport:

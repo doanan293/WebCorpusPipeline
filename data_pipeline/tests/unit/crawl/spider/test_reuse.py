@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from scrapy.http import Request, Response
 
@@ -12,7 +13,7 @@ from data_pipeline.crawl.spider.reuse import ReusedAssetSpider, ReusedAssetTarge
 from data_pipeline.crawl.state.store import CrawlState
 
 
-def make_spider(tmp_path) -> tuple[ReusedAssetSpider, CrawlState]:
+def make_spider(tmp_path: Path) -> tuple[ReusedAssetSpider, CrawlState]:
     input_path = tmp_path / "seeds.txt"
     input_path.write_text("a.test\n", encoding="utf-8")
     options = CrawlOptions(assets="all")
@@ -40,7 +41,7 @@ def make_spider(tmp_path) -> tuple[ReusedAssetSpider, CrawlState]:
     return spider, state
 
 
-def test_reused_asset_spider_schedules_only_recorded_asset_urls(tmp_path) -> None:
+def test_reused_asset_spider_schedules_only_recorded_asset_urls(tmp_path: Path) -> None:
     spider, state = make_spider(tmp_path)
 
     requests = list(spider.start_requests())
@@ -52,7 +53,7 @@ def test_reused_asset_spider_schedules_only_recorded_asset_urls(tmp_path) -> Non
     state.close()
 
 
-def test_reused_asset_spider_stores_binary_and_all_referrers(tmp_path) -> None:
+def test_reused_asset_spider_stores_binary_and_all_referrers(tmp_path: Path) -> None:
     spider, state = make_spider(tmp_path)
     request = next(spider.start_requests())
     response = Response(

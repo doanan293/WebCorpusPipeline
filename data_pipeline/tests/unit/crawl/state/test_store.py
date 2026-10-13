@@ -1,7 +1,8 @@
 import json
 import sqlite3
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import pytest
 
@@ -16,13 +17,18 @@ from data_pipeline.crawl.state.store import (
 )
 
 
+def fail_disk_write(*args: Any) -> None:
+    msg = "disk"
+    raise OSError(msg)
+
+
 def open_state(
     root: Path,
     phase: Literal["discover", "crawl"] = "crawl",
     *,
     resume: bool = False,
-    semantic_config: dict[str, object] | None = None,
-    runtime_config: dict[str, object] | None = None,
+    semantic_config: Mapping[str, object] | None = None,
+    runtime_config: Mapping[str, object] | None = None,
 ) -> CrawlState:
     state_dir = (
         root
@@ -335,10 +341,12 @@ def test_iter_pending_scheduled_records_excludes_completed_urls(tmp_path: Path) 
     state.close()
 
 
-def test_failed_article_transaction_leaves_url_incomplete(tmp_path: Path, monkeypatch) -> None:
+def test_failed_article_transaction_leaves_url_incomplete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     state = open_state(tmp_path)
     state.merge_url({"url": "https://a.test/article", "status": "scheduled"})
-    monkeypatch.setattr(state, "_put_payload", lambda *args: (_ for _ in ()).throw(OSError("disk")))
+    monkeypatch.setattr(state, "_put_payload", fail_disk_write)
     with pytest.raises(OSError, match="disk"):
         state.complete_url(
             {"url": "https://a.test/article", "status": "extracted"},
@@ -467,8 +475,8 @@ def test_new_records_are_stamped_with_refresh_run(tmp_path: Path) -> None:
     state.upsert_url({"url": "https://a.test/old", "status": "extracted", "etag": '"x"'})
     state.upsert_url({"url": "https://a.test/new", "status": "scheduled"})
 
-    assert "first_seen_run" not in state.url_record("https://a.test/old")
-    assert state.url_record("https://a.test/new")["first_seen_run"] == "20261006T000000Z"
+    assert "first_seen_run" not in (state.url_record("https://a.test/old") or {})
+    assert (state.url_record("https://a.test/new") or {})["first_seen_run"] == "20261006T000000Z"
     state.close()
 
 
@@ -480,6 +488,7 @@ def test_update_url_fields_keeps_status_and_completion(tmp_path: Path) -> None:
     state.update_url_fields("https://a.test/missing", {"etag": '"v1"'})
 
     record = state.url_record(url)
+    assert record is not None
     assert record["status"] == "extracted"
     assert record["etag"] == '"v1"'
     assert record["duplicate_of"] is None
@@ -493,7 +502,7 @@ def test_release_content_owner_promotes_first_duplicate(tmp_path: Path) -> None:
     writer = CrawlWriter(tmp_path / "output", state, CrawlOptions())
     for url in ("https://a.test/owner", "https://a.test/b", "https://a.test/c"):
         writer.write_article({"url": url, "final_url": url, "text": "Shared text"})
-    old_id = state.url_record("https://a.test/owner")["content_id"]
+    old_id = str((state.url_record("https://a.test/owner") or {})["content_id"])
 
     state.release_content_owner("https://a.test/owner", old_id)
 
@@ -504,8 +513,8 @@ def test_release_content_owner_promotes_first_duplicate(tmp_path: Path) -> None:
     assert articles["https://a.test/b"]["text"] == "Shared text"
     assert "duplicate_of" not in articles["https://a.test/b"]
     assert articles["https://a.test/c"]["duplicate_of"] == "https://a.test/b"
-    assert state.url_record("https://a.test/b")["duplicate_of"] is None
-    assert state.url_record("https://a.test/c")["duplicate_of"] == "https://a.test/b"
+    assert (state.url_record("https://a.test/b") or {})["duplicate_of"] is None
+    assert (state.url_record("https://a.test/c") or {})["duplicate_of"] == "https://a.test/b"
     assert state.claim_content(old_id, "https://a.test/z") == "https://a.test/b"
     state.close()
 
@@ -516,7 +525,7 @@ def test_release_content_owner_without_duplicates_frees_content(tmp_path: Path) 
     writer.write_article(
         {"url": "https://a.test/a", "final_url": "https://a.test/a", "text": "Only"}
     )
-    old_id = state.url_record("https://a.test/a")["content_id"]
+    old_id = str((state.url_record("https://a.test/a") or {})["content_id"])
 
     state.release_content_owner("https://a.test/a", old_id)
 

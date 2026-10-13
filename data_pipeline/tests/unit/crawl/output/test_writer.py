@@ -112,7 +112,7 @@ def test_file_record_preserves_article_asset_role(tmp_path: Path) -> None:
         asset_role="inline_image",
     )
     assert record["asset_role"] == "inline_image"
-    assert record["path"].startswith("files/")
+    assert str(record["path"]).startswith("files/")
     writer.close()
 
 
@@ -134,7 +134,7 @@ def test_extensionless_odf_files_resolve_extension(
         mime,
         b"odf content",
     )
-    assert record["path"].endswith(expected_suffix)
+    assert str(record["path"]).endswith(expected_suffix)
     writer.close()
 
 

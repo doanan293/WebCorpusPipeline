@@ -1,4 +1,7 @@
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.frontier.seeds import SeedSet
@@ -9,11 +12,11 @@ from data_pipeline.crawl.spider.discovery import DiscoverySpider
 from data_pipeline.crawl.state.store import CrawlState
 
 
-def capture_state_open(monkeypatch) -> dict[str, object]:
+def capture_state_open(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     observed: dict[str, object] = {}
     original_open = CrawlState.open
 
-    def fake_open(cls, root: Path, **kwargs) -> CrawlState:
+    def fake_open(cls: Any, root: Path, **kwargs: Any) -> CrawlState:
         observed["root"] = root
         observed.update(kwargs)
         return original_open(root, **kwargs)
@@ -46,18 +49,20 @@ def run_discovery_for_test(tmp_path: Path) -> int:
     )
 
 
-def test_discovery_runner_opens_discover_phase(monkeypatch, tmp_path: Path) -> None:
+def test_discovery_runner_opens_discover_phase(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     class FakeCrawler:
-        stats = None
+        stats: Any = None
 
     class FakeCrawlerProcess:
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Any, **kwargs: Any):
             pass
 
-        def create_crawler(self, *args, **kwargs):
+        def create_crawler(self, *args: Any, **kwargs: Any):
             return FakeCrawler()
 
-        def crawl(self, crawler, **kwargs):
+        def crawl(self, crawler: Any, **kwargs: Any):
             spider = DiscoverySpider(**kwargs)
             list(spider.start_requests())
 

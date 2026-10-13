@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any, cast
 from urllib.parse import urlsplit
 
 from scrapy.http import Request, Response
@@ -63,7 +64,7 @@ def make_discovery_spider(
         seeds=seeds,
         config=config,
         coordinator=coordinator,
-        writer=writer,  # type: ignore[arg-type]
+        writer=cast(Any, writer),
     )
     return spider, writer
 

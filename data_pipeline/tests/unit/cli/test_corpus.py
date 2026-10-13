@@ -4,6 +4,7 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -32,9 +33,11 @@ def test_package_uses_the_default_source_and_work_directories(
     recorded: dict[str, object], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[tuple[Path, Path, Path]] = []
-    monkeypatch.setattr(
-        package, "package_corpus", lambda source, work, output: calls.append((source, work, output))
-    )
+
+    def package_corpus(source: Path, work: Path, output: Path) -> None:
+        calls.append((source, work, output))
+
+    monkeypatch.setattr(package, "package_corpus", package_corpus)
 
     assert main(["corpus", "package", "--output", str(tmp_path / "out")]) == 0
 
@@ -47,7 +50,11 @@ def test_build_graph_passes_the_output_directory(
     recorded: dict[str, object], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[Path] = []
-    monkeypatch.setattr(graph, "build_graph", lambda source, output: calls.append(output))
+
+    def build_graph(source: Path, output: Path) -> None:
+        calls.append(output)
+
+    monkeypatch.setattr(graph, "build_graph", build_graph)
 
     assert main(["corpus", "build-graph", "--output", str(tmp_path / "g"), "--rebind-source"]) == 0
     assert calls == [tmp_path / "g"]
@@ -57,16 +64,20 @@ def test_build_graph_passes_the_output_directory(
 def test_verify_prints_the_report_and_succeeds_for_a_valid_corpus(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(package, "verify_corpus", lambda corpus: {"valid": True, "errors": []})
+    def valid_corpus(corpus: Path) -> dict[str, Any]:
+        return {"valid": True, "errors": []}
+
+    monkeypatch.setattr(package, "verify_corpus", valid_corpus)
 
     assert main(["corpus", "verify", "--corpus", "c"]) == 0
     assert json.loads(capsys.readouterr().out)["valid"] is True
 
 
 def test_verify_exits_3_for_an_invalid_corpus(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        package, "verify_corpus", lambda corpus: {"valid": False, "errors": ["missing manifest"]}
-    )
+    def invalid_corpus(corpus: Path) -> dict[str, Any]:
+        return {"valid": False, "errors": ["missing manifest"]}
+
+    monkeypatch.setattr(package, "verify_corpus", invalid_corpus)
 
     assert main(["corpus", "verify", "--corpus", "c"]) == 3
 
@@ -135,9 +146,12 @@ def test_pull_defaults_to_the_project_lock_and_destination(
     project: ProjectPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[tuple[Path, Path]] = []
-    monkeypatch.setattr(
-        kaggle, "pull_corpus", lambda lock, destination: calls.append((lock, destination)) or "ok"
-    )
+
+    def pull_corpus(lock: Path, destination: Path) -> str:
+        calls.append((lock, destination))
+        return "ok"
+
+    monkeypatch.setattr(kaggle, "pull_corpus", pull_corpus)
 
     assert main(["corpus", "pull"]) == 0
     assert calls == [(project.corpus_lock, project.corpus_pulled)]

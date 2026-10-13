@@ -200,4 +200,6 @@ def test_selects_only_one_semantic_next() -> None:
             "https://a.test/news?page=99", "pagination", "a.test/news?page={page}", 99, False, None
         ),
     )
-    assert select_semantic_next(links, current_ordinal=2).url.endswith("page=3")
+    selected = select_semantic_next(links, current_ordinal=2)
+    assert selected is not None
+    assert selected.url.endswith("page=3")

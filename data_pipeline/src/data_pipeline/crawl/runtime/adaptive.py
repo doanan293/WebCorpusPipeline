@@ -177,8 +177,10 @@ class AdaptiveConcurrencyMiddleware:
             )
         return health
 
-    def process_request(  # noqa: ARG002 -- Scrapy middleware interface
-        self, request: Request, spider: Spider | None = None
+    def process_request(
+        self,
+        request: Request,
+        spider: Spider | None = None,  # noqa: ARG002 -- Scrapy middleware interface
     ) -> None:
         self._started[id(request)] = monotonic()
 

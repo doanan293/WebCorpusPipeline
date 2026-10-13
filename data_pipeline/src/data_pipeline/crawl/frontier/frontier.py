@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Any, Literal, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from data_pipeline.core.policies.url import canonicalize_url, classify_frontier_trap
@@ -345,7 +345,7 @@ class FrontierPolicy:
                 path_key = (hostname, parsed.path)
                 self._query_variants[path_key].add(parsed.query)
 
-    def snapshot(self) -> dict[str, object]:
+    def snapshot(self) -> dict[str, Any]:
         return {
             "total_scheduled": self._total_scheduled,
             "host_scheduled": dict(self._host_scheduled),

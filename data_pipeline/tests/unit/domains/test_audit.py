@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from data_pipeline.domains.audit import run_audit
 from data_pipeline.domains.probe import (
     ProbeAttempt,
@@ -5,7 +7,7 @@ from data_pipeline.domains.probe import (
 )
 
 
-def test_run_audit_updates_both_lists_and_writes_report(tmp_path) -> None:
+def test_run_audit_updates_both_lists_and_writes_report(tmp_path: Path) -> None:
     all_path = tmp_path / "domain_all.txt"
     all_path.write_text("b.hust.edu.vn\na.hust.edu.vn\n", encoding="utf-8")
     active_path = tmp_path / "domain_active.txt"
@@ -36,7 +38,7 @@ def test_run_audit_updates_both_lists_and_writes_report(tmp_path) -> None:
     assert len(report_path.read_text().splitlines()) == 2
 
 
-def test_run_audit_promotes_only_public_browser_rendered_shells(tmp_path) -> None:
+def test_run_audit_promotes_only_public_browser_rendered_shells(tmp_path: Path) -> None:
     all_path = tmp_path / "domain_all.txt"
     all_path.write_text(
         "login.hust.edu.vn\nportal.hust.edu.vn\n",
@@ -89,7 +91,7 @@ def test_run_audit_promotes_only_public_browser_rendered_shells(tmp_path) -> Non
     assert results[1].browser_rendered is True
 
 
-def test_run_audit_keeps_only_canonical_hust_redirect_target(tmp_path) -> None:
+def test_run_audit_keeps_only_canonical_hust_redirect_target(tmp_path: Path) -> None:
     all_path = tmp_path / "domain_all.txt"
     all_path.write_text("alias.hust.edu.vn\ncanonical.hust.edu.vn\n", encoding="utf-8")
     active_path = tmp_path / "domain_active.txt"
@@ -118,7 +120,7 @@ def test_run_audit_keeps_only_canonical_hust_redirect_target(tmp_path) -> None:
     ]
 
 
-def test_run_audit_excludes_redirect_outside_hust_scope(tmp_path) -> None:
+def test_run_audit_excludes_redirect_outside_hust_scope(tmp_path: Path) -> None:
     all_path = tmp_path / "domain_all.txt"
     all_path.write_text("journal.hust.edu.vn\n", encoding="utf-8")
     active_path = tmp_path / "domain_active.txt"
@@ -145,7 +147,7 @@ def test_run_audit_excludes_redirect_outside_hust_scope(tmp_path) -> None:
     assert results[0].reason == "external_redirect"
 
 
-def test_run_audit_keeps_shortest_hostname_for_identical_content(tmp_path) -> None:
+def test_run_audit_keeps_shortest_hostname_for_identical_content(tmp_path: Path) -> None:
     all_path = tmp_path / "domain_all.txt"
     all_path.write_text(
         "unit-meta.hust.edu.vn\nunit.hust.edu.vn\n",

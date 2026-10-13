@@ -1,26 +1,41 @@
 from types import SimpleNamespace
+from typing import Any, cast
 
 from scrapy import signals
 from scrapy.http import HtmlResponse, Request
 from scrapy.signalmanager import SignalManager
 
 from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware, Observation
+from data_pipeline.crawl.runtime.resources import ResourceSampler
 
 
-def _middleware() -> tuple[AdaptiveConcurrencyMiddleware, SimpleNamespace]:
-    crawler = SimpleNamespace(
+def _ignore(*args: Any, **kwargs: Any) -> None:
+    return None
+
+
+def _calm_sample() -> SimpleNamespace:
+    return SimpleNamespace(cpu_percent=0.0, ram_percent=0.0)
+
+
+def _slots(middleware: AdaptiveConcurrencyMiddleware) -> dict[str, Any]:
+    return cast(Any, middleware._crawler).engine.downloader.slots
+
+
+def _middleware() -> tuple[AdaptiveConcurrencyMiddleware, Any]:
+    crawler: Any = SimpleNamespace(
         settings={"HUST_TUNING": SimpleNamespace(max_per_host=4, max_concurrency=64)},
         engine=SimpleNamespace(
             downloader=SimpleNamespace(
                 slots={"a.test": SimpleNamespace(concurrency=1, delay=0.25)},
             )
         ),
-        stats=SimpleNamespace(inc_value=lambda *args, **kwargs: None),
+        stats=SimpleNamespace(inc_value=_ignore),
     )
     crawler.signals = SignalManager(crawler)
     middleware = AdaptiveConcurrencyMiddleware.from_crawler(crawler)
-    middleware._resource_sampler = SimpleNamespace(
-        sample=lambda: SimpleNamespace(cpu_percent=0.0, ram_percent=0.0)
+    middleware._resource_sampler = cast(
+        ResourceSampler,
+        SimpleNamespace(sample=_calm_sample),
     )
     return middleware, crawler
 
@@ -31,14 +46,14 @@ def test_healthy_window_increases_matching_scrapy_slot() -> None:
     for _ in range(20):
         middleware.process_response(request, HtmlResponse(request.url, status=200, request=request))
     middleware.reconcile(now=31.0)
-    assert middleware._crawler.engine.downloader.slots["a.test"].concurrency == 2
+    assert _slots(middleware)["a.test"].concurrency == 2
 
 
 def test_429_reduces_only_matching_slot() -> None:
     middleware, _ = _middleware()
     request = Request("https://a.test/")
     middleware.process_response(request, HtmlResponse(request.url, status=429, request=request))
-    assert middleware._crawler.engine.downloader.slots["a.test"].concurrency == 1
+    assert _slots(middleware)["a.test"].concurrency == 1
 
 
 def test_429_retry_after_sets_host_cooldown() -> None:
@@ -49,7 +64,7 @@ def test_429_retry_after_sets_host_cooldown() -> None:
         HtmlResponse(request.url, status=429, headers={b"Retry-After": b"7"}, request=request),
     )
     assert middleware._hosts["a.test"]._cooldown_until is not None
-    assert middleware._crawler.engine.downloader.slots["a.test"].delay >= 6.9
+    assert _slots(middleware)["a.test"].delay >= 6.9
 
 
 def test_429_without_retry_after_applies_default_delay_to_scrapy_slot() -> None:
@@ -58,7 +73,7 @@ def test_429_without_retry_after_applies_default_delay_to_scrapy_slot() -> None:
 
     middleware.process_response(request, HtmlResponse(request.url, status=429, request=request))
 
-    assert middleware._crawler.engine.downloader.slots["a.test"].delay >= 29.9
+    assert _slots(middleware)["a.test"].delay >= 29.9
 
 
 def test_response_downloaded_signal_applies_cooldown_before_middleware_response() -> None:
@@ -73,7 +88,7 @@ def test_response_downloaded_signal_applies_cooldown_before_middleware_response(
         spider=None,
     )
 
-    assert middleware._crawler.engine.downloader.slots["a.test"].delay >= 29.9
+    assert _slots(middleware)["a.test"].delay >= 29.9
 
 
 def test_healthy_response_after_cooldown_restores_original_slot_delay() -> None:
@@ -81,12 +96,13 @@ def test_healthy_response_after_cooldown_restores_original_slot_delay() -> None:
     request = Request("https://a.test/")
     middleware.process_response(request, HtmlResponse(request.url, status=429, request=request))
     health = middleware._hosts["a.test"]
+    assert health._cooldown_until is not None
     recovered_at = health._cooldown_until + 0.1
 
     health.observe(Observation(at=recovered_at, latency=0.2, status=200, error=None))
     middleware.reconcile_host("a.test", request, now=recovered_at)
 
-    assert middleware._crawler.engine.downloader.slots["a.test"].delay == 0.25
+    assert _slots(middleware)["a.test"].delay == 0.25
 
 
 def test_captcha_response_applies_host_circuit_cooldown() -> None:
@@ -103,7 +119,7 @@ def test_captcha_response_applies_host_circuit_cooldown() -> None:
 
     middleware.process_response(request, response)
 
-    assert middleware._crawler.engine.downloader.slots["a.test"].delay >= 299.9
+    assert _slots(middleware)["a.test"].delay >= 299.9
 
 
 def test_comment_form_captcha_does_not_open_host_circuit() -> None:
@@ -125,7 +141,7 @@ def test_comment_form_captcha_does_not_open_host_circuit() -> None:
 
     middleware.process_response(request, response)
 
-    assert middleware._crawler.engine.downloader.slots["a.test"].delay == 0.25
+    assert _slots(middleware)["a.test"].delay == 0.25
 
 
 def test_public_contact_form_captcha_does_not_open_host_circuit() -> None:
@@ -148,7 +164,7 @@ def test_public_contact_form_captcha_does_not_open_host_circuit() -> None:
 
     middleware.process_response(request, response)
 
-    assert middleware._crawler.engine.downloader.slots["a.test"].delay == 0.25
+    assert _slots(middleware)["a.test"].delay == 0.25
 
 
 def test_playwright_captcha_cools_normal_and_browser_slots() -> None:

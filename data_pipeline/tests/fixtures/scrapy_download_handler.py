@@ -1,5 +1,6 @@
 import gzip
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 from scrapy.http import Request, Response, TextResponse
@@ -21,13 +22,13 @@ class StaticDownloadHandler:
 
     lazy = True
 
-    def __init__(self, settings, crawler=None):
+    def __init__(self, settings: Any, crawler: Any = None):
         self.attempts: dict[str, int] = {}
         self.request_log = settings.get("FIXTURE_REQUEST_LOG")
         self.fixture_mode = settings.get("FIXTURE_MODE", "complete")
 
     @classmethod
-    def from_crawler(cls, crawler):
+    def from_crawler(cls, crawler: Any):
         return cls(crawler.settings, crawler)
 
     async def close(self):
@@ -41,7 +42,7 @@ class StaticDownloadHandler:
         url = request.url
 
         if self.fixture_mode in {"policy_recovery_initial", "policy_recovery_resume"}:
-            user_agent = request.headers.get(b"User-Agent", b"").decode("latin1")
+            user_agent = (request.headers.get(b"User-Agent") or b"").decode("latin1")
             if url == "https://ua-gated.test/" and "Mozilla/5.0" not in user_agent:
                 return TextResponse(
                     url,

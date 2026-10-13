@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -23,15 +24,15 @@ class StopAfterResponse:
     target = "https://news.test/bai/n1"
 
     @classmethod
-    def from_crawler(cls, crawler):
+    def from_crawler(cls, crawler: Any):
         extension = cls(crawler)
         crawler.signals.connect(extension.on_response, signal=signals.response_downloaded)
         return extension
 
-    def __init__(self, crawler):
+    def __init__(self, crawler: Any):
         self.crawler = crawler
 
-    def on_response(self, response, **kwargs):
+    def on_response(self, response: Any, **kwargs: Any):
         if response.url == self.target:
             self.crawler.engine.close_spider(self.crawler.spider, "shutdown")
 
@@ -54,7 +55,14 @@ def main(root: Path, step: str, version: int, fail_paths: str = "") -> int:
 
     original_build_settings = crawl_settings.build_settings
 
-    def fixture_build_settings(cfg, *, state_dir, phase="crawl", tuning=None, extensions=None):
+    def fixture_build_settings(
+        cfg: Any,
+        *,
+        state_dir: Any,
+        phase: Any = "crawl",
+        tuning: Any = None,
+        extensions: Any = None,
+    ):
         values = original_build_settings(
             cfg, state_dir=state_dir, phase=phase, tuning=tuning, extensions=extensions
         )
@@ -68,8 +76,8 @@ def main(root: Path, step: str, version: int, fail_paths: str = "") -> int:
             values.setdefault("EXTENSIONS", {})[StopAfterResponse] = 50
         return values
 
-    crawl_settings.build_settings = fixture_build_settings
-    runner.build_settings = fixture_build_settings
+    crawl_settings.build_settings = cast(Any, fixture_build_settings)
+    runner.build_settings = cast(Any, fixture_build_settings)
 
     argv = [
         "--input",

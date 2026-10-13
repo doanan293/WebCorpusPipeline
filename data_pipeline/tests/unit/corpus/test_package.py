@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -7,7 +8,7 @@ from data_pipeline.corpus.mongo import _page_value, _record_id
 from data_pipeline.corpus.package import package_corpus, verify_corpus
 
 
-def test_package_and_verify(tmp_path):
+def test_package_and_verify(tmp_path: Path) -> None:
     source = tmp_path / "source"
     source.mkdir()
     (source / "articles.jsonl").write_text(
@@ -21,7 +22,7 @@ def test_package_and_verify(tmp_path):
     assert (output / "links.jsonl").exists() and (output / "manifest.json").exists()
 
 
-def test_package_refuses_unresolved_enrichment(tmp_path):
+def test_package_refuses_unresolved_enrichment(tmp_path: Path) -> None:
     source = tmp_path / "source"
     source.mkdir()
     (source / "articles.jsonl").write_text("{}\n")
@@ -41,7 +42,7 @@ def test_package_refuses_unresolved_enrichment(tmp_path):
         package_corpus(source, work, tmp_path / "corpus")
 
 
-def test_mongo_page_projection_and_edge_ids_are_bounded_and_distinct():
+def test_mongo_page_projection_and_edge_ids_are_bounded_and_distinct() -> None:
     page = _page_value(
         {
             "url": "https://example.test/page",

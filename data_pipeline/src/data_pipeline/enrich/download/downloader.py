@@ -6,12 +6,13 @@ import os
 import time
 from collections import defaultdict
 from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from http import HTTPStatus
 from urllib.parse import urlsplit
 
 from data_pipeline.core.settings import Settings
 from data_pipeline.enrich.download.artifacts import extension_for, looks_like_document, sha256_file
-from data_pipeline.enrich.download.transport import PublicTransport, Response
+from data_pipeline.enrich.download.transport import HttpClient, PublicTransport, Response
 from data_pipeline.enrich.models import DownloadedFile, DownloadJob, RunSummary
 from data_pipeline.enrich.state import WorkState
 
@@ -77,7 +78,7 @@ def _raise_for_status(response: Response) -> None:
 
 
 async def _settle_resume(
-    response: Response, job: DownloadJob, transport: PublicTransport, offset: int
+    response: Response, job: DownloadJob, transport: HttpClient, offset: int
 ) -> tuple[Response, int, str | None]:
     """Keep a resumed body only if the server honoured the range for the same validator.
 
@@ -163,7 +164,7 @@ def _finalize(job: DownloadJob, state: WorkState, mime: str) -> DownloadedFile:
 
 
 async def download_one(
-    job: DownloadJob, state: WorkState, settings: Settings, transport: PublicTransport
+    job: DownloadJob, state: WorkState, settings: Settings, transport: HttpClient
 ) -> DownloadedFile:
     offset, headers = _resume_point(job)
     response = await transport.get(job.url, headers)
@@ -194,7 +195,9 @@ async def download_one(
 async def run_downloads(
     state: WorkState,
     settings: Settings,
-    transport_factory: Callable[[Settings], PublicTransport] = PublicTransport,
+    transport_factory: Callable[
+        [Settings], AbstractAsyncContextManager[HttpClient]
+    ] = PublicTransport,
     stop: asyncio.Event | None = None,
 ) -> RunSummary:
 

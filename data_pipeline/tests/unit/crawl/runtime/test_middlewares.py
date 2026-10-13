@@ -1,5 +1,6 @@
 import asyncio
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 from scrapy.exceptions import IgnoreRequest, StopDownload
@@ -67,6 +68,7 @@ def test_redirect_loop_is_rejected_before_refetching_seen_url() -> None:
         request=first,
     )
     second = middleware.process_response(first, to_b)
+    assert isinstance(second, Request)
     assert second.meta["redirect_times"] == 1
     assert second.meta["redirect_urls"] == ("https://a.test/a",)
     assert second.dont_filter is True
@@ -94,6 +96,7 @@ def test_redirect_loop_normalizes_equivalent_target_before_comparing_history() -
         request=first,
     )
     second = middleware.process_response(first, to_c)
+    assert isinstance(second, Request)
     back_to_equivalent_a = Response(
         second.url,
         status=302,
@@ -141,6 +144,7 @@ def test_retry_after_delays_rescheduled_request() -> None:
         return await pending
 
     retry = asyncio.run(exercise())
+    assert isinstance(retry, Request)
     assert retry.dont_filter is True
     assert retry.meta["retry_times"] == 1
 
@@ -156,7 +160,7 @@ def test_exponential_retry_delay_applies_injected_jitter() -> None:
     assert middleware._delay(None, retry_count=2) == 9.0
 
 
-def test_default_retry_uses_the_running_reactor_clock(monkeypatch) -> None:
+def test_default_retry_uses_the_running_reactor_clock(monkeypatch: pytest.MonkeyPatch) -> None:
     reactor_clock = task.Clock()
     monkeypatch.setattr(middlewares, "_reactor_clock", lambda: reactor_clock, raising=False)
     middleware = PoliteRetryMiddleware(
@@ -175,6 +179,7 @@ def test_default_retry_uses_the_running_reactor_clock(monkeypatch) -> None:
         return await asyncio.wait_for(pending, timeout=0.1)
 
     retry = asyncio.run(exercise())
+    assert isinstance(retry, Request)
     assert retry.dont_filter is True
     assert retry.meta["retry_times"] == 1
 
@@ -209,6 +214,7 @@ def test_http_transport_failure_falls_back_to_https_before_retrying() -> None:
     )
 
     fallback = asyncio.run(middleware.process_exception(request, ConnectError("No route to host")))
+    assert isinstance(fallback, Request)
 
     assert fallback.url == "https://a.test/article?id=42"
     assert fallback.meta["input_url"] == "http://a.test:80/article?id=42"
@@ -240,6 +246,7 @@ def test_https_fallback_failure_uses_the_ordinary_retry_path() -> None:
         return await pending
 
     retry = asyncio.run(exercise())
+    assert isinstance(retry, Request)
 
     assert retry.url == "https://a.test/article?id=42"
     assert retry.meta["https_fallback"] is True
@@ -285,6 +292,7 @@ def test_html_shell_is_rescheduled_once_with_playwright() -> None:
         encoding="utf-8",
     )
     rerender = PlaywrightFallbackMiddleware().process_response(request, response)
+    assert isinstance(rerender, Request)
     assert rerender.meta["playwright"] is True
     assert rerender.meta["rendered"] is True
     assert rerender.meta["download_slot"] == "playwright:a.test"
@@ -424,13 +432,13 @@ def test_public_asset_address_middleware_default_resolver() -> None:
 def test_public_asset_address_middleware_process_request_success() -> None:
     called = []
 
-    async def mock_resolver(hostname, port, timeout):
+    async def mock_resolver(hostname: Any, port: Any, timeout: Any):
         called.append((hostname, port, timeout))
 
     mw = PublicAssetAddressMiddleware(resolver=mock_resolver)
     request = Request("https://cdn.test/image.png", meta={"request_scope": "asset"})
 
-    spider = SimpleNamespace(config=SimpleNamespace(download_timeout_seconds=12.0))
+    spider: Any = SimpleNamespace(config=SimpleNamespace(download_timeout_seconds=12.0))
     asyncio.run(mw.process_request(request, spider))
     assert called == [("cdn.test", 443, 12.0)]
 
@@ -438,7 +446,7 @@ def test_public_asset_address_middleware_process_request_success() -> None:
 def test_public_asset_address_middleware_ignores_non_asset_request() -> None:
     called = []
 
-    async def mock_resolver(hostname, port, timeout):
+    async def mock_resolver(hostname: Any, port: Any, timeout: Any):
         called.append((hostname, port, timeout))
 
     mw = PublicAssetAddressMiddleware(resolver=mock_resolver)
@@ -468,6 +476,6 @@ def test_content_only_stops_ambiguous_binary_at_headers() -> None:
             headers=Headers({"Content-Type": "application/pdf", "Content-Length": "999999"}),
             body_length=999999,
             request=request,
-            spider=SimpleNamespace(),
+            spider=cast(Any, SimpleNamespace()),
         )
     assert exc.value.fail is False

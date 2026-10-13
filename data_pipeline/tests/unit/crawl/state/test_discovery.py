@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 from data_pipeline.crawl.state.discovery import (
     RouteFamilyState,
@@ -41,7 +42,7 @@ def test_host_completion_reports_extracted_pages_and_terminal_reasons(tmp_path: 
 
 def test_host_discovery_state_round_trip(tmp_path: Path) -> None:
     state = open_state(tmp_path)
-    record = {
+    record: dict[str, Any] = {
         "hostname": "a.test",
         "robots_complete": True,
         "pending_sitemaps": [],

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter, defaultdict
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlsplit
@@ -77,9 +77,9 @@ def iter_route_families(state: CrawlState) -> Iterator[RouteFamilyState]:
         )
 
 
-def upsert_host_discovery(state: CrawlState, record: dict[str, object]) -> None:
+def upsert_host_discovery(state: CrawlState, record: Mapping[str, object]) -> None:
     hostname = str(record["hostname"])
-    payload = json.dumps(record, ensure_ascii=False)
+    payload = json.dumps(dict(record), ensure_ascii=False)
     state.connection.execute(
         """
         INSERT INTO host_discovery (hostname, payload)

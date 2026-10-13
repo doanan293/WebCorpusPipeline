@@ -156,7 +156,7 @@ class CrawlState:
         )
         temporary.replace(self.manifest_path)
 
-    def _merged_record(self, record: dict[str, object]) -> dict[str, object]:
+    def _merged_record(self, record: Mapping[str, object]) -> dict[str, object]:
         row = self.connection.execute(
             "SELECT payload FROM url_records WHERE url = ?", (str(record["url"]),)
         ).fetchone()
@@ -164,7 +164,9 @@ class CrawlState:
         merged.update({key: value for key, value in record.items() if value is not None})
         return merged
 
-    def merge_url(self, record: dict[str, object], *, completed: bool = False) -> dict[str, object]:
+    def merge_url(
+        self, record: Mapping[str, object], *, completed: bool = False
+    ) -> dict[str, object]:
         existing_row = self.connection.execute(
             "SELECT payload, status, completed FROM url_records WHERE url = ?",
             (str(record["url"]),),
@@ -197,9 +199,9 @@ class CrawlState:
         )
         return merged
 
-    def _put_payload(self, table: str, record: dict[str, object]) -> None:
+    def _put_payload(self, table: str, record: Mapping[str, object]) -> None:
         url = str(record["url"])
-        payload = json.dumps(record, ensure_ascii=False)
+        payload = json.dumps(dict(record), ensure_ascii=False)
         self.connection.execute(
             f"""
             INSERT INTO {table} (url, payload) VALUES (?, ?)
@@ -210,11 +212,11 @@ class CrawlState:
 
     def complete_url(
         self,
-        disposition: dict[str, object],
+        disposition: Mapping[str, object],
         *,
-        article: dict[str, object] | None = None,
-        file: dict[str, object] | None = None,
-        error: dict[str, object] | None = None,
+        article: Mapping[str, object] | None = None,
+        file: Mapping[str, object] | None = None,
+        error: Mapping[str, object] | None = None,
     ) -> None:
         self.connection.execute("BEGIN IMMEDIATE;")
         try:
@@ -230,16 +232,16 @@ class CrawlState:
             self.connection.execute("ROLLBACK;")
             raise
 
-    def upsert_url(self, record: dict[str, object]) -> None:
+    def upsert_url(self, record: Mapping[str, object]) -> None:
         self.merge_url(record, completed=bool(record.get("completed")))
 
-    def put_article(self, record: dict[str, object]) -> None:
+    def put_article(self, record: Mapping[str, object]) -> None:
         self._put_payload("articles", record)
 
-    def put_file(self, record: dict[str, object]) -> None:
+    def put_file(self, record: Mapping[str, object]) -> None:
         self._put_payload("files", record)
 
-    def put_error(self, record: dict[str, object]) -> None:
+    def put_error(self, record: Mapping[str, object]) -> None:
         self._put_payload("errors", record)
 
     def is_complete(self, url: str) -> bool:
@@ -388,11 +390,11 @@ class CrawlState:
 
         return result
 
-    def put_target(self, record: dict[str, object]) -> None:
+    def put_target(self, record: Mapping[str, object]) -> None:
         url = str(record["url"])
         self.connection.execute(
             "INSERT OR REPLACE INTO targets (url, payload) VALUES (?, ?);",
-            (url, json.dumps(record, sort_keys=True, ensure_ascii=False)),
+            (url, json.dumps(dict(record), sort_keys=True, ensure_ascii=False)),
         )
 
     def iter_targets(self) -> Iterator[dict[str, object]]:
@@ -454,9 +456,9 @@ class CrawlState:
         metrics: Mapping[str, object],
         truncation: Mapping[str, object] | None = None,
         *,
-        discovery: dict[str, object] | None = None,
-        frontier: dict[str, object] | None = None,
-        host_completion: dict[str, dict[str, object]] | None = None,
+        discovery: Mapping[str, object] | None = None,
+        frontier: Mapping[str, object] | None = None,
+        host_completion: Mapping[str, Mapping[str, object]] | None = None,
         public_output: Path | None = None,
     ) -> None:
         finish_data: dict[str, object] = {
@@ -469,15 +471,17 @@ class CrawlState:
             "finished_at": time.time(),
         }
         if discovery is not None or self.manifest.get("phase") == "discover":
-            finish_data["discovery"] = discovery
+            finish_data["discovery"] = dict(discovery) if discovery is not None else None
         if frontier is not None:
-            finish_data["frontier"] = frontier
+            finish_data["frontier"] = dict(frontier)
         elif "frontier" in metrics and isinstance(metrics["frontier"], dict):
             finish_data["frontier"] = metrics["frontier"]
         if self.manifest.get("phase") != "discover":
             finish_data["assets"] = asset_metrics(self)
             finish_data["skipped"] = skipped_reasons(self)
-            finish_data["host_completion"] = host_completion or {}
+            finish_data["host_completion"] = {
+                k: dict(v) for k, v in (host_completion or {}).items()
+            }
 
         self.manifest.update(finish_data)
         self.write_manifest(self.manifest)

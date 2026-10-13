@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from collections import defaultdict
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 from scrapy.exceptions import IgnoreRequest
 from scrapy.http import HtmlResponse, Request, Response
@@ -14,7 +14,7 @@ from data_pipeline.crawl.frontier.assets import AssetPolicy
 from data_pipeline.crawl.frontier.frontier import Candidate, FrontierPolicy
 from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
-from data_pipeline.crawl.options import CrawlOptions
+from data_pipeline.crawl.options import AssetMode, CrawlOptions
 from data_pipeline.crawl.spider.unified import UnifiedSpider
 
 
@@ -173,13 +173,13 @@ class FakeCrawlWriter:
 def make_spider(
     recursive_hostnames: frozenset[str] | None = None,
     exact_urls: tuple[str, ...] = (),
-    assets: str = "content-only",
+    assets: AssetMode = "content-only",
     resume_records: tuple[dict[str, Any], ...] = (),
 ) -> tuple[UnifiedSpider, FakeCrawlWriter]:
     if recursive_hostnames is None:
         recursive_hostnames = frozenset() if exact_urls else frozenset({"a.test"})
     seeds = SeedSet(recursive_hostnames, exact_urls, ())
-    options = CrawlOptions(assets=assets)  # type: ignore[arg-type]
+    options = CrawlOptions(assets=assets)
     config = CrawlerConfig(
         hostnames=seeds.allowed_hostnames,
         contact="ops@example.com",
@@ -194,7 +194,7 @@ def make_spider(
         config=config,
         options=options,
         frontier=frontier,
-        writer=writer,  # type: ignore[arg-type]
+        writer=cast(Any, writer),
         policy=policy,
         coordinator=coordinator,
         resume_records=resume_records,
@@ -829,7 +829,7 @@ def test_same_host_media_obeys_host_url_budget() -> None:
         config=config,
         options=options,
         frontier=frontier,
-        writer=writer,
+        writer=cast(Any, writer),
         policy=policy,
         coordinator=coordinator,
     )

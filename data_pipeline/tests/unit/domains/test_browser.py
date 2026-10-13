@@ -1,4 +1,7 @@
 import asyncio
+from typing import Any, cast
+
+import pytest
 
 from data_pipeline.core.policies.network import NonPublicAddressError
 from data_pipeline.domains import browser as domain_browser
@@ -23,7 +26,7 @@ def test_browser_web_sockets_are_closed_by_network_policy() -> None:
             self.closed_with = (code, reason)
 
     web_socket = FakeWebSocket()
-    asyncio.run(domain_browser._block_web_socket(web_socket))
+    asyncio.run(domain_browser._block_web_socket(cast(Any, web_socket)))
 
     assert web_socket.closed_with == (1008, "audit network policy")
 
@@ -47,7 +50,7 @@ def test_browser_retries_only_an_unrendered_javascript_shell() -> None:
 
 
 def test_browser_request_policy_blocks_external_and_non_public_targets(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     resolved: list[str] = []
 

@@ -27,7 +27,7 @@ from data_pipeline.crawl.extract.sanitize import sanitize_article, serialize_con
 
 @dataclass(frozen=True, slots=True)
 class ArticleAnalysis:
-    article: dict[str, object]
+    article: dict[str, Any]
     discoveries: list[HtmlDiscovery]
     assets: tuple[ArticleAsset, ...]
 

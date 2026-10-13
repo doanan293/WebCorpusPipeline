@@ -100,6 +100,7 @@ def test_html_response_stores_http_validators(tmp_path: Path) -> None:
     )
 
     record = writer.state.url_record("https://a.test/")
+    assert record is not None
     assert record["status"] == "extracted"
     assert record["etag"] == '"v1"'
     assert record["last_modified"] == "Tue, 06 Oct 2026 00:00:00 GMT"
@@ -182,7 +183,7 @@ def test_unchanged_page_records_no_change_and_fetches_nothing(tmp_path: Path) ->
     assert list(spider.parse_response(page(request, LIST_V1))) == []
     assert outcome(store, "https://a.test/tin-tuc") == "unchanged"
     assert changes(store) == {}
-    assert writer.state.url_record("https://a.test/tin-tuc")["last_checked_run"] == RUN_ID
+    assert (writer.state.url_record("https://a.test/tin-tuc") or {})["last_checked_run"] == RUN_ID
     writer.close()
 
 
@@ -196,7 +197,7 @@ def test_changed_hub_is_modified_and_only_new_link_is_fetched(tmp_path: Path) ->
     follow_ups = list(spider.parse_response(page(request, LIST_V2)))
 
     assert [r.url for r in follow_ups] == ["https://a.test/bai/2"]
-    assert writer.state.url_record("https://a.test/bai/2")["first_seen_run"] == RUN_ID
+    assert (writer.state.url_record("https://a.test/bai/2") or {})["first_seen_run"] == RUN_ID
     assert "cập nhật bài hai" in article_text(writer, "https://a.test/tin-tuc")
     list(spider.parse_response(page(follow_ups[0], ARTICLE_2)))
     assert changes(store) == {"https://a.test/bai/2": "new", "https://a.test/tin-tuc": "modified"}
@@ -213,7 +214,7 @@ def test_failed_refetch_keeps_existing_article(tmp_path: Path) -> None:
     assert list(spider.parse_response(page(request, "<h1>Server error</h1>", status=500))) == []
 
     assert outcome(store, "https://a.test/tin-tuc") == "http_500"
-    assert writer.state.url_record("https://a.test/tin-tuc")["status"] == "extracted"
+    assert (writer.state.url_record("https://a.test/tin-tuc") or {})["status"] == "extracted"
     assert article_text(writer, "https://a.test/tin-tuc") == before
     assert writer.state.connection.execute("SELECT count(*) FROM errors").fetchone()[0] == 0
     writer.close()
@@ -248,7 +249,7 @@ def test_request_error_on_refresh_target_is_not_a_crawl_error(tmp_path: Path) ->
     )
 
     assert outcome(store, "https://a.test/tin-tuc") == "request_failed"
-    assert writer.state.url_record("https://a.test/tin-tuc")["status"] == "extracted"
+    assert (writer.state.url_record("https://a.test/tin-tuc") or {})["status"] == "extracted"
     assert writer.state.connection.execute("SELECT count(*) FROM errors").fetchone()[0] == 0
     writer.close()
 
@@ -315,7 +316,7 @@ def test_unparsable_sitemap_refetch_is_not_a_crawl_error(tmp_path: Path) -> None
     assert list(spider.parse_response(sitemap_response(request, "<urlset><url>"))) == []
 
     assert outcome(store, "https://a.test/sitemap.xml") == "sitemap_parse_error"
-    assert writer.state.url_record("https://a.test/sitemap.xml")["status"] == "scheduled"
+    assert (writer.state.url_record("https://a.test/sitemap.xml") or {})["status"] == "scheduled"
     assert writer.state.connection.execute("SELECT count(*) FROM errors").fetchone()[0] == 0
     writer.close()
 

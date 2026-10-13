@@ -212,7 +212,7 @@ def test_prepare_new_run_backs_up_and_stores_targets(tmp_path: Path) -> None:
     assert targets == [("https://a.test/", "homepage")]
     assert state.refresh_run_id == run_id
     assert (output / "archive" / f"pre-refresh-{run_id}" / "index.sqlite3").exists()
-    assert store.latest_run()["status"] == "running"
+    assert (store.latest_run() or {})["status"] == "running"
     state.close()
 
 
@@ -253,7 +253,7 @@ def test_prepare_continues_interrupted_run_without_new_backup(tmp_path: Path) ->
     assert run_id == "20261006T000000Z"
     assert targets == [("https://a.test/x", "recent")]
     assert not (tmp_path / "out" / "archive").exists()
-    assert store.latest_run()["status"] == "running"
+    assert (store.latest_run() or {})["status"] == "running"
     state.close()
 
 
@@ -285,7 +285,7 @@ def test_complete_refresh_run_exports_changes(tmp_path: Path) -> None:
     assert summary["new"] == 1 and summary["modified"] == 0
     assert summary["crawl_id"] == state.crawl_id
     assert state.manifest["last_refresh_run_id"] == run_id
-    assert store.latest_run()["status"] == "complete"
+    assert (store.latest_run() or {})["status"] == "complete"
     state.close()
 
 
@@ -303,11 +303,13 @@ def test_interrupted_refresh_run_exports_nothing(tmp_path: Path) -> None:
 
     assert not (output / "changes").exists()
     assert "last_refresh_run_id" not in state.manifest
-    assert store.latest_run()["status"] == "interrupted"
+    assert (store.latest_run() or {})["status"] == "interrupted"
     state.close()
 
 
-def test_failed_prepare_restores_finished_crawl_status(tmp_path: Path, monkeypatch) -> None:
+def test_failed_prepare_restores_finished_crawl_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     state = open_state(tmp_path)
     state.finish("complete", exit_code=0, counts={}, metrics={})
     state.close()

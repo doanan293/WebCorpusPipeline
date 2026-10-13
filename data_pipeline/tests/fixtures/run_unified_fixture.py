@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -22,15 +23,15 @@ from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware
 
 class InterruptExtension:
     @classmethod
-    def from_crawler(cls, crawler):
+    def from_crawler(cls, crawler: Any):
         ext = cls(crawler)
         crawler.signals.connect(ext.on_response, signal=signals.response_downloaded)
         return ext
 
-    def __init__(self, crawler):
+    def __init__(self, crawler: Any):
         self.crawler = crawler
 
-    def on_response(self, response, **kw):
+    def on_response(self, response: Any, **kw: Any):
         if response.url == "https://a.test/article":
             self.crawler.engine.close_spider(self.crawler.spider, "shutdown")
 
@@ -85,7 +86,12 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
     request_log_path = root / "requested_urls.txt"
 
     def fixture_build_settings(
-        cfg, *, state_dir, phase: str = "crawl", tuning=None, extensions=None
+        cfg: Any,
+        *,
+        state_dir: Any,
+        phase: str = "crawl",
+        tuning: Any = None,
+        extensions: Any = None,
     ):
         vals = original_build_settings(
             cfg, state_dir=state_dir, phase=phase, tuning=tuning, extensions=extensions
@@ -111,8 +117,8 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
         vals.setdefault("DOWNLOADER_MIDDLEWARES", {})[AdaptiveConcurrencyMiddleware] = None
         return vals
 
-    crawl_settings.build_settings = fixture_build_settings
-    runner.build_settings = fixture_build_settings
+    crawl_settings.build_settings = cast(Any, fixture_build_settings)
+    runner.build_settings = cast(Any, fixture_build_settings)
 
     reuse_source = root / "crawl" if mode.startswith("reuse") else None
     output_dir = root / "crawl-all" if reuse_source is not None else root / "crawl"

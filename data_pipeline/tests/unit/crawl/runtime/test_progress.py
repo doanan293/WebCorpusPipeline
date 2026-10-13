@@ -1,5 +1,6 @@
 import io
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock
 
 from data_pipeline.crawl.runtime.progress import CrawlProgressReporter, EtaEstimator
@@ -33,8 +34,12 @@ def test_progress_reporter_line_contains_all_metrics() -> None:
         "hust/resources/cpu_percent": 25.0,
         "hust/resources/ram_percent": 45.0,
     }
-    crawler.stats.get_value.side_effect = lambda k, d=0: stats_dict.get(k, d)
-    crawler.stats.get.side_effect = lambda k, d=0: stats_dict.get(k, d)
+
+    def stat(k: str, d: float = 0) -> float:
+        return stats_dict.get(k, d)
+
+    crawler.stats.get_value.side_effect = stat
+    crawler.stats.get.side_effect = stat
 
     output = io.StringIO()
     reporter = CrawlProgressReporter(
@@ -61,8 +66,12 @@ def test_progress_reporter_metrics_track_peak_queue() -> None:
         "scheduler/enqueued": 50,
         "scheduler/dequeued": 10,
     }
-    crawler.stats.get_value.side_effect = lambda k, d=0: stats_dict.get(k, d)
-    crawler.stats.get.side_effect = lambda k, d=0: stats_dict.get(k, d)
+
+    def stat(k: str, d: float = 0) -> float:
+        return stats_dict.get(k, d)
+
+    crawler.stats.get_value.side_effect = stat
+    crawler.stats.get.side_effect = stat
     reporter = CrawlProgressReporter(crawler, clock=lambda: 10.0)
     reporter.started = 0.0
     reporter.report()
@@ -91,8 +100,12 @@ def test_progress_reports_downloader_queue_and_retry_waits() -> None:
         delay=17.0,
     )
     stats = {"hust/retry/count": 4, "hust/retry/waiting": 2}
-    crawler = SimpleNamespace(
-        stats=SimpleNamespace(get_value=lambda key, default=0: stats.get(key, default)),
+
+    def get_value(key: str, default: float = 0) -> float:
+        return stats.get(key, default)
+
+    crawler: Any = SimpleNamespace(
+        stats=SimpleNamespace(get_value=get_value),
         engine=SimpleNamespace(
             downloader=SimpleNamespace(
                 active={1, 2, 3, 4, 5},

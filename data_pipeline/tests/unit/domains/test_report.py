@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -12,7 +13,7 @@ from data_pipeline.domains.report import (
 )
 
 
-def test_candidate_hostnames_are_normalized_unique_and_hust_scoped(tmp_path) -> None:
+def test_candidate_hostnames_are_normalized_unique_and_hust_scoped(tmp_path: Path) -> None:
     source = tmp_path / "domains.txt"
     source.write_text(
         "B.HUST.EDU.VN\na.hust.edu.vn\nb.hust.edu.vn\noutside.test\n",

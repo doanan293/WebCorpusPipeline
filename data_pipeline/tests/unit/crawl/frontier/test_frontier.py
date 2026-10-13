@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from data_pipeline.crawl.frontier.frontier import Candidate, FrontierDecision, FrontierPolicy
+from data_pipeline.crawl.frontier.frontier import (
+    Candidate,
+    DiscoverySource,
+    FrontierDecision,
+    FrontierPolicy,
+)
+from data_pipeline.crawl.frontier.link_policy import LinkKind
 from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.state.discovery import FamilyObservation
@@ -11,9 +17,9 @@ from data_pipeline.crawl.state.discovery import FamilyObservation
 def candidate(
     url: str,
     *,
-    source: str = "html_link",
+    source: DiscoverySource = "html_link",
     discovered_from: str | None = None,
-    link_kind: str | None = None,
+    link_kind: LinkKind | None = None,
 ) -> Candidate:
     return Candidate(
         url=url,

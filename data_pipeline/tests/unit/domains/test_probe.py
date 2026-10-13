@@ -2,6 +2,7 @@ import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any, override
 
 import pytest
 
@@ -230,12 +231,19 @@ def test_script_only_aliases_are_inactive_and_ignore_dynamic_script_content() ->
 def test_probe_rejects_non_public_dns_before_fetching() -> None:
     calls: list[str] = []
 
+    def reject_private(hostname: str) -> None:
+        raise NonPublicAddressError("192.168.50.254")
+
+    def record_fetch(url: str, timeout: float) -> ProbeAttempt:
+        calls.append(url)
+        return ProbeAttempt()
+
     result = probe_host(
         "internal.hust.edu.vn",
         timeout=1,
         attempts=1,
-        resolve=lambda hostname: (_ for _ in ()).throw(NonPublicAddressError("192.168.50.254")),
-        fetch=lambda url, timeout: calls.append(url),
+        resolve=reject_private,
+        fetch=record_fetch,
     )
 
     assert result.active is False
@@ -243,21 +251,23 @@ def test_probe_rejects_non_public_dns_before_fetching() -> None:
     assert calls == []
 
 
-def test_resolve_hostname_rejects_private_addresses(monkeypatch) -> None:
+def private_answers(*args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
+    return [(socket.AF_INET, 0, 0, "", ("192.168.50.254", 443))]
+
+
+def test_resolve_hostname_rejects_private_addresses(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         socket,
         "getaddrinfo",
-        lambda *args, **kwargs: [
-            (socket.AF_INET, 0, 0, "", ("192.168.50.254", 443)),
-        ],
+        private_answers,
     )
 
     with pytest.raises(NonPublicAddressError, match=r"192\.168\.50\.254"):
         resolve_hostname("internal.hust.edu.vn")
 
 
-def test_resolve_hostname_has_a_hard_deadline(monkeypatch) -> None:
-    def delayed_resolution(*args, **kwargs):
+def test_resolve_hostname_has_a_hard_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    def delayed_resolution(*args: Any, **kwargs: Any):
         time.sleep(0.05)
         return [
             (socket.AF_INET, 0, 0, "", ("203.0.113.10", 443)),
@@ -888,7 +898,8 @@ def test_fetch_url_reads_bounded_http_response() -> None:
             self.end_headers()
             self.wfile.write(b"<title>Local service</title><p>ok</p>")
 
-        def log_message(self, format: str, *args) -> None:
+        @override
+        def log_message(self, format: str, *args: Any) -> None:
             pass
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -926,7 +937,8 @@ def test_fetch_url_follows_cookie_dependent_redirect() -> None:
             self.send_header("Location", "/")
             self.end_headers()
 
-        def log_message(self, format: str, *args) -> None:
+        @override
+        def log_message(self, format: str, *args: Any) -> None:
             pass
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -954,7 +966,8 @@ def test_fetch_url_does_not_follow_redirect_outside_hust_scope() -> None:
             self.send_header("Location", "http://169.254.169.254/latest/meta-data/")
             self.end_headers()
 
-        def log_message(self, format: str, *args) -> None:
+        @override
+        def log_message(self, format: str, *args: Any) -> None:
             pass
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -974,7 +987,7 @@ def test_fetch_url_does_not_follow_redirect_outside_hust_scope() -> None:
 
 
 def test_fetch_url_does_not_follow_hust_redirect_to_non_public_address(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
@@ -982,7 +995,8 @@ def test_fetch_url_does_not_follow_hust_redirect_to_non_public_address(
             self.send_header("Location", "https://private.hust.edu.vn/")
             self.end_headers()
 
-        def log_message(self, format: str, *args) -> None:
+        @override
+        def log_message(self, format: str, *args: Any) -> None:
             pass
 
     def resolve(hostname: str, timeout: float = 5.0) -> None:
@@ -1006,11 +1020,17 @@ def test_fetch_url_does_not_follow_hust_redirect_to_non_public_address(
     assert attempt.error == "non_public_address"
 
 
-def test_fetch_url_does_not_follow_redirect_to_non_web_port(monkeypatch) -> None:
+def fail_before_dns(hostname: str, timeout: float = 5.0) -> None:
+    pytest.fail("must reject before DNS")
+
+
+def test_fetch_url_does_not_follow_redirect_to_non_web_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
         domain_probe,
         "resolve_hostname",
-        lambda hostname, timeout=5.0: pytest.fail("must reject before DNS"),
+        fail_before_dns,
     )
 
     class Handler(BaseHTTPRequestHandler):
@@ -1019,7 +1039,8 @@ def test_fetch_url_does_not_follow_redirect_to_non_web_port(monkeypatch) -> None
             self.send_header("Location", "https://public.hust.edu.vn:2375/")
             self.end_headers()
 
-        def log_message(self, format: str, *args) -> None:
+        @override
+        def log_message(self, format: str, *args: Any) -> None:
             pass
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -1044,7 +1065,8 @@ def test_redirect_loop_is_not_an_active_website() -> None:
             self.send_header("Location", "/")
             self.end_headers()
 
-        def log_message(self, format: str, *args) -> None:
+        @override
+        def log_message(self, format: str, *args: Any) -> None:
             pass
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)

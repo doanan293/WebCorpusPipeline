@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -20,11 +21,24 @@ from data_pipeline.crawl.state.discovery import upsert_host_discovery
 from data_pipeline.crawl.state.store import CrawlState
 
 
-def capture_runner_dependencies(monkeypatch) -> dict[str, object]:
-    observed: dict[str, object] = {}
+def do_nothing(self: Any) -> None:
+    return None
+
+
+def interrupt(self: Any) -> None:
+    raise KeyboardInterrupt
+
+
+def crash(self: Any) -> None:
+    msg = "crawl crashed"
+    raise RuntimeError(msg)
+
+
+def capture_runner_dependencies(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    observed: dict[str, Any] = {}
     original_open = CrawlState.open
 
-    def fake_open(cls, root: Path, **kwargs) -> CrawlState:
+    def fake_open(cls: Any, root: Path, **kwargs: Any) -> CrawlState:
         observed["root"] = root
         observed.update(kwargs)
         return original_open(root, **kwargs)
@@ -33,7 +47,7 @@ def capture_runner_dependencies(monkeypatch) -> dict[str, object]:
 
     original_create = runner.CrawlerProcess.create_crawler
 
-    def fake_create(self, spider_cls, *args, **kwargs):
+    def fake_create(self: Any, spider_cls: Any, *args: Any, **kwargs: Any):
         if isinstance(spider_cls, type):
             observed["spider"] = spider_cls
         observed["jobdir"] = self.settings.get("JOBDIR")
@@ -43,14 +57,14 @@ def capture_runner_dependencies(monkeypatch) -> dict[str, object]:
 
     original_crawl = runner.CrawlerProcess.crawl
 
-    def fake_crawl(self, crawler_or_spidercls, *args, **kwargs):
+    def fake_crawl(self: Any, crawler_or_spidercls: Any, *args: Any, **kwargs: Any):
         if "targets" in kwargs:
             kwargs["targets"] = tuple(kwargs["targets"])
         observed["crawl_kwargs"] = kwargs
         return original_crawl(self, crawler_or_spidercls, *args, **kwargs)
 
     monkeypatch.setattr(runner.CrawlerProcess, "crawl", fake_crawl)
-    monkeypatch.setattr(runner.CrawlerProcess, "start", lambda self: None)
+    monkeypatch.setattr(runner.CrawlerProcess, "start", do_nothing)
     return observed
 
 
@@ -90,7 +104,7 @@ def run_unified_for_test(
 
 
 def test_crawl_runner_policy_recovery_is_explicit_and_resumable(
-    monkeypatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     observed = capture_runner_dependencies(monkeypatch)
     assert run_unified_for_test(tmp_path) == 0
@@ -101,7 +115,9 @@ def test_crawl_runner_policy_recovery_is_explicit_and_resumable(
     assert {row["url"] for row in observed["crawl_kwargs"]["resume_records"]} == {"https://a.test/"}
 
 
-def test_crawl_runner_uses_crawl_phase_and_unified_spider(monkeypatch, tmp_path: Path) -> None:
+def test_crawl_runner_uses_crawl_phase_and_unified_spider(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     observed = capture_runner_dependencies(monkeypatch)
     exit_code = run_unified_for_test(tmp_path)
     assert exit_code == 0
@@ -121,7 +137,9 @@ def test_crawl_runner_uses_crawl_phase_and_unified_spider(monkeypatch, tmp_path:
     assert "frontier" in manifest["metrics"]
 
 
-def test_crawl_runner_publishes_host_completion(monkeypatch, tmp_path: Path) -> None:
+def test_crawl_runner_publishes_host_completion(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     capture_runner_dependencies(monkeypatch)
     assert run_unified_for_test(tmp_path) == 0
     manifest = json.loads((tmp_path / "crawl-output/manifest.json").read_text(encoding="utf-8"))
@@ -132,7 +150,7 @@ def test_crawl_runner_publishes_host_completion(monkeypatch, tmp_path: Path) -> 
 
 
 def test_crawl_runner_reuses_articles_and_selects_asset_only_spider(
-    monkeypatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     input_path = tmp_path / "seeds.txt"
     input_path.write_text("a.test\n", encoding="utf-8")
@@ -267,7 +285,7 @@ def test_crawl_runner_cleans_destination_after_corrupt_source_database(
 
 
 def test_crawl_runner_cleans_reuse_destination_when_scrapy_setup_fails(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     input_path = tmp_path / "seeds.txt"
     input_path.write_text("a.test\n", encoding="utf-8")
@@ -288,7 +306,7 @@ def test_crawl_runner_cleans_reuse_destination_when_scrapy_setup_fails(
     source_state.close()
     output = tmp_path / "crawl-all"
 
-    def fail_process(*args, **kwargs):
+    def fail_process(*args: Any, **kwargs: Any):
         msg = "scrapy setup failed"
         raise RuntimeError(msg)
 
@@ -347,11 +365,11 @@ def test_crawl_runner_rejects_malformed_reused_article_before_scrapy_starts(
     assert not output.exists()
 
 
-def test_crawl_runner_keyboard_interrupt_publishes_snapshots(monkeypatch, tmp_path: Path) -> None:
+def test_crawl_runner_keyboard_interrupt_publishes_snapshots(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     capture_runner_dependencies(monkeypatch)
-    monkeypatch.setattr(
-        runner.CrawlerProcess, "start", lambda self: (_ for _ in ()).throw(KeyboardInterrupt())
-    )
+    monkeypatch.setattr(runner.CrawlerProcess, "start", interrupt)
     exit_code = run_unified_for_test(tmp_path)
     assert exit_code == 130
     manifest_path = tmp_path / "crawl-output" / "manifest.json"
@@ -363,12 +381,14 @@ def test_crawl_runner_keyboard_interrupt_publishes_snapshots(monkeypatch, tmp_pa
     assert "frontier" in manifest["metrics"]
 
 
-def test_crawl_runner_failure_publishes_snapshots(monkeypatch, tmp_path: Path) -> None:
+def test_crawl_runner_failure_publishes_snapshots(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     capture_runner_dependencies(monkeypatch)
     monkeypatch.setattr(
         runner.CrawlerProcess,
         "start",
-        lambda self: (_ for _ in ()).throw(RuntimeError("crawl crashed")),
+        crash,
     )
     exit_code = run_unified_for_test(tmp_path)
     assert exit_code == 1
@@ -382,7 +402,9 @@ def test_crawl_runner_failure_publishes_snapshots(monkeypatch, tmp_path: Path) -
     assert "frontier" in manifest["metrics"]
 
 
-def test_crawl_runner_resume_restores_frontier_and_coordinator(monkeypatch, tmp_path: Path) -> None:
+def test_crawl_runner_resume_restores_frontier_and_coordinator(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     observed = capture_runner_dependencies(monkeypatch)
     exit_code = run_unified_for_test(tmp_path)
     assert exit_code == 0
@@ -434,7 +456,9 @@ def test_crawl_runner_resume_restores_frontier_and_coordinator(monkeypatch, tmp_
     assert observed["jobdir"] is None
 
 
-def test_crawl_runner_retry_failed_requeues_transport_errors(monkeypatch, tmp_path: Path) -> None:
+def test_crawl_runner_retry_failed_requeues_transport_errors(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     observed = capture_runner_dependencies(monkeypatch)
     assert run_unified_for_test(tmp_path) == 0
 
@@ -471,7 +495,7 @@ def test_crawl_runner_retry_failed_requeues_transport_errors(monkeypatch, tmp_pa
 
 
 def test_crawl_runner_retry_truncated_requeues_query_variant_limits(
-    monkeypatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     observed = capture_runner_dependencies(monkeypatch)
     assert run_unified_for_test(tmp_path) == 0
@@ -507,7 +531,7 @@ def test_crawl_runner_retry_truncated_requeues_query_variant_limits(
 
 
 def test_crawl_runner_retry_access_gates_requeues_captcha_blocked_pages(
-    monkeypatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     observed = capture_runner_dependencies(monkeypatch)
     assert run_unified_for_test(tmp_path) == 0

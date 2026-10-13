@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import time
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 from scrapy.http import HtmlResponse, Request, Response
@@ -73,13 +74,13 @@ class RefreshSiteHandler:
 
     lazy = True
 
-    def __init__(self, settings, crawler=None):
+    def __init__(self, settings: Any, crawler: Any = None):
         self.request_log = settings.get("FIXTURE_REQUEST_LOG")
         self.version = int(settings.get("FIXTURE_SITE_VERSION", 1))
         self.fail_paths = {p for p in str(settings.get("FIXTURE_FAIL_PATHS", "")).split(",") if p}
 
     @classmethod
-    def from_crawler(cls, crawler):
+    def from_crawler(cls, crawler: Any):
         return cls(crawler.settings, crawler)
 
     async def close(self):
@@ -105,7 +106,7 @@ class RefreshSiteHandler:
             return Response(request.url, status=404, body=b"", request=request)
         encoded = body.encode("utf-8")
         etag = '"' + hashlib.sha256(encoded).hexdigest()[:16] + '"'
-        if request.headers.get(b"If-None-Match", b"").decode("latin1") == etag:
+        if (request.headers.get(b"If-None-Match") or b"").decode("latin1") == etag:
             return Response(
                 request.url, status=304, headers={b"ETag": etag.encode()}, body=b"", request=request
             )

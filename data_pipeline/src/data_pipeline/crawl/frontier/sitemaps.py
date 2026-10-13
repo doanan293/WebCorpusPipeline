@@ -3,7 +3,7 @@ from __future__ import annotations
 import gzip
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
@@ -11,6 +11,7 @@ from data_pipeline.core.policies.url import canonicalize_url
 from data_pipeline.crawl.extract.links import normalize_url
 
 DiscoveryStrategy = Literal["sitemap-only", "hybrid-unified"]
+HostMode = Literal["pending", "sitemap", "sitemap_partial", "no_sitemap", "exact"]
 
 
 @dataclass
@@ -24,7 +25,7 @@ class HostDiscoveryState:
     sitemaps_absent: int = 0
     sitemap_targets: set[str] = field(default_factory=set)
     html_targets: set[str] = field(default_factory=set)
-    mode: Literal["pending", "sitemap", "sitemap_partial", "no_sitemap", "exact"] = "pending"
+    mode: HostMode = "pending"
 
     def to_record(self) -> dict[str, object]:
         return {
@@ -52,7 +53,7 @@ class HostDiscoveryState:
             sitemaps_absent=int(data.get("sitemaps_absent", 0)),
             sitemap_targets=set(data.get("sitemap_targets", ())),
             html_targets=set(data.get("html_targets", ())),
-            mode=data.get("mode", "pending"),  # type: ignore[arg-type]
+            mode=cast(HostMode, data.get("mode", "pending")),
         )
 
     def to_summary(self) -> dict[str, object]:
@@ -168,7 +169,7 @@ class SitemapDiscoveryCoordinator:
         host.html_targets.add(self._clean_url(url))
         self._notify(hostname)
 
-    def snapshot(self) -> dict[str, object]:
+    def snapshot(self) -> dict[str, Any]:
         return {
             "strategy": self.strategy,
             "sitemap_url_limits": "unbounded",

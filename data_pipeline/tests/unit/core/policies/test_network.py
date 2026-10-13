@@ -1,5 +1,6 @@
 import asyncio
 import socket
+from typing import Any
 
 import pytest
 
@@ -24,14 +25,18 @@ def test_public_web_url_rejections(url: str, reason: str) -> None:
     assert validate_public_web_url(url).reason == reason
 
 
-def test_dns_rejects_mixed_public_private_answers(monkeypatch) -> None:
+def mixed_answers(*args: object) -> list[tuple[Any, ...]]:
+    return [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443)),
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.4", 443)),
+    ]
+
+
+def test_dns_rejects_mixed_public_private_answers(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         socket,
         "getaddrinfo",
-        lambda *args: [
-            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443)),
-            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.4", 443)),
-        ],
+        mixed_answers,
     )
     with pytest.raises(NonPublicAddressError):
         asyncio.run(resolve_public_hostname("cdn.test", 443, 1.0))

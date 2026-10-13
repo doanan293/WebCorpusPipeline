@@ -95,5 +95,5 @@ max-statements = 60
 [tool.pyrefly]
 preset = "strict"
 project-includes = ["src", "tests"]
-search-path = ["src"]
+search-path = ["src", "."]
 python-interpreter-path = ".venv/bin/python"

@@ -27,13 +27,13 @@ def test_run_lifecycle_and_latest_run(tmp_path: Path) -> None:
     store.finish_run("20261001T000000Z", "complete", {"new": 1})
     store.start_run(RUN)
 
-    assert store.latest_run()["run_id"] == RUN
-    assert store.latest_run()["status"] == "running"
+    assert (store.latest_run() or {})["run_id"] == RUN
+    assert (store.latest_run() or {})["status"] == "running"
     assert store.completed_run_ids(4) == ["20261001T000000Z"]
 
     store.finish_run(RUN, "interrupted", {})
     store.resume_run(RUN)
-    assert store.latest_run()["status"] == "running"
+    assert (store.latest_run() or {})["status"] == "running"
     state.close()
 
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from data_pipeline.crawl.frontier.frontier import Candidate
 from data_pipeline.crawl.spider.requests import RequestFactory
@@ -20,7 +20,7 @@ def make_factory() -> tuple[RequestFactory, FakeCrawlWriter]:
     factory = RequestFactory(
         options=spider.options,
         frontier=spider.frontier,
-        writer=writer,  # type: ignore[arg-type]
+        writer=cast(Any, writer),
         policy=spider.policy,
         coordinator=spider.coordinator,
         callback=_callback,

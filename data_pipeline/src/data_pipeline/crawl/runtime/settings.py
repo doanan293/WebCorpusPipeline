@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware
@@ -20,12 +21,12 @@ def build_settings(
     phase: str | None = None,
     tuning: object | None = None,
     extensions: dict[object, int] | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
 
     concurrency = getattr(tuning, "max_concurrency", config.concurrent_requests)
     per_host = getattr(tuning, "max_per_host", config.concurrent_per_host)
     playwright_pages = getattr(tuning, "playwright_max_pages", config.playwright_max_pages)
-    settings: dict[str, object] = {
+    settings: dict[str, Any] = {
         # Discovery must always be able to fetch robots.txt and declared
         # sitemaps. The fixed-inventory content phase applies its rules.
         "ROBOTSTXT_OBEY": config.robots_txt_obey if phase == "crawl" else False,

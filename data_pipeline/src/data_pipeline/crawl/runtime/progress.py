@@ -86,8 +86,7 @@ class CrawlProgressReporter:
     @classmethod
     def from_crawler(cls, crawler: Crawler) -> CrawlProgressReporter:
         reporter = cls(crawler)
-        # Scrapy crawlers accept ad-hoc attributes; run/full.py reads this one back.
-        crawler.progress_reporter = reporter  # pyrefly: ignore[missing-attribute]
+        crawler.progress_reporter = reporter  # pyrefly: ignore[missing-attribute] -- read back by run/full.py
         tuning = crawler.settings.get("HUST_TUNING")
         interval = float(getattr(tuning, "progress_interval_seconds", 0.0) or 0.0)
         if interval > 0:

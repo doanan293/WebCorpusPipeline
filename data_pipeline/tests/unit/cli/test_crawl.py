@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -34,8 +35,8 @@ def config(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def observed(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
-    captured: dict[str, object] = {}
+def observed(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    captured: dict[str, Any] = {}
 
     def capture_run(**kwargs: object) -> int:
         captured.update(kwargs)
@@ -62,7 +63,7 @@ def crawl(seeds: Path, tmp_path: Path, config: Path, *extra: str) -> int:
 
 
 def test_accepts_mixed_seeds_and_frontier_limits(
-    tmp_path: Path, seeds: Path, config: Path, observed: dict[str, object]
+    tmp_path: Path, seeds: Path, config: Path, observed: dict[str, Any]
 ) -> None:
     code = crawl(
         seeds,
@@ -90,7 +91,7 @@ def test_accepts_mixed_seeds_and_frontier_limits(
 
 
 def test_defaults_come_from_the_config_file(
-    tmp_path: Path, seeds: Path, config: Path, observed: dict[str, object]
+    tmp_path: Path, seeds: Path, config: Path, observed: dict[str, Any]
 ) -> None:
     assert crawl(seeds, tmp_path, config) == 0
 
@@ -137,7 +138,7 @@ def test_retry_flag_is_passed_to_the_runner_with_resume(
     tmp_path: Path,
     seeds: Path,
     config: Path,
-    observed: dict[str, object],
+    observed: dict[str, Any],
 ) -> None:
     assert crawl(seeds, tmp_path, config, "--resume", flag) == 0
 
@@ -146,7 +147,7 @@ def test_retry_flag_is_passed_to_the_runner_with_resume(
 
 
 def test_passes_seed_set_to_the_unified_runner(
-    tmp_path: Path, seeds: Path, config: Path, observed: dict[str, object]
+    tmp_path: Path, seeds: Path, config: Path, observed: dict[str, Any]
 ) -> None:
     seeds.write_text("a.test\nhttps://b.test/page\n", encoding="utf-8")
 
@@ -159,7 +160,7 @@ def test_passes_seed_set_to_the_unified_runner(
 
 
 def test_passes_lightweight_content_source_to_the_runner(
-    tmp_path: Path, seeds: Path, config: Path, observed: dict[str, object]
+    tmp_path: Path, seeds: Path, config: Path, observed: dict[str, Any]
 ) -> None:
     code = crawl(
         seeds, tmp_path, config, "--assets", "all", "--reuse-content-from", str(tmp_path / "src")
@@ -208,7 +209,7 @@ def test_loads_contact_from_the_project_env_file(
     project: ProjectPaths,
     tmp_path: Path,
     seeds: Path,
-    observed: dict[str, object],
+    observed: dict[str, Any],
 ) -> None:
     project.env_file.write_text("CRAWLER_CONTACT=ops@example.org\n", encoding="utf-8")
     config = write_complete_config(tmp_path, "replace-with-operator-contact@example.invalid")
@@ -219,7 +220,7 @@ def test_loads_contact_from_the_project_env_file(
 
 
 def test_config_defaults_to_the_project_crawler_yaml(
-    project: ProjectPaths, tmp_path: Path, seeds: Path, observed: dict[str, object]
+    project: ProjectPaths, tmp_path: Path, seeds: Path, observed: dict[str, Any]
 ) -> None:
     (project.root / "config").mkdir()
     write_complete_config(project.root / "config", "ops@example.org")
@@ -259,7 +260,7 @@ def test_discover_loads_contact_and_runs_discovery(
 ) -> None:
     project.env_file.write_text("CRAWLER_CONTACT=ops@example.org\n", encoding="utf-8")
     config = write_complete_config(tmp_path, "replace-with-operator-contact@example.invalid")
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     def capture_run(**kwargs: object) -> int:
         captured.update(kwargs)

@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 import pytest
 
 from data_pipeline.crawl.frontier.seeds import SeedSet
@@ -19,7 +21,7 @@ def test_hybrid_crawl_defaults_to_content_only() -> None:
 def test_all_is_the_only_opt_in_asset_mode() -> None:
     assert CrawlOptions(assets="all").assets == "all"
     with pytest.raises(ValueError, match="content-only or all"):
-        CrawlOptions(assets="documents")  # type: ignore[arg-type]
+        CrawlOptions(assets=cast(Any, "documents"))
 
 
 @pytest.mark.parametrize(
@@ -35,7 +37,7 @@ def test_all_is_the_only_opt_in_asset_mode() -> None:
 )
 def test_frontier_limits_must_be_positive(field: str, value: int) -> None:
     with pytest.raises(ValueError, match=field):
-        CrawlOptions(**{field: value})
+        CrawlOptions(**cast(Any, {field: value}))
 
 
 def test_semantic_snapshot_includes_seed_scope() -> None:

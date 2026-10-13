@@ -11,6 +11,10 @@ from data_pipeline.domains import audit as domain_audit
 from data_pipeline.domains.probe import ProbeAttempt
 
 
+def resolve_ok(hostname: str) -> None:
+    return None
+
+
 def test_audit_updates_domain_files_with_the_project_defaults(
     project: ProjectPaths, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -25,7 +29,7 @@ def test_audit_updates_domain_files_with_the_project_defaults(
         )
 
     monkeypatch.setattr(domain_audit, "fetch_url", fetch)
-    monkeypatch.setattr(domain_audit, "resolve_hostname", lambda hostname: None)
+    monkeypatch.setattr(domain_audit, "resolve_hostname", resolve_ok)
 
     code = main(["domains", "audit", "--workers", "1", "--timeout", "1", "--no-browser"])
 
@@ -56,7 +60,7 @@ def test_audit_updates_domain_files_with_configured_paths(
     active_path = tmp_path / "active.txt"
     active_path.write_text("List active domain:\n", encoding="utf-8")
     report_path = tmp_path / "status.jsonl"
-    monkeypatch.setattr(domain_audit, "resolve_hostname", lambda hostname: None)
+    monkeypatch.setattr(domain_audit, "resolve_hostname", resolve_ok)
     fetch_count = 0
 
     def fetch(url: str, timeout: float) -> ProbeAttempt:

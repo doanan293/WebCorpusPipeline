@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from data_pipeline.crawl.spider.routing import ResponseRoute, route_response
@@ -12,7 +14,7 @@ from data_pipeline.crawl.spider.routing import ResponseRoute, route_response
         ("https://a.test/data.custom", "chemical/x-example", "unknown"),
     ],
 )
-def test_page_routes_use_mime_before_extension(url, content_type, action) -> None:
+def test_page_routes_use_mime_before_extension(url: Any, content_type: Any, action: Any) -> None:
     assert (
         route_response(url=url, status=200, content_type=content_type, purpose="page").action
         == action
@@ -21,7 +23,7 @@ def test_page_routes_use_mime_before_extension(url, content_type, action) -> Non
 
 @pytest.mark.parametrize("purpose", ["robots", "sitemap"])
 @pytest.mark.parametrize("status", [404, 410])
-def test_optional_probe_absence_is_not_an_error(purpose, status) -> None:
+def test_optional_probe_absence_is_not_an_error(purpose: Any, status: Any) -> None:
     route = route_response(
         url=f"https://a.test/{purpose}",
         status=status,
@@ -33,7 +35,7 @@ def test_optional_probe_absence_is_not_an_error(purpose, status) -> None:
 
 
 @pytest.mark.parametrize(("status", "error"), [(403, "http_403"), (503, "http_503")])
-def test_failed_probe_remains_an_exact_http_error(status, error) -> None:
+def test_failed_probe_remains_an_exact_http_error(status: Any, error: Any) -> None:
     route = route_response(
         url="https://a.test/sitemap.xml",
         status=status,

@@ -1,8 +1,11 @@
+from typing import cast
+
 import pytest
 
 from data_pipeline.crawl.extract.assets import ArticleAsset
 from data_pipeline.crawl.frontier.assets import (
     AssetPolicy,
+    AssetRole,
     is_recognizable_binary,
     recognizable_asset,
 )
@@ -19,7 +22,7 @@ from data_pipeline.crawl.options import CrawlOptions
     ],
 )
 def test_all_schedules_supported_semantic_assets(url: str, role: str, group: str) -> None:
-    asset = ArticleAsset(url=url, role=role, alt="", caption="", external=True)
+    asset = ArticleAsset(url=url, role=cast(AssetRole, role), alt="", caption="", external=True)
     decision = AssetPolicy(CrawlOptions(assets="all")).consider(asset)
     assert (decision.action, decision.group, decision.reason) == ("schedule", group, None)
 
