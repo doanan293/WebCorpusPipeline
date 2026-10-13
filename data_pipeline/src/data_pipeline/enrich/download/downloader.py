@@ -136,7 +136,7 @@ async def download_one(
         job.url, final, digest, job.part_path.stat().st_size, mime, job.final_url or job.url
     )
     state.mark_finalizing(result)
-    os.replace(job.part_path, final)
+    job.part_path.replace(final)
     try:
         fd = os.open(final.parent, os.O_DIRECTORY)
         os.fsync(fd)

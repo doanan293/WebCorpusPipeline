@@ -144,7 +144,7 @@ class CrawlWriter:
                 f.write(body)
                 f.flush()
                 os.fsync(f.fileno())
-            os.replace(tmp_path, dest)
+            tmp_path.replace(dest)
             self._stored_bytes += body_len
 
         if referring_page is not None:

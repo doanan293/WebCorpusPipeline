@@ -50,12 +50,9 @@ def extract_documents(state: WorkState, settings, *, api_keys: list[tuple[str, s
             remote = read_cached(cache_root, key)
             if remote is None:
                 with tempfile.TemporaryDirectory(prefix="ir-parse-") as temp:
-                    subset = tempfile.NamedTemporaryFile(suffix=".pdf", dir=temp, delete=False)
-                    subset.close()
-                    mapping = build_pdf_subset(file.path, missing, Path(subset.name))
-                    remote = parse_cloud_subset(
-                        Path(subset.name), local, mapping, state, settings, keys
-                    )
+                    subset = Path(temp) / "subset.pdf"
+                    mapping = build_pdf_subset(file.path, missing, subset)
+                    remote = parse_cloud_subset(subset, local, mapping, state, settings, keys)
                 if remote.status in {"extracted", "cloud_failed"}:
                     write_cached(cache_root, key, remote)
             merged = merge_parts(local, remote)

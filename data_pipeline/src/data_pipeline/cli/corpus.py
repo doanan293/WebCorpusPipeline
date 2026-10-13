@@ -114,7 +114,11 @@ def publish(
     from data_pipeline.corpus import kaggle
 
     config_path = context.pick(config, context.current_paths().kaggle_config)
-    print(json.dumps(kaggle.publish_corpus(corpus, config_path, update, message), indent=2))
+    print(
+        json.dumps(
+            kaggle.publish_corpus(corpus, config_path, update=update, message=message), indent=2
+        )
+    )
     return 0
 
 

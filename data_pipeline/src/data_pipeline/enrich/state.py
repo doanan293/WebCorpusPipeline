@@ -166,8 +166,8 @@ class WorkState:
         candidates: list[Candidate],
         refs: list[SourceRef],
         cursor: int,
-        done: bool = False,
         *,
+        done: bool = False,
         source_key: str,
     ) -> None:
         now = time.time()

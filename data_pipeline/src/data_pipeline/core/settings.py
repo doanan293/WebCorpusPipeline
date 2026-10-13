@@ -64,7 +64,7 @@ def load_api_keys(env_file: Path) -> list[tuple[str, str]]:
     return result
 
 
-def _positive(name: str, value: Any, integer: bool = True) -> int | float:
+def _positive(name: str, value: Any, *, integer: bool = True) -> int | float:
     result = int(value) if integer else float(value)
     if result <= 0:
         msg = f"{name} must be positive"

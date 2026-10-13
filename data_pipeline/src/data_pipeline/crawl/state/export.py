@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -20,7 +19,7 @@ def export_discovery(state: CrawlState, output: Path) -> None:
     with tmp_urls.open("w", encoding="utf-8") as file:
         for (url,) in cursor:
             file.write(f"{url}\n")
-    os.replace(tmp_urls, urls_txt)
+    tmp_urls.replace(urls_txt)
 
     errors_jsonl = output / "errors.jsonl"
     tmp_errors = errors_jsonl.with_suffix(".tmp")
@@ -28,7 +27,7 @@ def export_discovery(state: CrawlState, output: Path) -> None:
     with tmp_errors.open("w", encoding="utf-8") as file:
         for (payload,) in cursor:
             file.write(f"{payload}\n")
-    os.replace(tmp_errors, errors_jsonl)
+    tmp_errors.replace(errors_jsonl)
 
 
 def export_crawl(state: CrawlState, output: Path) -> None:
@@ -47,7 +46,7 @@ def export_crawl(state: CrawlState, output: Path) -> None:
     with tmp_urls.open("w", encoding="utf-8") as file:
         for (url,) in cursor:
             file.write(f"{url}\n")
-    os.replace(tmp_urls, urls_txt)
+    tmp_urls.replace(urls_txt)
 
     def _export_table(table: str, target: Path) -> None:
         tmp = target.with_suffix(".tmp")
@@ -55,7 +54,7 @@ def export_crawl(state: CrawlState, output: Path) -> None:
         with tmp.open("w", encoding="utf-8") as file:
             for row in cursor:
                 file.write(f"{row[0]}\n")
-        os.replace(tmp, target)
+        tmp.replace(target)
 
     _export_table("url_records", output / "url_records.jsonl")
     _export_table("articles", output / "articles.jsonl")
@@ -133,8 +132,8 @@ def export_final(state: CrawlState, output: Path) -> None:
             articles_file.write(f"{payload}\n")
             urls_file.write(f"{url}\n")
             count += 1
-    os.replace(tmp_articles, articles_path)
-    os.replace(tmp_urls, urls_path)
+    tmp_articles.replace(articles_path)
+    tmp_urls.replace(urls_path)
 
     summary = {
         "description": "Bộ dữ liệu bài viết đã lọc theo URL crawl thành công",
@@ -157,7 +156,7 @@ def export_final(state: CrawlState, output: Path) -> None:
     tmp_summary.write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
-    os.replace(tmp_summary, final / "README.json")
+    tmp_summary.replace(final / "README.json")
 
 
 def asset_metrics(state: CrawlState) -> dict[str, dict[str, int]]:

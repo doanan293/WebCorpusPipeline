@@ -116,7 +116,7 @@ def test_publish_defaults_to_the_project_kaggle_config(
     calls: list[tuple[Path, Path, bool, str | None]] = []
 
     def publish_corpus(
-        corpus: Path, config: Path, update: bool, message: str | None
+        corpus: Path, config: Path, *, update: bool, message: str | None
     ) -> dict[str, str]:
         calls.append((corpus, config, update, message))
         return {"status": "ok"}

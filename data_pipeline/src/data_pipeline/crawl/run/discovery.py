@@ -27,6 +27,7 @@ def run_discovery(
     config: CrawlerConfig,
     seeds: SeedSet,
     tuning: RuntimeTuning,
+    *,
     resume: bool = False,
 ) -> int:
     state_dir = output / "state"

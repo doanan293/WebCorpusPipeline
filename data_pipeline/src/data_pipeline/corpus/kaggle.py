@@ -52,7 +52,7 @@ def _dataset_files(dataset: str) -> list[str]:
 
 
 def publish_corpus(
-    corpus: Path, config_path: Path, update: bool = False, message: str | None = None
+    corpus: Path, config_path: Path, *, update: bool = False, message: str | None = None
 ) -> dict:
     valid = verify_corpus(corpus)
     if not valid["valid"]:

@@ -207,7 +207,7 @@ class CrawlState:
             json.dumps(value, ensure_ascii=False, indent=2, default=str) + "\n",
             encoding="utf-8",
         )
-        os.replace(temporary, self.manifest_path)
+        temporary.replace(self.manifest_path)
 
     def _merged_record(self, record: dict[str, object]) -> dict[str, object]:
         row = self.connection.execute(
@@ -542,7 +542,7 @@ class CrawlState:
                 json.dumps(self.manifest, ensure_ascii=False, indent=2, default=str) + "\n",
                 encoding="utf-8",
             )
-            os.replace(tmp, pub_manifest)
+            tmp.replace(pub_manifest)
             if self.manifest.get("phase") == "crawl":
                 export_final(self, public_output)
 

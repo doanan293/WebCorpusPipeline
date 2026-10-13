@@ -73,6 +73,7 @@ def run_crawl(
     seeds: SeedSet,
     options: CrawlOptions,
     tuning: RuntimeTuning,
+    *,
     resume: bool = False,
     retry_failed: bool = False,
     retry_truncated: bool = False,

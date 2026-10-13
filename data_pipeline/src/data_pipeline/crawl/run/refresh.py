@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import sqlite3
 import time
@@ -270,7 +269,7 @@ def _export_changes(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     shutil.rmtree(destination, ignore_errors=True)
-    os.replace(temporary, destination)
+    temporary.replace(destination)
 
 
 def complete_refresh_run(

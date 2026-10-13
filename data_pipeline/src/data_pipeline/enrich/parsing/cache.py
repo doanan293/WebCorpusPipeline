@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from pathlib import Path
 
 from data_pipeline.enrich.models import ParseResult, jsonable
@@ -39,5 +38,5 @@ def write_cached(root: Path, key: str, result: ParseResult) -> Path:
     target = root / f"{key}.json"
     temp = target.with_suffix(".tmp")
     temp.write_text(json.dumps(raw, ensure_ascii=False, sort_keys=True))
-    os.replace(temp, target)
+    temp.replace(target)
     return target
