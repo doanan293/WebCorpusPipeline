@@ -10,8 +10,10 @@ import pytest
 from data_pipeline.cli.main import main
 from data_pipeline.core.paths import ProjectPaths, project_paths
 from data_pipeline.core.settings import Settings
+from data_pipeline.corpus import package
 from data_pipeline.crawl import run as run_package
 from data_pipeline.enrich import session as enrich_session
+from data_pipeline.enrich.download import downloader
 from data_pipeline.enrich.models import RunSummary
 
 
@@ -124,7 +126,6 @@ def test_missing_extra_prints_an_install_hint(
 
 
 def test_keyboard_interrupt_exits_130(monkeypatch: pytest.MonkeyPatch) -> None:
-    from data_pipeline.enrich.download import downloader
 
     async def interrupted(state: object, settings: object) -> RunSummary:
         raise KeyboardInterrupt
@@ -138,7 +139,6 @@ def test_keyboard_interrupt_exits_130(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_business_errors_print_an_error_line_and_exit_2(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from data_pipeline.corpus import package
 
     def bad(corpus: Path) -> dict[str, object]:
         msg = "bad corpus"

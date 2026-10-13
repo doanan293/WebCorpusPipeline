@@ -35,6 +35,7 @@ from data_pipeline.crawl.run.reuse import (
     validate_reuse_source,
 )
 from data_pipeline.crawl.runtime.profiles import RuntimeTuning
+from data_pipeline.crawl.runtime.progress import CrawlProgressReporter
 from data_pipeline.crawl.runtime.settings import build_settings
 from data_pipeline.crawl.spider.reuse import ReusedAssetSpider
 from data_pipeline.crawl.spider.unified import UnifiedSpider
@@ -218,8 +219,6 @@ def run_crawl(
         start_time = time.time()
         extensions: dict[object, int] = {}
         if tuning.progress_interval_seconds > 0:
-            from data_pipeline.crawl.runtime.progress import CrawlProgressReporter
-
             extensions[CrawlProgressReporter] = 500
 
         settings_map = build_settings(

@@ -5,7 +5,7 @@ import html
 import http.client
 import ipaddress
 import re
-import socket  # noqa: F401
+import socket
 import ssl
 from dataclasses import dataclass, field
 from datetime import UTC, datetime

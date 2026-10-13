@@ -1,4 +1,5 @@
 import io
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from data_pipeline.crawl.runtime.progress import CrawlProgressReporter, EtaEstimator
@@ -80,7 +81,6 @@ def test_progress_reporter_metrics_track_peak_queue() -> None:
 
 
 def test_progress_reports_downloader_queue_and_retry_waits() -> None:
-    from types import SimpleNamespace
 
     output = io.StringIO()
     slot = SimpleNamespace(

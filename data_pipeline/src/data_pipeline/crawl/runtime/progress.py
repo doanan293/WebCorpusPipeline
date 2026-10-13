@@ -7,6 +7,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TextIO
 
+from scrapy import signals
+from twisted.internet.task import LoopingCall
+
 _SECONDS_PER_MINUTE = 60
 _SECONDS_PER_HOUR = 3600
 
@@ -85,9 +88,6 @@ class CrawlProgressReporter:
         tuning = crawler.settings.get("HUST_TUNING")
         interval = float(getattr(tuning, "progress_interval_seconds", 0.0) or 0.0)
         if interval > 0:
-            from scrapy import signals
-            from twisted.internet.task import LoopingCall
-
             reporter._loop = LoopingCall(reporter.report)
             reporter._loop.start(interval, now=False)
             crawler.signals.connect(reporter.close, signal=signals.spider_closed)

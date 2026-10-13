@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import os
 import time
+from collections import defaultdict
 from http import HTTPStatus
 from urllib.parse import urlsplit
 
@@ -156,7 +157,6 @@ async def download_one(
 async def run_downloads(
     state, settings, transport_factory=PublicTransport, stop: asyncio.Event | None = None
 ):
-    from collections import defaultdict
 
     stop = stop or asyncio.Event()
     host_locks = defaultdict(lambda: asyncio.Semaphore(settings.per_host))

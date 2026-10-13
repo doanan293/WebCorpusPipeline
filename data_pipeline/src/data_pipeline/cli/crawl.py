@@ -31,7 +31,7 @@ ResourceLimitOption = Annotated[
 
 
 @app.command()
-def run(  # noqa: PLR0913 -- one parameter per documented crawl flag
+def run(
     input_path: Annotated[
         Path, typer.Option("--input", "-i", help="Path to the canonical URLs file.")
     ],
@@ -135,13 +135,13 @@ def run(  # noqa: PLR0913 -- one parameter per documented crawl flag
 
     try:
         seeds = parse_seed_file(input_path)
-    except Exception as exc:  # noqa: BLE001 -- any malformed seed file is a usage error
+    except Exception as exc:
         return errors.fail(f"reading seed file: {exc}")
 
     config_path = context.pick(config, context.current_paths().crawler_config)
     try:
         crawler_config = CrawlerConfig.load(config_path, hostnames=seeds.allowed_hostnames)
-    except Exception as exc:  # noqa: BLE001 -- any invalid configuration is a usage error
+    except Exception as exc:
         return errors.fail(f"loading configuration: {exc}")
 
     if reuse_content_from is not None and crawler_config.assets != "all" and assets is None:
@@ -210,7 +210,7 @@ def discover(
     config_path = context.pick(config, context.current_paths().crawler_config)
     try:
         crawler_config = CrawlerConfig.load(config_path, hostnames=seeds.allowed_hostnames)
-    except Exception as exc:  # noqa: BLE001 -- any invalid configuration is a usage error
+    except Exception as exc:
         return errors.fail(f"loading configuration: {exc}")
 
     tuning = resolve_runtime_tuning(

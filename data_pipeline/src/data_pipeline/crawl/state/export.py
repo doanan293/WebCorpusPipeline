@@ -6,6 +6,8 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from data_pipeline.crawl.frontier.assets import classify_asset
+
 if TYPE_CHECKING:
     from data_pipeline.crawl.state.store import CrawlState
 
@@ -160,7 +162,6 @@ def export_final(state: CrawlState, output: Path) -> None:
 
 
 def asset_metrics(state: CrawlState) -> dict[str, dict[str, int]]:
-    from data_pipeline.crawl.frontier.assets import classify_asset
 
     groups: dict[str, dict[str, int]] = {
         "image": {"file_count": 0, "unique_bytes": 0},

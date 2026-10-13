@@ -11,12 +11,12 @@ from scrapy.utils.reactor import install_reactor
 
 install_reactor("twisted.internet.asyncioreactor.AsyncioSelectorReactor")
 
-from scrapy import signals  # noqa: E402
+from scrapy import signals
 
-import data_pipeline.crawl.runtime.settings as crawl_settings  # noqa: E402
-from data_pipeline.cli.main import main as cli_main  # noqa: E402
-from data_pipeline.crawl.run import full as runner  # noqa: E402
-from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware  # noqa: E402
+import data_pipeline.crawl.runtime.settings as crawl_settings
+from data_pipeline.cli.main import main as cli_main
+from data_pipeline.crawl.run import full as runner
+from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware
 
 
 class StopAfterResponse:

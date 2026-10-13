@@ -26,7 +26,7 @@ JsonOption = Annotated[bool, typer.Option("--json", help="Print the summary as J
 RebindOption = Annotated[bool, typer.Option("--rebind-source", help=REBIND_HELP)]
 
 
-def _summary(summary: RunSummary, as_json: bool) -> int:  # noqa: FBT001 -- internal helper
+def _summary(summary: RunSummary, as_json: bool) -> int:
     value = jsonable(summary)
     if as_json:
         print(json.dumps(value, ensure_ascii=False, indent=2))

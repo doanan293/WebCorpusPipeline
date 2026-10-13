@@ -3,6 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from data_pipeline.crawl.config import CrawlerConfig
+from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware
+from data_pipeline.crawl.runtime.middlewares import (
+    ContentOnlyHeadersGuard,
+    PlaywrightFallbackMiddleware,
+    PoliteRetryMiddleware,
+    PublicAssetAddressMiddleware,
+    SafeRedirectMiddleware,
+)
 
 
 def build_settings(
@@ -13,14 +21,6 @@ def build_settings(
     tuning: object | None = None,
     extensions: dict[object, int] | None = None,
 ) -> dict[str, object]:
-    from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware
-    from data_pipeline.crawl.runtime.middlewares import (
-        ContentOnlyHeadersGuard,
-        PlaywrightFallbackMiddleware,
-        PoliteRetryMiddleware,
-        PublicAssetAddressMiddleware,
-        SafeRedirectMiddleware,
-    )
 
     concurrency = getattr(tuning, "max_concurrency", config.concurrent_requests)
     per_host = getattr(tuning, "max_per_host", config.concurrent_per_host)

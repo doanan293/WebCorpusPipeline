@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from data_pipeline.enrich.models import DownloadedFile
+from data_pipeline.enrich.models import DownloadedFile, ExtractedPart
+from data_pipeline.enrich.parsing.local.common import result
 from data_pipeline.enrich.parsing.local.excel import parse_xls, parse_xlsx
 from data_pipeline.enrich.parsing.local.office import convert_office
 from data_pipeline.enrich.parsing.local.pdf import parse_pdf
@@ -47,8 +48,6 @@ def parse_local(file: DownloadedFile):
             return parse_xlsx(derived)
     if ext in {".txt", ".csv", ".rtf"}:
         text = file.path.read_text(errors="replace")
-        from data_pipeline.enrich.models import ExtractedPart
-        from data_pipeline.enrich.parsing.local.common import result
 
         return result(
             file,

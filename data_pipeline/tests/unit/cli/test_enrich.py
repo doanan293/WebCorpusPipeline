@@ -13,6 +13,7 @@ from data_pipeline.core.settings import Settings
 from data_pipeline.enrich import export as enrich_export
 from data_pipeline.enrich import inventory as enrich_inventory
 from data_pipeline.enrich import session as enrich_session
+from data_pipeline.enrich.download import downloader
 from data_pipeline.enrich.models import InventorySummary, RunSummary
 from data_pipeline.enrich.parsing import pipeline
 from data_pipeline.enrich.state import WorkState
@@ -77,7 +78,6 @@ def test_inventory_indexes_the_source(
 def test_run_indexes_downloads_and_extracts_in_order(
     state: FakeState, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from data_pipeline.enrich.download import downloader
 
     order: list[str] = []
 
@@ -104,7 +104,6 @@ def test_run_indexes_downloads_and_extracts_in_order(
 def test_run_skips_inventory_when_it_is_already_done(
     state: FakeState, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from data_pipeline.enrich.download import downloader
 
     state.inventory_is_done = True
     order: list[str] = []

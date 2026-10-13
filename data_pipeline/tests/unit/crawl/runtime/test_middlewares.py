@@ -7,6 +7,7 @@ from scrapy.http import Headers, HtmlResponse, Request, Response
 from twisted.internet import task
 from twisted.internet.error import ConnectError
 
+from data_pipeline.core.policies.network import resolve_public_hostname
 from data_pipeline.crawl.runtime import middlewares
 from data_pipeline.crawl.runtime.middlewares import (
     ContentOnlyHeadersGuard,
@@ -415,7 +416,6 @@ def test_page_redirect_still_rejects_cross_host() -> None:
 
 
 def test_public_asset_address_middleware_default_resolver() -> None:
-    from data_pipeline.core.policies.network import resolve_public_hostname
 
     mw = PublicAssetAddressMiddleware()
     assert mw.resolver is resolve_public_hostname

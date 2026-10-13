@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import random
 from collections.abc import Callable
-from datetime import UTC
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
@@ -190,8 +190,6 @@ class PoliteRetryMiddleware:
                     return max(0.0, float(raw))
                 except ValueError:
                     try:
-                        from datetime import datetime
-
                         return max(
                             0.0,
                             (parsedate_to_datetime(raw) - datetime.now(UTC)).total_seconds(),

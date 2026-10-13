@@ -4,6 +4,7 @@ from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.run import discovery as discovery_runner
 from data_pipeline.crawl.run.discovery import run_discovery
+from data_pipeline.crawl.runtime.profiles import resolve_runtime_tuning
 from data_pipeline.crawl.spider.discovery import DiscoverySpider
 from data_pipeline.crawl.state.store import CrawlState
 
@@ -30,7 +31,6 @@ def run_discovery_for_test(tmp_path: Path) -> int:
         invalid=(),
     )
     config = CrawlerConfig(hostnames=frozenset({"a.test"}), contact="ops@example.com")
-    from data_pipeline.crawl.runtime.profiles import resolve_runtime_tuning
 
     tuning = resolve_runtime_tuning(
         profile="safe-fast", concurrency=4, max_per_host=2, resource_limit_percent=80

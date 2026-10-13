@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from data_pipeline.crawl.options import CrawlOptions
-from data_pipeline.crawl.output.writer import CrawlWriter, StorageLimit
+from data_pipeline.crawl.output.writer import CrawlWriter, StorageLimit, content_id_for
 from data_pipeline.crawl.state.store import CrawlState
 
 
@@ -175,7 +175,6 @@ def test_content_only_export_has_empty_files_jsonl(tmp_path: Path) -> None:
 
 
 def test_content_id_for_matches_written_article(tmp_path: Path) -> None:
-    from data_pipeline.crawl.output.writer import content_id_for
 
     writer = make_writer(tmp_path)
     stored = writer.write_article(

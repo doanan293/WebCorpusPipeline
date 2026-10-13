@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import socket  # noqa: F401
+import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from functools import partial

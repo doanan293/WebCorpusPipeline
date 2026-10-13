@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import socket  # noqa: F401
+import socket
 from dataclasses import asdict
 from pathlib import Path
 

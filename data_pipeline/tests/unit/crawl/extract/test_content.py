@@ -1,3 +1,4 @@
+from data_pipeline.crawl.extract.article import analyze_article
 from data_pipeline.crawl.extract.content import discover_html, extract_html
 
 DECLARED_UTF8_HTML = (
@@ -142,7 +143,6 @@ def test_discovery_includes_media_and_srcset_but_discards_transients() -> None:
 
 
 def test_legacy_title_text_and_links_fields_remain_present() -> None:
-    from data_pipeline.crawl.extract.article import analyze_article
 
     article = analyze_article(
         "<main><h1>A</h1><p>B</p><a href='/c'>C</a></main>", "https://a.test/"

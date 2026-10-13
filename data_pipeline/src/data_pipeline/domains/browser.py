@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import socket  # noqa: F401
+import socket
 from urllib.parse import urlparse
 
 from data_pipeline.core.policies.network import resolve_hostname

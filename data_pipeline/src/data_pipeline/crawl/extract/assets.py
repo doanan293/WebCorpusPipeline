@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 from lxml import etree
 
 from data_pipeline.crawl.extract.links import normalize_url, normalized_text
+from data_pipeline.crawl.frontier.assets import DOCUMENT_EXTENSIONS, DOCUMENT_MIME_TYPES
 
 AssetRole = Literal["inline_image", "media_reference", "document_attachment"]
 
@@ -26,7 +27,6 @@ def _srcset_values(value: str) -> tuple[str, ...]:
 
 
 def _is_supported_document(value: str, declared_type: str = "") -> bool:
-    from data_pipeline.crawl.frontier.assets import DOCUMENT_EXTENSIONS, DOCUMENT_MIME_TYPES
 
     mime = declared_type.partition(";")[0].strip().lower()
     if mime in DOCUMENT_MIME_TYPES:

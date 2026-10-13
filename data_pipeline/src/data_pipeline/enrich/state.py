@@ -18,6 +18,7 @@ from data_pipeline.enrich.models import (
     SourceRef,
     jsonable,
 )
+from data_pipeline.enrich.parsing.serializers import parse_result_from_dict
 
 
 def fingerprint_source(source: Path) -> str:
@@ -365,7 +366,6 @@ class WorkState:
         ).fetchone()
         if not row or not row[0]:
             return None
-        from data_pipeline.enrich.parsing.serializers import parse_result_from_dict
 
         return parse_result_from_dict(json.loads(row[0]))
 

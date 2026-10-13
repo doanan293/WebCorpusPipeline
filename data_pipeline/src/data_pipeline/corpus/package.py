@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import sqlite3
 import tempfile
 from pathlib import Path
 
@@ -29,7 +30,6 @@ def _sha(path: Path) -> str:
 
 def _assert_enrichment_complete(db_path: Path) -> None:
     """Refuse a release while the resumable pipeline still has unresolved work."""
-    import sqlite3
 
     conn = sqlite3.connect(db_path)
     try:
@@ -77,7 +77,6 @@ def package_corpus(source: Path, enrichment: Path, output: Path) -> Path:
                 shutil.copy2(src, staging / name)
         if state_db.exists():
             # Export uses the same schema without altering the source crawl.
-            import sqlite3
 
             conn = sqlite3.connect(state_db)
             conn.row_factory = sqlite3.Row
@@ -119,8 +118,6 @@ def package_corpus(source: Path, enrichment: Path, output: Path) -> Path:
             shutil.copy2(exported_report, report)
         elif not report.exists():
             if state_db.exists():
-                import sqlite3
-
                 conn = sqlite3.connect(state_db)
                 value = {
                     "downloaded": conn.execute(
