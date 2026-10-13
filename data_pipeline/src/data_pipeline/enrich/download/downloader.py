@@ -5,12 +5,15 @@ import hashlib
 import os
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from http import HTTPStatus
 from urllib.parse import urlsplit
 
+from data_pipeline.core.settings import Settings
 from data_pipeline.enrich.download.artifacts import extension_for, looks_like_document, sha256_file
 from data_pipeline.enrich.download.transport import PublicTransport, Response
-from data_pipeline.enrich.models import DownloadedFile, DownloadJob
+from data_pipeline.enrich.models import DownloadedFile, DownloadJob, RunSummary
+from data_pipeline.enrich.state import WorkState
 
 _RETRYABLE_STATUSES = frozenset(
     {HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_EARLY, HTTPStatus.TOO_MANY_REQUESTS}
@@ -54,7 +57,7 @@ def _resume_point(job: DownloadJob) -> tuple[int, dict[str, str]]:
     with job.part_path.open("r+b" if job.part_path.exists() else "wb") as stream:
         stream.truncate(offset)
     headers: dict[str, str] = {}
-    if offset and _strong(job.strong_etag):
+    if offset and job.strong_etag and _strong(job.strong_etag):
         headers.update({"Range": f"bytes={offset}-", "If-Range": job.strong_etag})
     elif offset:
         offset = 0
@@ -102,7 +105,9 @@ async def _settle_resume(
     return response, offset, etag
 
 
-async def _write_body(job: DownloadJob, state, settings, response: Response, offset: int) -> None:
+async def _write_body(
+    job: DownloadJob, state: WorkState, settings: Settings, response: Response, offset: int
+) -> None:
     written = offset
     last_flush = written
     last_time = time.monotonic()
@@ -130,7 +135,7 @@ async def _write_body(job: DownloadJob, state, settings, response: Response, off
     state.checkpoint_download(job)
 
 
-def _finalize(job: DownloadJob, state, mime: str) -> DownloadedFile:
+def _finalize(job: DownloadJob, state: WorkState, mime: str) -> DownloadedFile:
     """Move the verified part file into the content-addressed ``files`` directory."""
     digest = sha256_file(job.part_path)
     final = (
@@ -158,7 +163,7 @@ def _finalize(job: DownloadJob, state, mime: str) -> DownloadedFile:
 
 
 async def download_one(
-    job: DownloadJob, state, settings, transport: PublicTransport
+    job: DownloadJob, state: WorkState, settings: Settings, transport: PublicTransport
 ) -> DownloadedFile:
     offset, headers = _resume_point(job)
     response = await transport.get(job.url, headers)
@@ -187,15 +192,18 @@ async def download_one(
 
 
 async def run_downloads(
-    state, settings, transport_factory=PublicTransport, stop: asyncio.Event | None = None
-):
+    state: WorkState,
+    settings: Settings,
+    transport_factory: Callable[[Settings], PublicTransport] = PublicTransport,
+    stop: asyncio.Event | None = None,
+) -> RunSummary:
 
     stop = stop or asyncio.Event()
     host_locks = defaultdict(lambda: asyncio.Semaphore(settings.per_host))
     host_last = defaultdict(float)
-    active: dict[asyncio.Task, DownloadJob] = {}
+    active: dict[asyncio.Task[DownloadedFile], DownloadJob] = {}
 
-    async def worker(job):
+    async def worker(job: DownloadJob) -> DownloadedFile:
         host = urlsplit(job.url).netloc.lower()
         async with host_locks[host]:
             wait = settings.host_delay_seconds - (time.monotonic() - host_last[host])

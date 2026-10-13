@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from docx import Document
 from docx.document import Document as DocumentType
 from docx.oxml.table import CT_Tbl
@@ -11,7 +13,7 @@ from data_pipeline.enrich.models import DownloadedFile, ExtractedPart, LocalResu
 from data_pipeline.enrich.parsing.local.common import result, useful_text
 
 
-def _blocks(parent) -> list[Paragraph | Table]:
+def _blocks(parent: Any) -> list[Paragraph | Table]:
     element = parent.element.body if isinstance(parent, DocumentType) else parent._tc
     return [
         Paragraph(child, parent) if isinstance(child, CT_P) else Table(child, parent)
@@ -27,7 +29,7 @@ def _table_text(table: Table) -> str:
 
 
 def parse_docx(file: DownloadedFile) -> tuple[str, bool]:
-    document = Document(file.path)
+    document = Document(str(file.path))
     chunks: list[str] = []
     for item in _blocks(document):
         text = item.text if isinstance(item, Paragraph) else _table_text(item)

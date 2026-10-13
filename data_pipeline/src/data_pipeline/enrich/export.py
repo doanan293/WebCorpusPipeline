@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from data_pipeline.enrich.models import jsonable
+from data_pipeline.enrich.state import WorkState
 
 
-def export_enrichment(state, destination: Path) -> Path:
+def export_enrichment(state: WorkState, destination: Path) -> Path:
     destination.mkdir(parents=True, exist_ok=True)
     documents = destination / "documents.jsonl"
     with documents.open("w", encoding="utf-8") as out:
@@ -15,6 +17,8 @@ def export_enrichment(state, destination: Path) -> Path:
                 continue
             parsed = state.parse_record(row["url"])
             refs = state.refs_for(row["url"])
+            parts: list[Any] = jsonable(parsed.parts) if parsed else []
+            versions: dict[str, str] = parsed.parser_versions if parsed else {}
             record = {
                 "url": row["url"],
                 "final_url": row["final_url"],
@@ -22,9 +26,9 @@ def export_enrichment(state, destination: Path) -> Path:
                 "mime_type": row["mime_type"],
                 "size": row["size"],
                 "extraction_status": parsed.status if parsed else "pending",
-                "parts": jsonable(parsed.parts) if parsed else [],
+                "parts": parts,
                 "warnings": parsed.warnings if parsed else ["not parsed"],
-                "parser_versions": parsed.parser_versions if parsed else {},
+                "parser_versions": versions,
                 "referrers": refs,
             }
             out.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")

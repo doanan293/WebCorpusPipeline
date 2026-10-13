@@ -7,7 +7,7 @@ from data_pipeline.enrich.models import DownloadedFile, ExtractedPart
 from data_pipeline.enrich.parsing.local.common import result
 
 
-def _cell(value) -> str:
+def _cell(value: object) -> str:
     if value is None:
         return ""
     if isinstance(value, float) and value.is_integer():
@@ -41,7 +41,7 @@ def parse_xlsx(file: DownloadedFile):
 
 
 def parse_xls(file: DownloadedFile):
-    book = xlrd.open_workbook(file.path, on_demand=True)
+    book = xlrd.open_workbook(str(file.path), on_demand=True)
     parts = []
     for index, name in enumerate(book.sheet_names(), 1):
         sheet = book.sheet_by_name(name)

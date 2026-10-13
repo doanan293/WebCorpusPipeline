@@ -333,7 +333,7 @@ class ContentOnlyHeadersGuard:
             raw = raw[0] if raw else b""
         if isinstance(raw, bytes):
             raw = raw.decode("latin1")
-        mime = str(raw).partition(";")[0].strip().lower()
+        mime = raw.partition(";")[0].strip().lower()
         if mime and mime not in {"text/html", "application/xhtml+xml"}:
             request.meta["header_stop_reason"] = "discovered_not_downloaded"
             raise StopDownload(fail=False)

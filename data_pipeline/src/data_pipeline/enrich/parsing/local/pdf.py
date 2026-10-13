@@ -13,7 +13,7 @@ def parse_pdf(file: DownloadedFile) -> LocalResult:
     parts: list[ExtractedPart] = []
     with fitz.open(file.path) as document:
         for number, page in enumerate(document, 1):
-            text = page.get_text("text", sort=True).strip()
+            text = str(page.get_text("text", sort=True)).strip()
             visual = bool(page.get_images(full=True) or page.get_drawings())
             parts.append(ExtractedPart(number, "page", text, visual, "pymupdf"))
             if not useful_text(text) and visual:

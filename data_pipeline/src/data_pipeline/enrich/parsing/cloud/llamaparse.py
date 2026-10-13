@@ -2,21 +2,24 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+from typing import Any
 
+from data_pipeline.core.settings import Settings
 from data_pipeline.enrich.models import ExtractedPart, LocalResult, ParseResult
 from data_pipeline.enrich.parsing.cloud.errors import classify_cloud_error
 from data_pipeline.enrich.parsing.cloud.key_pool import KeyPool
+from data_pipeline.enrich.state import WorkState
 
 
-def _value(obj, name, default=None):
+def _value(obj: Any, name: str, default: Any = None) -> Any:
     if isinstance(obj, dict):
         return obj.get(name, default)
     return getattr(obj, name, default)
 
 
-def _page_texts(response) -> list[str]:
+def _page_texts(response: Any) -> list[str]:
     raw = _value(response, "pages") or _value(response, "items") or []
-    values = []
+    values: list[str] = []
     if isinstance(raw, dict):
         raw = list(raw.values())
     for item in raw:
@@ -29,7 +32,12 @@ def _page_texts(response) -> list[str]:
 
 
 def parse_cloud_subset(
-    file: Path, local: LocalResult, mapping: dict[int, int], state, settings, pool: KeyPool
+    file: Path,
+    local: LocalResult,
+    mapping: dict[int, int],
+    state: WorkState,
+    settings: Settings,
+    pool: KeyPool,
 ) -> ParseResult:
     try:
         from llama_cloud import LlamaCloud  # noqa: PLC0415 -- llama-cloud is an optional 'enrich' extra

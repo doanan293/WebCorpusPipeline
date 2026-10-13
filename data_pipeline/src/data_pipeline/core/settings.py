@@ -57,7 +57,7 @@ def load_api_keys(env_file: Path) -> list[tuple[str, str]]:
     for name in sorted(
         (k for k in values if re.fullmatch(r"LLAMAPARSE_KEY\d+", k)), key=_numbered_key
     ):
-        value = str(values[name] or "").strip()
+        value = (values[name] or "").strip()
         if value and value not in seen:
             result.append((name, value))
             seen.add(value)

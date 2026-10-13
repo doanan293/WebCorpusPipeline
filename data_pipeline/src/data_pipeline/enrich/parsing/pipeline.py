@@ -4,7 +4,8 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from data_pipeline.enrich.models import ParseResult, RunSummary
+from data_pipeline.core.settings import Settings
+from data_pipeline.enrich.models import DownloadedFile, LocalResult, ParseResult, RunSummary
 from data_pipeline.enrich.parsing.cache import cache_key, read_cached, write_cached
 from data_pipeline.enrich.parsing.cloud.key_pool import KeyPool
 from data_pipeline.enrich.parsing.cloud.llamaparse import merge_parts, parse_cloud_subset
@@ -13,12 +14,16 @@ from data_pipeline.enrich.parsing.local.pdf import build_pdf_subset, cloud_part_
 from data_pipeline.enrich.state import WorkState
 
 
-def extract_documents(state: WorkState, settings, *, api_keys: list[tuple[str, str]]) -> RunSummary:
+def extract_documents(
+    state: WorkState, settings: Settings, *, api_keys: list[tuple[str, str]]
+) -> RunSummary:
     keys = KeyPool(api_keys)
     cache_root = state.root / "cache"
     pending = list(state.pending_parse())
 
-    def parse_local_safe(file):
+    def parse_local_safe(
+        file: DownloadedFile,
+    ) -> tuple[DownloadedFile, LocalResult | None, Exception | None]:
         try:
             return file, parse_local(file), None
         except Exception as exc:  # noqa: BLE001 -- a parser crash is recorded as that file's failure
@@ -26,13 +31,18 @@ def extract_documents(state: WorkState, settings, *, api_keys: list[tuple[str, s
 
     with ThreadPoolExecutor(max_workers=settings.local_workers) as workers:
         for file, local, error in workers.map(parse_local_safe, pending):
-            if error is not None:
+            if local is None:
                 state.record_failure(file.url, "parse", str(error))
+                failed_versions: dict[str, str] = {}
                 state.mark_parse(
-                    file.url, ParseResult(file.sha256, [], "failed", [str(error)], {}), None
+                    file.url,
+                    ParseResult(file.sha256, [], "failed", [str(error)], failed_versions),
+                    None,
                 )
                 continue
-            missing = cloud_part_indices(local) if file.path.suffix.lower() == ".pdf" else []
+            missing: list[int] = (
+                cloud_part_indices(local) if file.path.suffix.lower() == ".pdf" else []
+            )
             if not missing:
                 state.mark_parse(
                     file.url,

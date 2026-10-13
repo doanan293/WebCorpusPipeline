@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
-from data_pipeline.enrich.models import DownloadedFile, ExtractedPart
+from data_pipeline.enrich.models import DownloadedFile, ExtractedPart, LocalResult
 from data_pipeline.enrich.parsing.local.common import result
 from data_pipeline.enrich.parsing.local.excel import parse_xls, parse_xlsx
 from data_pipeline.enrich.parsing.local.office import convert_office
@@ -32,7 +33,9 @@ _CONVERTED_PARSERS = {
 _TEXT_EXTENSIONS = frozenset({".txt", ".csv", ".rtf"})
 
 
-def _parse_converted(file: DownloadedFile, target: str, parser):
+def _parse_converted(
+    file: DownloadedFile, target: str, parser: Callable[[DownloadedFile], LocalResult]
+) -> LocalResult:
     with tempfile.TemporaryDirectory(prefix="ir-convert-") as temp:
         converted = convert_office(file.path, Path(temp), target)
         derived = DownloadedFile(

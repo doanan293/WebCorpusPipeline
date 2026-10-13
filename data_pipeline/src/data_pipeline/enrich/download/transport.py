@@ -6,6 +6,8 @@ from typing import Any
 
 import aiohttp
 
+from data_pipeline.core.settings import Settings
+
 
 @dataclass
 class Response:
@@ -20,7 +22,7 @@ class Response:
 
 
 class PublicTransport:
-    def __init__(self, settings):
+    def __init__(self, settings: Settings):
         self.settings = settings
         self.session: aiohttp.ClientSession | None = None
 
@@ -37,7 +39,7 @@ class PublicTransport:
         )
         return self
 
-    async def __aexit__(self, *exc):
+    async def __aexit__(self, *exc: object):
         if self.session:
             await self.session.close()
 

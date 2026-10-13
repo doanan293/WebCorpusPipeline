@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
@@ -7,7 +9,7 @@ from data_pipeline.enrich.models import DownloadedFile, ExtractedPart
 from data_pipeline.enrich.parsing.local.common import result
 
 
-def _shape_text(shape) -> list[str]:
+def _shape_text(shape: Any) -> list[str]:
     out = []
     if getattr(shape, "has_text_frame", False) and shape.text.strip():
         out.append(shape.text.strip())
@@ -24,7 +26,7 @@ def _shape_text(shape) -> list[str]:
 
 
 def parse_powerpoint(file: DownloadedFile):
-    deck = Presentation(file.path)
+    deck = Presentation(str(file.path))
     parts = []
     for index, slide in enumerate(deck.slides, 1):
         chunks = []

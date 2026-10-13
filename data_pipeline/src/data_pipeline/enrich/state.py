@@ -8,6 +8,7 @@ import time
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from data_pipeline.enrich.models import (
     Candidate,
@@ -49,8 +50,10 @@ def read_crawl_id(source: Path) -> str | None:
 
 
 class WorkState:
-    def __init__(self, root: Path, conn: sqlite3.Connection, lock_fd, source_fingerprint: str):
-        self.root, self.conn, self._lock_fd = root, conn, lock_fd
+    def __init__(self, root: Path, conn: sqlite3.Connection, lock_fd: int, source_fingerprint: str):
+        self.root, self.conn = root, conn
+        self._lock_fd: int | None = lock_fd
+        self._connection_open = True
         self.source_fingerprint = source_fingerprint
 
     @classmethod
@@ -98,11 +101,11 @@ class WorkState:
             obj.close()
 
     def close(self) -> None:
-        if getattr(self, "conn", None):
+        if self._connection_open:
             self.conn.commit()
             self.conn.close()
-            self.conn = None
-        if getattr(self, "_lock_fd", None) is not None:
+            self._connection_open = False
+        if self._lock_fd is not None:
             try:
                 import fcntl  # noqa: PLC0415 -- fcntl does not exist on Windows; locking is skipped there
 
@@ -392,7 +395,7 @@ class WorkState:
         self.conn.commit()
 
     def summary(self) -> RunSummary:
-        def n(sql):
+        def n(sql: str) -> int:
             return int(self.conn.execute(sql).fetchone()[0])
 
         return RunSummary(
@@ -409,7 +412,7 @@ class WorkState:
             ),
         )
 
-    def refs_for(self, target: str | None = None) -> list[dict]:
+    def refs_for(self, target: str | None = None) -> list[dict[str, Any]]:
         if target:
             rows = self.conn.execute(
                 "SELECT * FROM refs WHERE target_url=? ORDER BY source_url", (target,)

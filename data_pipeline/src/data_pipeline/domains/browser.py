@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from typing import Any
 from urllib.parse import urlparse
+
+from playwright.async_api import Route, WebSocketRoute
 
 from data_pipeline.core.policies.network import resolve_hostname
 from data_pipeline.domains.probe import (
@@ -13,12 +16,12 @@ from data_pipeline.domains.probe import (
 )
 
 
-async def _bounded_close(resource, *, timeout: float = 3.0) -> None:
+async def _bounded_close(resource: Any, *, timeout: float = 3.0) -> None:
     with contextlib.suppress(TimeoutError):
         await asyncio.wait_for(resource.close(), timeout=timeout)
 
 
-async def _block_web_socket(web_socket) -> None:
+async def _block_web_socket(web_socket: WebSocketRoute) -> None:
     await web_socket.close(code=1008, reason="audit network policy")
 
 
@@ -77,7 +80,7 @@ def browser_probe_results(
             )
             browser_host_policy: dict[tuple[str, str, int], bool] = {}
 
-            async def block_heavy_resources(route) -> None:
+            async def block_heavy_resources(route: Route) -> None:
                 if route.request.resource_type in {"font", "image", "media"}:
                     await route.abort()
                     return

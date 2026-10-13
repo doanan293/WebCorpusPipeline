@@ -35,8 +35,8 @@ def run_audit(
     report_path: Path,
     *,
     workers: int,
-    probe,
-    browser_probe=None,
+    probe: Callable[[str], ProbeResult],
+    browser_probe: Callable[[list[ProbeResult]], dict[str, ProbeAttempt]] | None = None,
     progress: Callable[[int, int, int], None] | None = None,
 ) -> list[ProbeResult]:
     hostnames = load_candidate_hostnames(all_path)

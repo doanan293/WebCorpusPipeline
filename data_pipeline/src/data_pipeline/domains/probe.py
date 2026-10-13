@@ -6,11 +6,13 @@ import http.client
 import ipaddress
 import re
 import ssl
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http import HTTPStatus
+from http.client import HTTPMessage
 from http.cookiejar import CookieJar
+from typing import IO, Any, cast, override
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
 from urllib.request import (
@@ -56,6 +58,10 @@ class ProbeAttempt:
     error: str | None = None
 
 
+ResolveFn = Callable[[str], object]
+FetchFn = Callable[[str, float], "ProbeAttempt"]
+
+
 class UnsafeRedirectError(OSError):
     def __init__(self, target_url: str, reason: str) -> None:
         super().__init__(f"{reason}: {target_url}")
@@ -64,7 +70,16 @@ class UnsafeRedirectError(OSError):
 
 
 class SafeRedirectHandler(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    @override
+    def redirect_request(
+        self,
+        req: Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: HTTPMessage,
+        newurl: str,
+    ) -> Request | None:
         target_url = urljoin(req.full_url, newurl)
         source_hostname = (urlparse(req.full_url).hostname or "").lower()
         parsed_target = urlparse(target_url)
@@ -285,7 +300,7 @@ def is_target_web_url(url: str) -> bool:
         port = parsed.port
     except ValueError:
         return False
-    return bool(
+    return (
         parsed.scheme in {"http", "https"}
         and is_target_hostname((parsed.hostname or "").lower())
         and (port is None or port == (80 if parsed.scheme == "http" else 443))
@@ -378,7 +393,7 @@ def _probe_public_subpage(
     root_attempt: ProbeAttempt,
     *,
     timeout: float,
-    fetch,
+    fetch: FetchFn,
     include_root_links: bool = True,
 ) -> ProbeAttempt | None:
     root_candidates = (
@@ -393,7 +408,7 @@ def _probe_public_subpage(
             sitemap.body,
         )
     else:
-        sitemap_candidates = []
+        sitemap_candidates: list[str] = []
     for candidate in [*root_candidates[:5], *sitemap_candidates[:5]]:
         attempt = fetch(candidate, timeout)
         if attempt.status is None:
@@ -441,7 +456,9 @@ _DETERMINISTIC_SHELLS = frozenset({"javascript_shell", "service_endpoint"})
 class _HostProbe:
     """Probes one host over https then http, remembering the last responses for the fallback."""
 
-    def __init__(self, hostname: str, *, timeout: float, attempts: int, resolve, fetch) -> None:
+    def __init__(
+        self, hostname: str, *, timeout: float, attempts: int, resolve: ResolveFn, fetch: FetchFn
+    ) -> None:
         self.hostname = hostname
         self.timeout = timeout
         self.attempts = attempts
@@ -464,7 +481,7 @@ class _HostProbe:
                     return result
         return self._fallback_result()
 
-    def _inactive(self, reason: str, **fields: object) -> ProbeResult:
+    def _inactive(self, reason: str, **fields: Any) -> ProbeResult:
         return ProbeResult(self.hostname, active=False, reason=reason, **fields)
 
     def _check_dns(self) -> ProbeResult | None:
@@ -528,7 +545,7 @@ class _HostProbe:
         self.last_response = attempt
         self.last_response_scheme = scheme
         active, reason = classify_response(
-            attempt.status, attempt.body, attempt.content_type, attempt.final_url
+            cast(int, attempt.status), attempt.body, attempt.content_type, attempt.final_url
         )
         digest_hostname = urlparse(attempt.final_url or url).hostname
         if active:
@@ -570,7 +587,11 @@ class _HostProbe:
         self, scheme: str, attempt: ProbeAttempt, redirect_url: str
     ) -> ProbeResult | ProbeAttempt | None:
         """Follow a meta/JS redirect: a final ProbeResult, the redirected attempt, or None."""
-        common = {"scheme": scheme, "status": attempt.status, "final_url": redirect_url}
+        common: dict[str, Any] = {
+            "scheme": scheme,
+            "status": attempt.status,
+            "final_url": redirect_url,
+        }
         if not is_target_web_url(redirect_url):
             return self._inactive(
                 "external_redirect",
@@ -579,7 +600,7 @@ class _HostProbe:
                 **common,
             )
         try:
-            self.resolve(urlparse(redirect_url).hostname)
+            self.resolve(urlparse(redirect_url).hostname or "")
         except NonPublicAddressError as exc:
             return self._inactive("non_public_address", error=str(exc), **common)
         except OSError as exc:
@@ -603,7 +624,7 @@ class _HostProbe:
                 "network_error", scheme=self.last_scheme, error=self.last_attempt.error
             )
         _, reason = classify_response(
-            response.status, response.body, response.content_type, response.final_url
+            cast(int, response.status), response.body, response.content_type, response.final_url
         )
         return self._describe(
             response,
@@ -620,8 +641,8 @@ def probe_host(
     *,
     timeout: float,
     attempts: int,
-    resolve,
-    fetch,
+    resolve: ResolveFn,
+    fetch: FetchFn,
 ) -> ProbeResult:
     return _HostProbe(
         hostname, timeout=timeout, attempts=attempts, resolve=resolve, fetch=fetch
@@ -671,7 +692,7 @@ def fetch_url(url: str, timeout: float) -> ProbeAttempt:
             body = b""
         return ProbeAttempt(
             status=exc.code,
-            final_url=exc.geturl(),
+            final_url=exc.url,
             content_type=exc.headers.get_content_type() if exc.headers else None,
             body=body,
             error=str(exc),
