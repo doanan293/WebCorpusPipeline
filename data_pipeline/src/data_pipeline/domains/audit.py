@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import argparse
-import json
 import socket  # noqa: F401
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
@@ -9,7 +7,6 @@ from functools import partial
 from pathlib import Path
 from urllib.parse import urlparse
 
-from data_pipeline.core.paths import project_paths
 from data_pipeline.core.policies.network import resolve_hostname
 from data_pipeline.domains.browser import browser_probe_results
 from data_pipeline.domains.probe import (
@@ -185,61 +182,39 @@ def _apply_browser_attempts(
     return [replacements.get(result.hostname, result) for result in results]
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="hust-domain-audit")
-    parser.add_argument("--all-domains", type=Path, default=project_paths().domains_all)
-    parser.add_argument("--active-domains", type=Path, default=project_paths().domains_active)
-    parser.add_argument("--report", type=Path, default=project_paths().domains_status)
-    parser.add_argument("--workers", type=int, default=32)
-    parser.add_argument("--browser-workers", type=int, default=6)
-    parser.add_argument("--browser-timeout", type=float, default=15.0)
-    parser.add_argument("--no-browser", action="store_true")
-    parser.add_argument("--timeout", type=float, default=8.0)
-    parser.add_argument("--retries", type=int, default=2)
-    args = parser.parse_args(argv)
-    if (
-        args.workers <= 0
-        or args.browser_workers <= 0
-        or args.timeout <= 0
-        or args.browser_timeout <= 0
-        or args.retries < 0
-    ):
-        parser.error("workers and timeouts must be positive; retries cannot be negative")
-
+def audit_domains(
+    all_domains: Path,
+    active_domains: Path,
+    report: Path,
+    *,
+    workers: int,
+    timeout: float,
+    retries: int,
+    browser: bool,
+    browser_workers: int,
+    browser_timeout: float,
+) -> dict[str, object]:
+    """Probe every candidate host, rewrite the active list and report, and summarise."""
     results = run_audit(
-        args.all_domains,
-        args.active_domains,
-        args.report,
-        workers=args.workers,
+        all_domains,
+        active_domains,
+        report,
+        workers=workers,
         probe=partial(
             probe_host,
-            timeout=args.timeout,
-            attempts=args.retries + 1,
+            timeout=timeout,
+            attempts=retries + 1,
             resolve=resolve_hostname,
             fetch=fetch_url,
         ),
         browser_probe=(
-            None
-            if args.no_browser
-            else partial(
-                browser_probe_results,
-                timeout=args.browser_timeout,
-                workers=args.browser_workers,
-            )
+            partial(browser_probe_results, timeout=browser_timeout, workers=browser_workers)
+            if browser
+            else None
         ),
     )
-    print(
-        json.dumps(
-            {
-                "active": sum(result.active for result in results),
-                "checked": len(results),
-                "report": str(args.report),
-            },
-            sort_keys=True,
-        )
-    )
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+    return {
+        "active": sum(result.active for result in results),
+        "checked": len(results),
+        "report": str(report),
+    }

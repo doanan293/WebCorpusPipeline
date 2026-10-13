@@ -44,10 +44,7 @@ dev = [
 ]
 
 [project.scripts]
-ir-data = "data_pipeline.cli.ir_data:main"
-hust-discover = "data_pipeline.cli.discover:main"
-hust-crawl = "data_pipeline.cli.crawl:main"
-hust-domain-audit = "data_pipeline.domains.audit:main"
+data-pipeline = "data_pipeline.cli.main:run"
 
 
 [tool.hatch.build.targets.wheel]

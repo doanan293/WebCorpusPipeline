@@ -128,21 +128,3 @@ def test_legacy_cursor_moves_to_default_source(tmp_path: Path) -> None:
 
         assert state.cursor("/data/crawl/final/articles.jsonl") == 42
         assert state.inventory_done("/data/crawl/final/articles.jsonl")
-
-
-@pytest.mark.parametrize(
-    "command", ["inventory", "download", "extract", "enrich-documents", "status"]
-)
-def test_cli_work_commands_accept_rebind_source(command: str) -> None:
-    from data_pipeline.cli.ir_data import parser
-
-    assert parser().parse_args([command, "--rebind-source"]).rebind_source is True
-    assert parser().parse_args([command]).rebind_source is False
-
-
-@pytest.mark.parametrize("command", ["export", "build-graph", "package"])
-def test_cli_output_commands_accept_rebind_source(command: str) -> None:
-    from data_pipeline.cli.ir_data import parser
-
-    args = parser().parse_args([command, "--output", "out", "--rebind-source"])
-    assert args.rebind_source is True

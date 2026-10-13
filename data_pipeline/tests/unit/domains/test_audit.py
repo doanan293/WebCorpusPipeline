@@ -1,7 +1,4 @@
-import json
-
-from data_pipeline.domains import audit as domain_audit
-from data_pipeline.domains.audit import main, run_audit
+from data_pipeline.domains.audit import run_audit
 from data_pipeline.domains.probe import (
     ProbeAttempt,
     ProbeResult,
@@ -179,48 +176,3 @@ def test_run_audit_keeps_shortest_hostname_for_identical_content(tmp_path) -> No
         ("unit-meta.hust.edu.vn", False, "content_duplicate"),
         ("unit.hust.edu.vn", True, "public_response"),
     ]
-
-
-def test_command_updates_domain_files_with_configured_paths(tmp_path, monkeypatch) -> None:
-    all_path = tmp_path / "all.txt"
-    all_path.write_text("a.hust.edu.vn\n", encoding="utf-8")
-    active_path = tmp_path / "active.txt"
-    active_path.write_text("List active domain:\n", encoding="utf-8")
-    report_path = tmp_path / "status.jsonl"
-    monkeypatch.setattr(domain_audit, "resolve_hostname", lambda hostname: None)
-    fetch_count = 0
-
-    def fetch(url: str, timeout: float) -> ProbeAttempt:
-        nonlocal fetch_count
-        fetch_count += 1
-        if fetch_count <= 2:
-            return ProbeAttempt(error="temporary failure")
-        return ProbeAttempt(
-            status=200,
-            final_url=url,
-            body=b"<title>Working</title><h1>Public information</h1>",
-        )
-
-    monkeypatch.setattr(domain_audit, "fetch_url", fetch)
-
-    exit_code = main(
-        [
-            "--all-domains",
-            str(all_path),
-            "--active-domains",
-            str(active_path),
-            "--report",
-            str(report_path),
-            "--workers",
-            "1",
-            "--timeout",
-            "1",
-            "--retries",
-            "2",
-        ]
-    )
-
-    assert exit_code == 0
-    assert fetch_count == 3
-    assert active_path.read_text() == "a.hust.edu.vn\n"
-    assert json.loads(report_path.read_text())["active"] is True

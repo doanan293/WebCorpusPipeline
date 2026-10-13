@@ -431,3 +431,17 @@ class WorkState:
             "SELECT * FROM cloud_jobs WHERE request_id=?", (request_id,)
         ).fetchone()
         return dict(row) if row else None
+
+
+def read_cloud_job_status(work_dir: Path, request_id: str, job_id: str) -> str:
+    """Return a cloud job's status without opening (and locking) the work state."""
+    connection = sqlite3.connect(work_dir / "state.sqlite3")
+    try:
+        row = connection.execute(
+            "SELECT job_id, status FROM cloud_jobs WHERE request_id=?", (request_id,)
+        ).fetchone()
+    finally:
+        connection.close()
+    if row is None or row[0] != job_id:
+        raise ValueError("request/job pair is not present in this work directory")
+    return str(row[1])

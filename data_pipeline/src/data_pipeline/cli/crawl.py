@@ -1,247 +1,230 @@
 from __future__ import annotations
 
-import argparse
-import sys
 from pathlib import Path
+from typing import Annotated, Literal
 
-from dotenv import load_dotenv
+import typer
 
-from data_pipeline.crawl.config import CrawlerConfig
-from data_pipeline.crawl.frontier.seeds import parse_seed_file
-from data_pipeline.crawl.options import crawl_options_from_config
-from data_pipeline.crawl.run.full import run_crawl
-from data_pipeline.crawl.runtime.profiles import resolve_runtime_tuning
+from data_pipeline.cli import context, errors
 
+app = typer.Typer(help="Crawl the HUST websites.", no_args_is_help=True)
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="hust-crawl",
-        description="Unified hybrid crawler for mixed hostname and exact URL seeds.",
-    )
-    parser.add_argument(
-        "--input", "-i", type=str, required=True, help="Path to canonical URLs file"
-    )
-    parser.add_argument("--output", "-o", type=str, required=True, help="Crawl output directory")
-    parser.add_argument(
-        "--assets",
-        type=str,
-        default=None,
-        choices=["content-only", "all"],
-        help="download directly referenced semantic assets; default records references only",
-    )
-    parser.add_argument(
-        "--reuse-content-from",
-        type=Path,
-        default=None,
-        help="reuse a completed content-only crawl and download only its recorded assets",
-    )
-    parser.add_argument(
-        "--max-query-variants-per-path",
-        type=int,
-        default=None,
-        help="Maximum query parameter variants per path (default: 20)",
-    )
-    parser.add_argument(
-        "--pagination-empty-pages",
-        type=int,
-        default=None,
-        help="Consecutive empty pagination pages before stopping (default: 3)",
-    )
-    parser.add_argument(
-        "--max-urls-per-host",
-        type=int,
-        default=None,
-        help="Maximum URLs crawled per hostname (default: 100000)",
-    )
-    parser.add_argument(
-        "--max-total-urls",
-        type=int,
-        default=None,
-        help="Maximum total URLs crawled across all hosts (default: 1000000)",
-    )
-    parser.add_argument(
-        "--profile",
-        type=str,
-        default="safe-fast",
-        choices=["safe-fast"],
-        help="Crawl concurrency profile (default: safe-fast)",
-    )
-    parser.add_argument(
-        "--max-file-bytes",
-        type=int,
-        default=None,
-        help="Maximum single file size in bytes (default: 100 MiB)",
-    )
-    parser.add_argument(
-        "--max-total-file-bytes",
-        type=int,
-        default=None,
-        help="Maximum total file storage in bytes (default: 100 GiB)",
-    )
-    parser.add_argument(
-        "--concurrency",
-        type=int,
-        default=None,
-        help="Global concurrency limit (overrides YAML)",
-    )
-    parser.add_argument(
-        "--max-per-host",
-        type=int,
-        default=None,
-        help="Per-host concurrency limit (overrides YAML)",
-    )
-    parser.add_argument(
-        "--resource-limit-percent",
-        type=int,
-        default=None,
-        help="CPU/RAM utilization threshold (overrides YAML)",
-    )
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=Path("config/crawler.yaml"),
-        help="Configuration YAML file path",
-    )
-    parser.add_argument(
-        "--resume",
-        action="store_true",
-        default=False,
-        help="Resume an interrupted crawl run",
-    )
-    parser.add_argument(
-        "--retry-failed",
-        action="store_true",
-        default=False,
-        help="Retry transient network failures while resuming",
-    )
-    parser.add_argument(
-        "--retry-truncated",
-        action="store_true",
-        default=False,
-        help="Requeue recoverable query-variant truncations while resuming",
-    )
-    parser.add_argument(
-        "--retry-access-gates",
-        action="store_true",
-        default=False,
-        help="Requeue pages previously skipped as CAPTCHA-blocked while resuming",
-    )
-    parser.add_argument(
-        "--retry-policy-skips",
-        action="store_true",
-        default=False,
-        help="Migrate access policy and requeue recoverable policy skips while resuming",
-    )
-    parser.add_argument(
-        "--refresh",
-        action="store_true",
-        default=False,
-        help="Refetch hubs and recent pages of a finished crawl and crawl only new URLs",
-    )
-    return parser
+AssetsOption = Annotated[
+    Literal["content-only", "all"] | None,
+    typer.Option(
+        help="Download directly referenced semantic assets; default records references only."
+    ),
+]
+ConfigOption = Annotated[
+    Path | None, typer.Option(help="Crawler YAML (default: config/crawler.yaml in the project).")
+]
+ProfileOption = Annotated[Literal["safe-fast"], typer.Option(help="Crawl concurrency profile.")]
+ConcurrencyOption = Annotated[
+    int | None, typer.Option(help="Global concurrency limit (overrides YAML).")
+]
+PerHostOption = Annotated[
+    int | None, typer.Option(help="Per-host concurrency limit (overrides YAML).")
+]
+ResourceLimitOption = Annotated[
+    int | None, typer.Option(help="CPU/RAM utilization threshold (overrides YAML).")
+]
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    return build_parser().parse_args(argv)
+@app.command()
+def run(  # noqa: PLR0913, PLR0912 -- one parameter per documented crawl flag
+    input_path: Annotated[
+        Path, typer.Option("--input", "-i", help="Path to the canonical URLs file.")
+    ],
+    output: Annotated[Path, typer.Option("--output", "-o", help="Crawl output directory.")],
+    assets: AssetsOption = None,
+    reuse_content_from: Annotated[
+        Path | None,
+        typer.Option(help="Reuse a completed content-only crawl and download only its assets."),
+    ] = None,
+    max_query_variants_per_path: Annotated[
+        int | None, typer.Option(help="Maximum query parameter variants per path (default: 20).")
+    ] = None,
+    pagination_empty_pages: Annotated[
+        int | None,
+        typer.Option(help="Consecutive empty pagination pages before stopping (default: 3)."),
+    ] = None,
+    max_urls_per_host: Annotated[
+        int | None, typer.Option(help="Maximum URLs crawled per hostname (default: 100000).")
+    ] = None,
+    max_total_urls: Annotated[
+        int | None, typer.Option(help="Maximum total URLs across all hosts (default: 1000000).")
+    ] = None,
+    profile: ProfileOption = "safe-fast",
+    max_file_bytes: Annotated[
+        int | None, typer.Option(help="Maximum single file size in bytes (default: 100 MiB).")
+    ] = None,
+    max_total_file_bytes: Annotated[
+        int | None, typer.Option(help="Maximum total file storage in bytes (default: 100 GiB).")
+    ] = None,
+    concurrency: ConcurrencyOption = None,
+    max_per_host: PerHostOption = None,
+    resource_limit_percent: ResourceLimitOption = None,
+    config: ConfigOption = None,
+    resume: Annotated[
+        bool, typer.Option("--resume", help="Resume an interrupted crawl run.")
+    ] = False,
+    retry_failed: Annotated[
+        bool,
+        typer.Option("--retry-failed", help="Retry transient network failures while resuming."),
+    ] = False,
+    retry_truncated: Annotated[
+        bool,
+        typer.Option(
+            "--retry-truncated",
+            help="Requeue recoverable query-variant truncations while resuming.",
+        ),
+    ] = False,
+    retry_access_gates: Annotated[
+        bool,
+        typer.Option(
+            "--retry-access-gates",
+            help="Requeue pages previously skipped as CAPTCHA-blocked while resuming.",
+        ),
+    ] = False,
+    retry_policy_skips: Annotated[
+        bool,
+        typer.Option(
+            "--retry-policy-skips",
+            help="Migrate access policy and requeue recoverable policy skips while resuming.",
+        ),
+    ] = False,
+    refresh: Annotated[
+        bool,
+        typer.Option(
+            "--refresh",
+            help="Refetch hubs and recent pages of a finished crawl and crawl only new URLs.",
+        ),
+    ] = False,
+) -> int:
+    """Crawl hostname and exact-URL seeds with the unified hybrid crawler."""
+    from data_pipeline.crawl.config import CrawlerConfig
+    from data_pipeline.crawl.frontier.seeds import parse_seed_file
+    from data_pipeline.crawl.options import crawl_options_from_config
+    from data_pipeline.crawl.run import full as run_full
+    from data_pipeline.crawl.runtime.profiles import resolve_runtime_tuning
 
-
-def main(argv: list[str] | None = None) -> int:
-    load_dotenv(dotenv_path=Path.cwd() / ".env", override=False)
-
-    try:
-        args = parse_args(argv)
-    except SystemExit as exc:
-        return exc.code if isinstance(exc.code, int) else 2
-
-    if args.refresh and (
-        args.resume
-        or args.reuse_content_from is not None
-        or args.retry_failed
-        or args.retry_truncated
-        or args.retry_access_gates
-        or args.retry_policy_skips
+    if refresh and (
+        resume
+        or reuse_content_from is not None
+        or retry_failed
+        or retry_truncated
+        or retry_access_gates
+        or retry_policy_skips
     ):
-        print(
-            "Error: --refresh cannot be combined with --resume, --reuse-content-from or --retry-* flags",
-            file=sys.stderr,
+        return errors.fail(
+            "--refresh cannot be combined with --resume, --reuse-content-from or --retry-* flags"
         )
-        return 2
-    if args.reuse_content_from is not None and args.assets not in (None, "all"):
-        print("Error: --reuse-content-from requires --assets all", file=sys.stderr)
-        return 2
-    if args.retry_failed and not args.resume:
-        print("Error: --retry-failed requires --resume", file=sys.stderr)
-        return 2
-    if args.retry_truncated and not args.resume:
-        print("Error: --retry-truncated requires --resume", file=sys.stderr)
-        return 2
-    if args.retry_access_gates and not args.resume:
-        print("Error: --retry-access-gates requires --resume", file=sys.stderr)
-        return 2
-    if args.retry_policy_skips and not args.resume:
-        print("Error: --retry-policy-skips requires --resume", file=sys.stderr)
-        return 2
+    if reuse_content_from is not None and assets not in (None, "all"):
+        return errors.fail("--reuse-content-from requires --assets all")
+    for enabled, flag in (
+        (retry_failed, "--retry-failed"),
+        (retry_truncated, "--retry-truncated"),
+        (retry_access_gates, "--retry-access-gates"),
+        (retry_policy_skips, "--retry-policy-skips"),
+    ):
+        if enabled and not resume:
+            return errors.fail(f"{flag} requires --resume")
 
-    input_path = Path(args.input)
     if not input_path.is_file():
-        print(f"Error: input file not found: {input_path}", file=sys.stderr)
-        return 2
+        return errors.fail(f"input file not found: {input_path}")
 
     try:
         seeds = parse_seed_file(input_path)
-    except Exception as exc:
-        print(f"Error reading seed file: {exc}", file=sys.stderr)
-        return 2
+    except Exception as exc:  # noqa: BLE001 -- any malformed seed file is a usage error
+        return errors.fail(f"reading seed file: {exc}")
 
+    config_path = context.pick(config, context.current_paths().crawler_config)
     try:
-        config = CrawlerConfig.load(args.config, hostnames=seeds.allowed_hostnames)
-    except Exception as exc:
-        print(f"Error loading configuration: {exc}", file=sys.stderr)
-        return 2
+        crawler_config = CrawlerConfig.load(config_path, hostnames=seeds.allowed_hostnames)
+    except Exception as exc:  # noqa: BLE001 -- any invalid configuration is a usage error
+        return errors.fail(f"loading configuration: {exc}")
 
-    if args.reuse_content_from is not None and config.assets != "all" and args.assets is None:
-        print("Error: --reuse-content-from requires --assets all", file=sys.stderr)
-        return 2
+    if reuse_content_from is not None and crawler_config.assets != "all" and assets is None:
+        return errors.fail("--reuse-content-from requires --assets all")
 
     options = crawl_options_from_config(
-        config,
-        assets=args.assets,
-        max_file_bytes=args.max_file_bytes,
-        max_total_file_bytes=args.max_total_file_bytes,
-        max_query_variants_per_path=args.max_query_variants_per_path,
-        pagination_empty_pages=args.pagination_empty_pages,
-        max_urls_per_host=args.max_urls_per_host,
-        max_total_urls=args.max_total_urls,
+        crawler_config,
+        assets=assets,
+        max_file_bytes=max_file_bytes,
+        max_total_file_bytes=max_total_file_bytes,
+        max_query_variants_per_path=max_query_variants_per_path,
+        pagination_empty_pages=pagination_empty_pages,
+        max_urls_per_host=max_urls_per_host,
+        max_total_urls=max_total_urls,
     )
+    tuning = resolve_runtime_tuning(
+        config=crawler_config,
+        profile=profile,
+        concurrency=concurrency,
+        max_per_host=max_per_host,
+        resource_limit_percent=resource_limit_percent,
+    )
+    return run_full.run_crawl(
+        input_path=input_path,
+        output=output,
+        config=crawler_config,
+        seeds=seeds,
+        options=options,
+        tuning=tuning,
+        resume=resume,
+        retry_failed=retry_failed,
+        retry_truncated=retry_truncated,
+        retry_access_gates=retry_access_gates,
+        retry_policy_skips=retry_policy_skips,
+        reuse_content_from=reuse_content_from,
+        refresh=refresh,
+    )
+
+
+@app.command()
+def discover(
+    input_path: Annotated[Path, typer.Option("--input", "-i", help="Path to the seeds file.")],
+    output: Annotated[Path, typer.Option("--output", "-o", help="Discovery output directory.")],
+    profile: ProfileOption = "safe-fast",
+    concurrency: ConcurrencyOption = None,
+    max_per_host: PerHostOption = None,
+    resource_limit_percent: ResourceLimitOption = None,
+    config: ConfigOption = None,
+    resume: Annotated[
+        bool, typer.Option("--resume", help="Resume an interrupted discovery run.")
+    ] = False,
+) -> int:
+    """Sitemap-only URL discovery for mixed hostname and exact URL seeds."""
+    from data_pipeline.crawl.config import CrawlerConfig
+    from data_pipeline.crawl.frontier.seeds import parse_seed_file
+    from data_pipeline.crawl.run import discovery as run_discovery
+    from data_pipeline.crawl.runtime.profiles import resolve_runtime_tuning
+
+    if not input_path.is_file():
+        return errors.fail(f"input file not found: {input_path}")
+    try:
+        seeds = parse_seed_file(input_path)
+    except ValueError as exc:
+        return errors.fail(f"reading seeds: {exc}")
+
+    config_path = context.pick(config, context.current_paths().crawler_config)
+    try:
+        crawler_config = CrawlerConfig.load(config_path, hostnames=seeds.allowed_hostnames)
+    except Exception as exc:  # noqa: BLE001 -- any invalid configuration is a usage error
+        return errors.fail(f"loading configuration: {exc}")
 
     tuning = resolve_runtime_tuning(
-        config=config,
-        profile=args.profile,
-        concurrency=args.concurrency,
-        max_per_host=args.max_per_host,
-        resource_limit_percent=args.resource_limit_percent,
+        config=crawler_config,
+        profile=profile,
+        concurrency=concurrency,
+        max_per_host=max_per_host,
+        resource_limit_percent=resource_limit_percent,
     )
-
-    try:
-        return run_crawl(
-            input_path=input_path,
-            output=Path(args.output),
-            config=config,
-            seeds=seeds,
-            options=options,
-            tuning=tuning,
-            resume=args.resume,
-            retry_failed=args.retry_failed,
-            retry_truncated=args.retry_truncated,
-            retry_access_gates=args.retry_access_gates,
-            retry_policy_skips=args.retry_policy_skips,
-            reuse_content_from=args.reuse_content_from,
-            refresh=args.refresh,
-        )
-    except (FileExistsError, ValueError) as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 2
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    return run_discovery.run_discovery(
+        input_path=input_path,
+        output=output,
+        config=crawler_config,
+        seeds=seeds,
+        tuning=tuning,
+        resume=resume,
+    )

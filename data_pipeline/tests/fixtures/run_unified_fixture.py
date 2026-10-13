@@ -14,7 +14,7 @@ install_reactor("twisted.internet.asyncioreactor.AsyncioSelectorReactor")
 from scrapy import signals  # noqa: E402
 
 import data_pipeline.crawl.runtime.settings as crawl_settings  # noqa: E402
-from data_pipeline.cli import crawl as cli  # noqa: E402
+from data_pipeline.cli.main import main as cli_main  # noqa: E402
 from data_pipeline.core.policies.network import NonPublicAddressError  # noqa: E402
 from data_pipeline.crawl.run import full as runner  # noqa: E402
 from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware  # noqa: E402
@@ -139,7 +139,7 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
     elif mode == "policy_recovery_resume":
         argv.extend(["--resume", "--retry-policy-skips"])
 
-    return cli.main(argv)
+    return cli_main(["crawl", "run", *argv])
 
 
 if __name__ == "__main__":
