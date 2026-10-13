@@ -13,17 +13,27 @@ Chạy lệnh trong thư mục của từng dự án để các đường dẫn 
 
 ```bash
 cd data_pipeline
-uv sync --extra dev
+uv sync
 uv run pytest -q
+uv run data-pipeline --help
 ```
 
-Xem [hướng dẫn data pipeline](data_pipeline/README.md) để cấu hình và chạy crawl.
-Các bước download/extract, MongoDB và Kaggle nằm trong cùng dự án này.
-`lucene/` nhận corpus đã xử lý để lập chỉ mục và tìm kiếm.
+Xem [hướng dẫn data pipeline](data_pipeline/README.md) để cài đặt, cấu hình và chạy từng giai đoạn
+(crawl, tải và bóc tách tài liệu, đóng gói corpus, MongoDB, Kaggle). `lucene/` nhận corpus đã xử lý để lập
+chỉ mục và tìm kiếm.
 
-`data_pipeline/` dùng một `pyproject.toml` và một `uv.lock`. Extra `crawl`
-cài crawler, `producer` cài các công cụ tạo corpus, còn base dành cho consumer.
-Extra `dev` bao gồm crawler để chạy bộ test hiện có.
+`data_pipeline/` là một package Python (`src/data_pipeline`) với một lệnh `data-pipeline`, một `pyproject.toml`
+và một `uv.lock`. Extra `crawl` cài crawler, `enrich` thêm công cụ bóc tách tài liệu; nhóm `dev` đã gồm cả hai để
+chạy bộ test.
+
+### Kiểm tra mã và pre-commit
+
+Cấu hình ruff, pyrefly (strict) và pytest nằm trong `data_pipeline/pyproject.toml`. Hook pre-commit nằm ở thư
+mục gốc repo, chỉ chạy cho thay đổi trong `data_pipeline/`:
+
+```bash
+uv run --directory data_pipeline pre-commit install
+```
 
 ## Lucene
 

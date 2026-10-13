@@ -1,4 +1,48 @@
-# Sơ đồ luồng dữ liệu
+# Kiến trúc và luồng dữ liệu
+
+## 0. Cấu trúc package
+
+Một package `data_pipeline` (trong `src/`) với một lệnh `data-pipeline`. Cây thư mục phản ánh
+luồng dữ liệu; mỗi package con ứng với một nhóm lệnh:
+
+```mermaid
+flowchart LR
+    CLI["cli<br/>data-pipeline crawl | enrich | corpus | domains | eval"]
+    CRAWL["crawl<br/>Scrapy: frontier, spider, extract, state"]
+    ENRICH["enrich<br/>inventory, download, parsing (PDF, Office, LlamaParse)"]
+    CORPUS["corpus<br/>package, verify, graph, MongoDB, Kaggle"]
+    DOMAINS["domains<br/>kiểm tra host còn sống"]
+    CORE["core<br/>đường dẫn, .env, settings, chính sách URL/mạng"]
+
+    CLI --> CRAWL
+    CLI --> ENRICH
+    CLI --> CORPUS
+    CLI --> DOMAINS
+    CORPUS --> ENRICH
+    CRAWL --> CORE
+    ENRICH --> CORE
+    CORPUS --> CORE
+    DOMAINS --> CORE
+```
+
+Quy tắc phụ thuộc (kiểm tra tự động bằng `tests/unit/test_architecture.py`):
+
+- `core` không import package nào khác; `crawl`, `enrich`, `corpus`, `domains` không import `cli`.
+- `crawl`, `enrich`, `domains` độc lập với nhau; `corpus` chỉ được dùng `enrich`.
+- Trong `crawl`: `run` → `spider` → `state`/`extract`/`frontier`/`runtime`/`output`; `spider` không
+  import `run`; `state` không import `run` hay `spider`; `extract` chỉ phụ thuộc `core`.
+
+Chi tiết từng package con:
+
+| Package | Nội dung |
+|---|---|
+| `crawl/run` | các chế độ chạy: `full` (crawl từ đầu, `--resume`), `refresh`, `reuse`, `discovery`; mã thoát |
+| `crawl/spider` | `UnifiedSpider` và các bộ xử lý: `requests`, `html`, `assets`, `refresh`, `routing` |
+| `crawl/state` | SQLite `CrawlState`: `store`, `requeue`, `discovery`, `export`, `resume`, `refresh_store` |
+| `crawl/extract` | bóc tách HTML: `content`, `metadata`, `sanitize`, `blocks`, `assets`, `links`, `article` |
+| `crawl/frontier` | frontier, chính sách link, sitemap, seed, chính sách tải asset |
+| `crawl/runtime` | cấu hình Scrapy, middleware, điều chỉnh đồng thời thích ứng, tiến độ |
+| `enrich` | `inventory` → `download` → `parsing` (cục bộ và LlamaParse) → `export`; `state` SQLite |
 
 Hai sơ đồ nối với nhau: sơ đồ 1 **sinh ra** `final/` (và `changes/<run_id>/` khi refresh),
 sơ đồ 2 **tiêu thụ** chúng để tạo corpus theo yêu cầu của thầy.
@@ -10,7 +54,7 @@ sơ đồ 2 **tiêu thụ** chúng để tạo corpus theo yêu cầu của th�
 
 ## 1. Luồng crawl: từ đầu và crawl tăng dần
 
-Hai chế độ của `hust-crawl` **dùng chung** khối Frontier, Tải trang và Xử lý trang; khác
+Hai chế độ của `data-pipeline crawl run` **dùng chung** khối Frontier, Tải trang và Xử lý trang; khác
 nhau ở cách chọn URL đầu vào và cách xử lý URL đã biết.
 
 - Màu xanh dương: crawl từ đầu.
@@ -22,9 +66,9 @@ nhau ở cách chọn URL đầu vào và cách xử lý URL đã biết.
 ```mermaid
 flowchart TD
     %% ============ CRAWL TỪ ĐẦU ============
-    subgraph FULL["Crawl từ đầu (hust-crawl)"]
+    subgraph FULL["Crawl từ đầu (data-pipeline crawl run)"]
         direction TB
-        SEEDS["Danh sách seed<br/>docs/domain_active.txt, 77 host"]
+        SEEDS["Danh sách seed<br/>config/domains/active.txt, 77 host"]
         BOOT["Khởi động mỗi host<br/>robots.txt, 3 sitemap, trang chủ"]
         SEEDS --> BOOT
     end
@@ -74,7 +118,7 @@ flowchart TD
     EMPTY -- "xong" --> EXPORT["Xuất kết quả<br/>urls.txt, articles.jsonl,<br/>url_records.jsonl, manifest.json,<br/>final/"]
 
     %% ============ REFRESH ============
-    subgraph REFRESH["Refresh (hust-crawl --refresh)"]
+    subgraph REFRESH["Refresh (data-pipeline crawl run --refresh)"]
         direction TB
         PRE{"Kiểm tra điều kiện<br/>crawl gốc đã kết thúc,<br/>không bị khoá, cờ hợp lệ?"}
         CONT{"Có run đang dở?"}
@@ -125,8 +169,8 @@ flowchart TD
     %% ============ SANG SƠ ĐỒ 2 ============
     NEXT["Đầu vào của sơ đồ 2<br/>xử lý dữ liệu"]
     EXPORT --> NEXT
-    CHANGES -- "ir-data inventory --source changes/run_id" --> NEXT
-    FINAL -- "ir-data package --source final" --> NEXT
+    CHANGES -- "data-pipeline enrich inventory --source changes/run_id" --> NEXT
+    FINAL -- "data-pipeline corpus package --source final" --> NEXT
 
     %% ============ MÀU ============
     classDef full fill:#dbeafe,stroke:#2563eb,color:#0f172a;
@@ -164,7 +208,7 @@ Yêu cầu của thầy:
 
 | # | Yêu cầu | Đầu ra | Collection Mongo |
 |---|---|---|---|
-| Y1 | Thuật toán tìm khối nội dung | mã `article.py`, báo cáo từ `ir-data evaluate-extraction` | không có (nằm trong crawl) |
+| Y1 | Thuật toán tìm khối nội dung | mã `crawl/extract/`, báo cáo từ `data-pipeline eval extraction` | không có (nằm trong crawl) |
 | Y2 | Trang: tiêu đề, ngày đăng, tác giả, nội dung | `articles.jsonl` | `pages` |
 | Y3 | Tài liệu: nội dung văn bản | `documents.jsonl` | `documents` |
 | Y4 | Nguồn giới thiệu và văn bản liên kết (trang, tài liệu) | trường `referrers` và `links.jsonl` | `documents`, `links` |
@@ -189,7 +233,7 @@ flowchart TD
     IN --> REC
 
     %% ============ INVENTORY ============
-    subgraph ENRICH["Y3: Tài liệu (ir-data, tiếp tục được sau gián đoạn)"]
+    subgraph ENRICH["Y3: Tài liệu (data-pipeline enrich, tiếp tục được sau gián đoạn)"]
         direction TB
         INV["inventory<br/>đọc articles.jsonl theo luồng,<br/>lập danh sách tài liệu duy nhất theo URL<br/>và bảng refs: trang nguồn, anchor text"]
         WORK[("data/enrichment/state.sqlite3<br/>inventory, refs, parse_results,<br/>failures, cloud_jobs")]
@@ -303,13 +347,10 @@ flowchart TD
 
 | Câu hỏi | Trả lời ngắn |
 |---|---|
-| Ai làm Y1 và Y2? | Crawler, ngay lúc trích xuất bài. Kết quả đã nằm trong `articles.jsonl`, nên `ir-data` chỉ đọc lại. |
-| Tài liệu được tải khi nào? | Sau crawl, trong `ir-data download`, chỉ cho tài liệu được trang tham chiếu. Crawl không tải tệp nhị phân. |
+| Ai làm Y1 và Y2? | Crawler, ngay lúc trích xuất bài. Kết quả đã nằm trong `articles.jsonl`, nên `enrich` chỉ đọc lại. |
+| Tài liệu được tải khi nào? | Sau crawl, trong `data-pipeline enrich download`, chỉ cho tài liệu được trang tham chiếu. Crawl không tải tệp nhị phân. |
 | Nguồn giới thiệu và anchor text lưu ở đâu? | Bảng `refs` lúc inventory, rồi thành `referrers` trong `documents.jsonl` và các dòng trong `links.jsonl`. Nhiều nguồn và nhiều mô tả được giữ riêng. |
 | Ảnh có được tải không? | Không. Chỉ có danh mục URL và cạnh từ trang tham chiếu. |
 | Sau một lần refresh thì làm gì? | Chạy `inventory --source changes/<run_id>` để chỉ nhận phần mới, rồi `download`, `extract`, `package --source final`. Tài liệu đã tải hoặc đã parse được bỏ qua nhờ checkpoint. |
 | Chạy lại có hỏng dữ liệu không? | Không. `_id` xác định theo nội dung bản ghi và `snapshot_id`; snapshot đã `ready` thì bị bỏ qua. |
 | Người mới clone làm gì? | `pull` theo `corpus.lock.json`, bật MongoDB, `import-mongo`, rồi truy vấn. Không phải crawl hay tải lại tài liệu. |
-
-Nguồn thiết kế: `docs/superpowers/specs/2026-10-05-kaggle-mongodb-corpus-design.md` (corpus, Mongo, Kaggle)
-và `docs/superpowers/specs/2026-10-06-incremental-refresh-crawl-design.md` (refresh).
