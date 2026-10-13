@@ -1,1 +1,1 @@
-"""Unit tests for hust_crawler.crawl package."""
+"""Unit tests for the crawl package."""

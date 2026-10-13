@@ -1,7 +1,7 @@
 import pytest
 
-from hust_crawler.crawl.options import CrawlOptions
-from hust_crawler.crawl.seeds import SeedSet
+from data_pipeline.crawl.options import CrawlOptions
+from data_pipeline.crawl.frontier.seeds import SeedSet
 
 
 def test_hybrid_crawl_defaults_to_content_only() -> None:

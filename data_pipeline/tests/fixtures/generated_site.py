@@ -8,15 +8,15 @@ from urllib.parse import urlsplit
 
 from scrapy.http import HtmlResponse, Request, Response, TextResponse
 
-from hust_crawler.config import CrawlerConfig
-from hust_crawler.crawl.assets import AssetPolicy
-from hust_crawler.crawl.frontier import FrontierPolicy
-from hust_crawler.crawl.options import CrawlOptions
-from hust_crawler.crawl.seeds import SeedSet
-from hust_crawler.crawl.sitemaps import SitemapDiscoveryCoordinator
-from hust_crawler.crawl.spider import UnifiedSpider
-from hust_crawler.crawl.state import CrawlState
-from hust_crawler.crawl.writer import CrawlWriter
+from data_pipeline.crawl.config import CrawlerConfig
+from data_pipeline.crawl.frontier.assets import AssetPolicy
+from data_pipeline.crawl.frontier.frontier import FrontierPolicy
+from data_pipeline.crawl.options import CrawlOptions
+from data_pipeline.crawl.frontier.seeds import SeedSet
+from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
+from data_pipeline.crawl.spider.unified import UnifiedSpider
+from data_pipeline.crawl.state.store import CrawlState
+from data_pipeline.crawl.output.writer import CrawlWriter
 
 
 @dataclass(frozen=True, slots=True)

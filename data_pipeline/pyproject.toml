@@ -3,7 +3,7 @@ requires = ["hatchling==1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "hust-data-pipeline"
+name = "data-pipeline"
 version = "0.1.0"
 description = "Crawl, download, extract, store and share the HUST document corpus"
 requires-python = ">=3.13,<3.14"
@@ -23,7 +23,7 @@ crawl = [
     "scrapy-playwright==0.0.48",
 ]
 enrich = [
-    "hust-data-pipeline[crawl]",
+    "data-pipeline[crawl]",
     "aiohttp>=3.11,<4",
     "PyMuPDF>=1.25,<2",
     "python-docx>=1.1,<2",
@@ -35,7 +35,7 @@ enrich = [
 ]
 [dependency-groups]
 dev = [
-    "hust-data-pipeline[enrich]",
+    "data-pipeline[enrich]",
     "pytest==9.1.1",
     "pytest-asyncio>=0.24,<2",
     "ruff==0.17.0",
@@ -44,14 +44,14 @@ dev = [
 ]
 
 [project.scripts]
-ir-data = "ir_data.cli:main"
-hust-discover = "hust_crawler.crawl.discovery_cli:main"
-hust-crawl = "hust_crawler.crawl.cli:main"
-hust-domain-audit = "hust_crawler.domain_audit:main"
+ir-data = "data_pipeline.cli.ir_data:main"
+hust-discover = "data_pipeline.cli.discover:main"
+hust-crawl = "data_pipeline.cli.crawl:main"
+hust-domain-audit = "data_pipeline.domains.audit:main"
 
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/hust_crawler", "src/ir_data"]
+packages = ["src/data_pipeline"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
