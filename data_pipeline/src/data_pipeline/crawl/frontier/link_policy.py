@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Final, Iterable, Literal
+from typing import Final, Literal
 from urllib.parse import parse_qsl, urlsplit
 
 from data_pipeline.crawl.extract.links import normalize_url

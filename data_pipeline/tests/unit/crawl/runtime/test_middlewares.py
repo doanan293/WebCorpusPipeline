@@ -7,7 +7,7 @@ from scrapy.http import Headers, HtmlResponse, Request, Response
 from twisted.internet import task
 from twisted.internet.error import ConnectError
 
-import data_pipeline.crawl.runtime.middlewares as middlewares
+from data_pipeline.crawl.runtime import middlewares
 from data_pipeline.crawl.runtime.middlewares import (
     ContentOnlyHeadersGuard,
     ExactHostRedirectMiddleware,

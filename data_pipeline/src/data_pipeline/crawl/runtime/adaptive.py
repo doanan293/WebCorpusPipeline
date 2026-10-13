@@ -168,7 +168,6 @@ class AdaptiveConcurrencyMiddleware:
 
     def process_request(self, request: Request, spider=None):
         self._started[id(request)] = monotonic()
-        return None
 
     def _observe_response(self, request: Request, response: Response) -> None:
         started = self._started.pop(id(request), monotonic())
@@ -218,7 +217,6 @@ class AdaptiveConcurrencyMiddleware:
         self.observe(request, None, max(0.0, monotonic() - started), error)
         self._update_resource_pressure()
         self.reconcile_host(self._host(request), request)
-        return None
 
     def observe(
         self,

@@ -127,11 +127,7 @@ def sanitize_article(element: etree._Element, base_url: str) -> etree._Element:
             ):
                 continue
 
-            if tag == "a" and k == "href":
-                resolved = normalize_url(val, base_url)
-                if resolved:
-                    child.attrib[k] = resolved
-            elif tag in {"img", "source"} and k == "src":
+            if (tag == "a" and k == "href") or (tag in {"img", "source"} and k == "src"):
                 resolved = normalize_url(val, base_url)
                 if resolved:
                     child.attrib[k] = resolved

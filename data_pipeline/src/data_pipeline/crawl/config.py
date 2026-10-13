@@ -73,7 +73,7 @@ class CrawlerConfig:
         *,
         environ: Mapping[str, str] | None = None,
         hostnames: frozenset[str] | None = None,
-    ) -> "CrawlerConfig":
+    ) -> CrawlerConfig:
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         environment = os.environ if environ is None else environ
         if hostnames is None:
@@ -228,7 +228,6 @@ _RUNTIME_CONFIG_KEYS = {
     "retry_times",
     "retry_backoff_base_seconds",
     "retry_max_delay_seconds",
-    "playwright_max_pages",
     "resource_limit_percent",
     "journal_batch_size",
     "journal_flush_seconds",
@@ -276,7 +275,7 @@ def semantic_config_snapshot(config: CrawlerConfig) -> dict[str, object]:
     return _normalized_snapshot(values)
 
 
-def runtime_config_snapshot(config: CrawlerConfig, tuning: "RuntimeTuning") -> dict[str, object]:
+def runtime_config_snapshot(config: CrawlerConfig, tuning: RuntimeTuning) -> dict[str, object]:
     """Return the active performance knobs recorded for a run."""
 
     values = asdict(config)

@@ -8,7 +8,7 @@ import re
 import socket  # noqa: F401
 import ssl
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http.cookiejar import CookieJar
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
@@ -25,7 +25,7 @@ from data_pipeline.core.policies.network import NonPublicAddressError, resolve_h
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True, slots=True)

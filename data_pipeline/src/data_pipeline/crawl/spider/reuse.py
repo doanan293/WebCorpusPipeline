@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Iterable, Iterator
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Iterable, Iterator
+from typing import Any
 from urllib.parse import urlsplit
 
 import scrapy

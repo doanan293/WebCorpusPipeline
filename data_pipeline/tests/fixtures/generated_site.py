@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import urlsplit
 
 from scrapy.http import HtmlResponse, Request, Response, TextResponse
@@ -208,7 +209,7 @@ def run_generated_site(
             body = (
                 f'<main><h1>Home</h1><a href="/list?filter=0&amp;sort=0&amp;lang=0">List</a>'
                 f"{list_links_html}</main>"
-            ).encode("utf-8")
+            ).encode()
             resp = HtmlResponse(
                 url=url,
                 status=200,
@@ -223,7 +224,7 @@ def run_generated_site(
             detail_links = "".join(
                 f'<a href="/detail/{i}">Detail {i}</a>' for i in range(min(20, detail_pages))
             )
-            body = f"<main><h1>List</h1>{detail_links}{list_links_html}</main>".encode("utf-8")
+            body = f"<main><h1>List</h1>{detail_links}{list_links_html}</main>".encode()
             resp = HtmlResponse(
                 url=url,
                 status=200,
@@ -233,7 +234,7 @@ def run_generated_site(
                 request=req,
             )
         elif path.startswith("/detail/"):
-            body = f"<main><h1>Detail</h1><p>Body text for {path}</p></main>".encode("utf-8")
+            body = f"<main><h1>Detail</h1><p>Body text for {path}</p></main>".encode()
             resp = HtmlResponse(
                 url=url,
                 status=200,

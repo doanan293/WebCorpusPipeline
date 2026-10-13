@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, Iterator, Literal
+from collections.abc import AsyncIterator, Iterator
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import scrapy

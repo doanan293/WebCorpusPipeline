@@ -120,56 +120,54 @@ class AssetResponseHandler:
                 )
                 self.writer.checkpoint(input_url)
                 return True
-            else:
-                val_decision = self.policy.validate_response(content_type, response.url)
-                if val_decision.persist:
-                    group = (
-                        val_decision.group
-                        or recognizable_asset(response.url, content_type)
-                        or "document"
+            val_decision = self.policy.validate_response(content_type, response.url)
+            if val_decision.persist:
+                group = (
+                    val_decision.group
+                    or recognizable_asset(response.url, content_type)
+                    or "document"
+                )
+                role_map = {
+                    "image": "inline_image",
+                    "media": "media_reference",
+                    "document": "document_attachment",
+                }
+                derived_role = role_map.get(group, "document_attachment")
+                try:
+                    self.writer.write_file(
+                        input_url,
+                        response.url,
+                        content_type,
+                        response.body,
+                        asset_group=group,
+                        asset_role=derived_role,
+                        referring_page=response.meta.get("referring_page"),
                     )
-                    role_map = {
-                        "image": "inline_image",
-                        "media": "media_reference",
-                        "document": "document_attachment",
-                    }
-                    derived_role = role_map.get(group, "document_attachment")
-                    try:
-                        self.writer.write_file(
-                            input_url,
-                            response.url,
-                            content_type,
-                            response.body,
-                            asset_group=group,
-                            asset_role=derived_role,
-                            referring_page=response.meta.get("referring_page"),
-                        )
-                    except StorageLimit as exc:
-                        self.writer.record_skipped(
-                            {
-                                "url": input_url,
-                                "final_url": response.url,
-                                "status": "skipped",
-                                "reason": exc.reason,
-                                "asset_role": derived_role,
-                                "discovery_source": discovery_source,
-                                "response_purpose": "asset",
-                            }
-                        )
-                    self.writer.checkpoint(input_url)
-                    return True
-                else:
+                except StorageLimit as exc:
                     self.writer.record_skipped(
                         {
                             "url": input_url,
                             "final_url": response.url,
                             "status": "skipped",
-                            "reason": val_decision.reason or "unsupported_asset_type",
+                            "reason": exc.reason,
+                            "asset_role": derived_role,
                             "discovery_source": discovery_source,
                             "response_purpose": "asset",
                         }
                     )
-                    self.writer.checkpoint(input_url)
-                    return True
+                self.writer.checkpoint(input_url)
+                return True
+            self.writer.record_skipped(
+                {
+                    "url": input_url,
+                    "final_url": response.url,
+                    "status": "skipped",
+                    "reason": val_decision.reason or "unsupported_asset_type",
+                    "discovery_source": discovery_source,
+                    "response_purpose": "asset",
+                }
+            )
+            self.writer.checkpoint(input_url)
+            return True
 
         return False

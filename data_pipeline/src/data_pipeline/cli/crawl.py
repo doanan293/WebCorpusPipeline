@@ -31,7 +31,7 @@ ResourceLimitOption = Annotated[
 
 
 @app.command()
-def run(  # noqa: PLR0913, PLR0912 -- one parameter per documented crawl flag
+def run(  # noqa: PLR0913 -- one parameter per documented crawl flag
     input_path: Annotated[
         Path, typer.Option("--input", "-i", help="Path to the canonical URLs file.")
     ],

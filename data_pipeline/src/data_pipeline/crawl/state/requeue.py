@@ -218,12 +218,16 @@ def requeue_zero_content_bootstrap(state: CrawlState, recursive_hostnames: froze
                     },
                 )
             )
-        elif record.get("status") == "skipped" and record.get("reason") in POLICY_RETRY_REASONS:
-            recoverable.append((root, scheduled_retry(record)))
-        elif record.get("status") == "failed" and record.get("reason") in {
-            "request_failed",
-            "sitemap_parse_error",
-        }:
+        elif (
+            record.get("status") == "skipped" and record.get("reason") in POLICY_RETRY_REASONS
+        ) or (
+            record.get("status") == "failed"
+            and record.get("reason")
+            in {
+                "request_failed",
+                "sitemap_parse_error",
+            }
+        ):
             recoverable.append((root, scheduled_retry(record)))
 
     state.connection.execute("BEGIN IMMEDIATE;")

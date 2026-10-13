@@ -6,8 +6,8 @@ import os
 import shutil
 import sqlite3
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 from data_pipeline.core.policies.network import validate_public_web_url
 from data_pipeline.crawl.frontier.assets import AssetRole, classify_asset

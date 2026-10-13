@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import random
 from collections.abc import Callable
+from datetime import UTC
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
@@ -134,14 +135,14 @@ class PublicAssetAddressMiddleware:
 
     async def process_request(self, request: Request, spider=None) -> None:
         if request.meta.get("request_scope") != "asset":
-            return None
+            return
         decision = validate_public_web_url(request.url)
         if not decision.accepted or decision.hostname is None:
             raise IgnoreRequest(decision.reason or "unsafe_asset_url")
         port = 443 if urlsplit(request.url).scheme == "https" else 80
         timeout = getattr(getattr(spider, "config", None), "download_timeout_seconds", 5.0)
         await self.resolver(decision.hostname, port, timeout)
-        return None
+        return
 
 
 class PoliteRetryMiddleware:
@@ -184,13 +185,11 @@ class PoliteRetryMiddleware:
                     return max(0.0, float(raw))
                 except ValueError:
                     try:
-                        from datetime import datetime, timezone
+                        from datetime import datetime
 
                         return max(
                             0.0,
-                            (
-                                parsedate_to_datetime(raw) - datetime.now(timezone.utc)
-                            ).total_seconds(),
+                            (parsedate_to_datetime(raw) - datetime.now(UTC)).total_seconds(),
                         )
                     except (TypeError, ValueError, OverflowError):
                         pass

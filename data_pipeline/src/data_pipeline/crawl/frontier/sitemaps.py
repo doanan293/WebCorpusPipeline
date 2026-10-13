@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import gzip
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Literal
+from typing import Any, Literal
 from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
@@ -195,9 +196,7 @@ class SitemapParseResult:
 
 def _maybe_decompress(body: bytes, base_url: str, content_type: str = "") -> bytes:
     is_gzip = False
-    if body.startswith(b"\x1f\x8b"):
-        is_gzip = True
-    elif "gzip" in content_type.lower():
+    if body.startswith(b"\x1f\x8b") or "gzip" in content_type.lower():
         is_gzip = True
     else:
         path = urlsplit(base_url).path.lower()

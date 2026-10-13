@@ -5,9 +5,9 @@ import json
 import os
 import sqlite3
 import time
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterable, Iterator
 
 from data_pipeline.enrich.models import (
     Candidate,
@@ -61,7 +61,7 @@ class WorkState:
         *,
         crawl_id: str | None = None,
         rebind: bool = False,
-    ) -> Iterator["WorkState"]:
+    ) -> Iterator[WorkState]:
         root.mkdir(parents=True, exist_ok=True)
         lock_path = root / ".writer.lock"
         lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)

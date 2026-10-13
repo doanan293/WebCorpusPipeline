@@ -168,25 +168,24 @@ class RequestFactory:
                         }
                     )
                 return None
-            else:
-                if (
-                    is_binary
-                    and recognizable_asset(candidate.url) is None
-                    and candidate.purpose != "asset"
-                ):
-                    decision = self.frontier.consider(candidate)
-                    if decision.canonical_url:
-                        self.writer.record_skipped(
-                            {
-                                "url": decision.canonical_url,
-                                "final_url": decision.canonical_url,
-                                "status": "skipped",
-                                "reason": "unsupported_asset_type",
-                                "discovery_source": candidate.discovery_source,
-                                "response_purpose": "asset",
-                            }
-                        )
-                    return None
+            if (
+                is_binary
+                and recognizable_asset(candidate.url) is None
+                and candidate.purpose != "asset"
+            ):
+                decision = self.frontier.consider(candidate)
+                if decision.canonical_url:
+                    self.writer.record_skipped(
+                        {
+                            "url": decision.canonical_url,
+                            "final_url": decision.canonical_url,
+                            "status": "skipped",
+                            "reason": "unsupported_asset_type",
+                            "discovery_source": candidate.discovery_source,
+                            "response_purpose": "asset",
+                        }
+                    )
+                return None
 
         decision = self.frontier.consider(candidate)
         if decision.action == "reject":

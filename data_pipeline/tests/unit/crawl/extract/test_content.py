@@ -5,7 +5,7 @@ DECLARED_UTF8_HTML = (
     "<html><head><title>Thông báo</title></head>"
     "<body><main><p>Nội dung tiếng Việt.</p></main>"
     '<a href="/tin-moi">Tin mới</a></body></html>'
-).encode("utf-8")
+).encode()
 
 
 def test_extract_html_accepts_bytes_with_xml_encoding_declaration() -> None:

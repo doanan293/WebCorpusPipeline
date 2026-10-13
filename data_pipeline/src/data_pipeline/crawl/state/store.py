@@ -5,9 +5,9 @@ import json
 import os
 import sqlite3
 import time
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from data_pipeline.crawl.state.export import asset_metrics, export_final, skipped_reasons
 from data_pipeline.crawl.state.resume import (
@@ -45,7 +45,7 @@ class CrawlState:
         runtime_config: dict[str, object],
         resume: bool = False,
         allow_policy_migration: bool = False,
-    ) -> "CrawlState":
+    ) -> CrawlState:
         root.mkdir(parents=True, exist_ok=True)
         input_sha256 = hashlib.sha256(input_path.read_bytes()).hexdigest()
         manifest_path = root / "manifest.json"

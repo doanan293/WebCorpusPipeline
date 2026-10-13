@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Iterable, Literal, Mapping, cast
+from typing import Literal, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from data_pipeline.core.policies.url import canonicalize_url, classify_frontier_trap
@@ -210,27 +211,24 @@ class FrontierPolicy:
         if candidate.explicit:
             if hostname not in self.seeds.allowed_hostnames:
                 return FrontierDecision("reject", canonical, "host_out_of_scope", 0)
+        elif candidate.purpose == "asset":
+            if candidate.discovered_from:
+                _, parent_host, _ = canonicalize_url(candidate.discovered_from)
+                if parent_host is None or parent_host not in self.seeds.allowed_hostnames:
+                    return FrontierDecision("reject", canonical, "host_out_of_scope", 0)
+            elif hostname not in self.seeds.allowed_hostnames:
+                return FrontierDecision("reject", canonical, "host_out_of_scope", 0)
         else:
-            if candidate.purpose == "asset":
-                if candidate.discovered_from:
-                    _, parent_host, _ = canonicalize_url(candidate.discovered_from)
-                    if parent_host is None or parent_host not in self.seeds.allowed_hostnames:
-                        return FrontierDecision("reject", canonical, "host_out_of_scope", 0)
-                else:
-                    if hostname not in self.seeds.allowed_hostnames:
-                        return FrontierDecision("reject", canonical, "host_out_of_scope", 0)
-            else:
-                if candidate.source_mode != "recursive":
-                    return FrontierDecision("reject", canonical, "exact_seed_no_expansion", 0)
-                if candidate.discovered_from:
-                    parent_host = (
-                        (urlsplit(candidate.discovered_from).hostname or "").lower().rstrip(".")
-                    )
-                    if parent_host not in self.seeds.recursive_hostnames or hostname != parent_host:
-                        return FrontierDecision("reject", canonical, "host_out_of_scope", 0)
-                else:
-                    if hostname not in self.seeds.recursive_hostnames:
-                        return FrontierDecision("reject", canonical, "host_out_of_scope", 0)
+            if candidate.source_mode != "recursive":
+                return FrontierDecision("reject", canonical, "exact_seed_no_expansion", 0)
+            if candidate.discovered_from:
+                parent_host = (
+                    (urlsplit(candidate.discovered_from).hostname or "").lower().rstrip(".")
+                )
+                if parent_host not in self.seeds.recursive_hostnames or hostname != parent_host:
+                    return FrontierDecision("reject", canonical, "host_out_of_scope", 0)
+            elif hostname not in self.seeds.recursive_hostnames:
+                return FrontierDecision("reject", canonical, "host_out_of_scope", 0)
 
         # Return record_only for canonical URLs already in _scheduled_urls
         if canonical in self._scheduled_urls:

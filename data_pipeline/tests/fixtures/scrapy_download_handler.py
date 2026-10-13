@@ -110,7 +110,7 @@ class StaticDownloadHandler:
                     f'<a href="/filter?cat=1&amp;sort=asc">Filter</a>'
                     f'<a href="/news?page=1">Self</a>'
                     f"</main>"
-                ).encode("utf-8")
+                ).encode()
                 return TextResponse(
                     url,
                     status=200,
@@ -129,7 +129,7 @@ class StaticDownloadHandler:
                     f'<a href="/article/125">Article 125</a>'
                     f"{pagination_links}"
                     f"</main>"
-                ).encode("utf-8")
+                ).encode()
                 return TextResponse(
                     url,
                     status=200,
@@ -148,7 +148,7 @@ class StaticDownloadHandler:
                     f'<a href="/article/125">Article 125</a>'
                     f"{pagination_links}"
                     f"</main>"
-                ).encode("utf-8")
+                ).encode()
                 return TextResponse(
                     url,
                     status=200,

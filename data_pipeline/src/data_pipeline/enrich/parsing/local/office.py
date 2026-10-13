@@ -23,7 +23,7 @@ def convert_office(source: Path, destination_dir: Path, target: str) -> Path:
             timeout=180,
             capture_output=True,
         )
-    result = destination_dir / f"{source.stem}.{target.split(':')[-1].lower()}"
+    result = destination_dir / f"{source.stem}.{target.rsplit(':', maxsplit=1)[-1].lower()}"
     if not result.exists():
         matches = list(destination_dir.glob(f"{source.stem}.*"))
         if not matches:

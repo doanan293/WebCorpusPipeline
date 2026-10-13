@@ -3,8 +3,9 @@ from __future__ import annotations
 import sys
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, TextIO
+from typing import TextIO
 
 
 @dataclass(slots=True)
@@ -119,8 +120,7 @@ class CrawlProgressReporter:
         dequeued = int(self._get("scheduler/dequeued", 0))
         queued = max(0, enqueued - dequeued)
         rate = done / elapsed
-        if queued > self._peak_queue:
-            self._peak_queue = queued
+        self._peak_queue = max(self._peak_queue, queued)
         self._recent_rate = rate
 
         eta = self.eta_estimator.observe(
