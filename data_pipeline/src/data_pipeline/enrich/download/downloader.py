@@ -9,7 +9,7 @@ from http import HTTPStatus
 from urllib.parse import urlsplit
 
 from data_pipeline.enrich.download.artifacts import extension_for, looks_like_document, sha256_file
-from data_pipeline.enrich.download.transport import PublicTransport
+from data_pipeline.enrich.download.transport import PublicTransport, Response
 from data_pipeline.enrich.models import DownloadedFile, DownloadJob
 
 _RETRYABLE_STATUSES = frozenset(
@@ -41,9 +41,13 @@ def _range_start(value: str | None) -> int | None:
         return None
 
 
-async def download_one(
-    job: DownloadJob, state, settings, transport: PublicTransport
-) -> DownloadedFile:
+def _truncate_part(job: DownloadJob) -> None:
+    with job.part_path.open("wb"):
+        pass
+
+
+def _resume_point(job: DownloadJob) -> tuple[int, dict[str, str]]:
+    """Trim the partial file to its durable prefix; return the offset and request headers."""
     job.part_path.parent.mkdir(parents=True, exist_ok=True)
     existing = job.part_path.stat().st_size if job.part_path.exists() else 0
     offset = min(existing, job.durable_offset or existing)
@@ -54,81 +58,80 @@ async def download_one(
         headers.update({"Range": f"bytes={offset}-", "If-Range": job.strong_etag})
     elif offset:
         offset = 0
-        with job.part_path.open("wb"):
-            pass
-    response = await transport.get(job.url, headers)
-    try:
-        if response.status in _RETRYABLE_STATUSES or response.status in _SERVER_ERRORS:
-            msg = f"HTTP {response.status}"
-            retry_after = float(response.headers.get("Retry-After", "0") or 0) or None
-            raise RetryableDownloadError(msg, retry_after)
-        if response.status in (404, 410):
-            msg = f"HTTP {response.status}"
-            raise PermanentDownloadError(msg)
-        if response.status not in (200, 206):
-            msg = f"HTTP {response.status}"
-            raise PermanentDownloadError(msg)
-        etag = response.headers.get("ETag")
-        if offset and response.status != HTTPStatus.PARTIAL_CONTENT:
-            offset = 0
-            with job.part_path.open("wb"):
-                pass
-        if offset and (
-            _range_start(response.headers.get("Content-Range")) != offset
-            or not _strong(etag)
-            or etag != job.strong_etag
-        ):
-            offset = 0
-            with job.part_path.open("wb"):
-                pass
-            await response.close()
-            response = await transport.get(job.url)
-            if response.status != HTTPStatus.OK:
-                msg = "validator changed while resuming"
-                raise RetryableDownloadError(msg)
-            etag = response.headers.get("ETag")
-        total = response.headers.get("Content-Length")
-        total_int = int(total) + offset if total and total.isdigit() else None
-        if total_int and total_int > settings.max_file_bytes:
-            msg = "file exceeds max_file_bytes"
-            raise PermanentDownloadError(msg)
-        job.strong_etag = etag if _strong(etag) else None
-        job.final_url = response.final_url
-        job.expected_size = total_int
-        written = offset
-        last_flush = written
-        last_time = time.monotonic()
-        with job.part_path.open("ab") as stream:
-            async for chunk in response.body:
-                if not chunk:
-                    continue
-                written += len(chunk)
-                if written > settings.max_file_bytes:
-                    msg = "file exceeds max_file_bytes"
-                    raise PermanentDownloadError(msg)
-                stream.write(chunk)
-                if (
-                    written - last_flush >= settings.checkpoint_bytes
-                    or time.monotonic() - last_time >= 1
-                ):
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                    job.durable_offset = written
-                    state.checkpoint_download(job)
-                    last_flush, last_time = written, time.monotonic()
-            stream.flush()
-            os.fsync(stream.fileno())
-        job.durable_offset = written
-        state.checkpoint_download(job)
-    finally:
-        await response.close()
-    if job.expected_size and job.part_path.stat().st_size != job.expected_size:
-        msg = "truncated response"
-        raise RetryableDownloadError(msg)
-    mime = response.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0].lower()
-    if not looks_like_document(job.part_path, mime):
-        msg = "response is not a document"
+        _truncate_part(job)
+    return offset, headers
+
+
+def _raise_for_status(response: Response) -> None:
+    status = response.status
+    if status in _RETRYABLE_STATUSES or status in _SERVER_ERRORS:
+        msg = f"HTTP {status}"
+        retry_after = float(response.headers.get("Retry-After", "0") or 0) or None
+        raise RetryableDownloadError(msg, retry_after)
+    if status not in (HTTPStatus.OK, HTTPStatus.PARTIAL_CONTENT):
+        msg = f"HTTP {status}"
         raise PermanentDownloadError(msg)
+
+
+async def _settle_resume(
+    response: Response, job: DownloadJob, transport: PublicTransport, offset: int
+) -> tuple[Response, int, str | None]:
+    """Keep a resumed body only if the server honoured the range for the same validator.
+
+    Otherwise restart from zero with a plain request. Returns the response to read, the
+    offset it continues from and its ETag.
+    """
+    etag = response.headers.get("ETag")
+    if offset and response.status != HTTPStatus.PARTIAL_CONTENT:
+        offset = 0
+        _truncate_part(job)
+    if offset and (
+        _range_start(response.headers.get("Content-Range")) != offset
+        or not _strong(etag)
+        or etag != job.strong_etag
+    ):
+        offset = 0
+        _truncate_part(job)
+        await response.close()
+        response = await transport.get(job.url)
+        if response.status != HTTPStatus.OK:
+            await response.close()
+            msg = "validator changed while resuming"
+            raise RetryableDownloadError(msg)
+        etag = response.headers.get("ETag")
+    return response, offset, etag
+
+
+async def _write_body(job: DownloadJob, state, settings, response: Response, offset: int) -> None:
+    written = offset
+    last_flush = written
+    last_time = time.monotonic()
+    with job.part_path.open("ab") as stream:
+        async for chunk in response.body:
+            if not chunk:
+                continue
+            written += len(chunk)
+            if written > settings.max_file_bytes:
+                msg = "file exceeds max_file_bytes"
+                raise PermanentDownloadError(msg)
+            stream.write(chunk)
+            if (
+                written - last_flush >= settings.checkpoint_bytes
+                or time.monotonic() - last_time >= 1
+            ):
+                stream.flush()
+                os.fsync(stream.fileno())
+                job.durable_offset = written
+                state.checkpoint_download(job)
+                last_flush, last_time = written, time.monotonic()
+        stream.flush()
+        os.fsync(stream.fileno())
+    job.durable_offset = written
+    state.checkpoint_download(job)
+
+
+def _finalize(job: DownloadJob, state, mime: str) -> DownloadedFile:
+    """Move the verified part file into the content-addressed ``files`` directory."""
     digest = sha256_file(job.part_path)
     final = (
         state.root
@@ -152,6 +155,35 @@ async def download_one(
         pass
     state.mark_downloaded(result)
     return result
+
+
+async def download_one(
+    job: DownloadJob, state, settings, transport: PublicTransport
+) -> DownloadedFile:
+    offset, headers = _resume_point(job)
+    response = await transport.get(job.url, headers)
+    try:
+        _raise_for_status(response)
+        response, offset, etag = await _settle_resume(response, job, transport, offset)
+        total = response.headers.get("Content-Length")
+        total_int = int(total) + offset if total and total.isdigit() else None
+        if total_int and total_int > settings.max_file_bytes:
+            msg = "file exceeds max_file_bytes"
+            raise PermanentDownloadError(msg)
+        job.strong_etag = etag if _strong(etag) else None
+        job.final_url = response.final_url
+        job.expected_size = total_int
+        await _write_body(job, state, settings, response, offset)
+    finally:
+        await response.close()
+    if job.expected_size and job.part_path.stat().st_size != job.expected_size:
+        msg = "truncated response"
+        raise RetryableDownloadError(msg)
+    mime = response.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0].lower()
+    if not looks_like_document(job.part_path, mime):
+        msg = "response is not a document"
+        raise PermanentDownloadError(msg)
+    return _finalize(job, state, mime)
 
 
 async def run_downloads(
