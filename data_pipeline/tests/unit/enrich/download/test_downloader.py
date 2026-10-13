@@ -36,7 +36,11 @@ def reply(
     headers: dict[str, str] | None = None,
     url: str = URL,
 ) -> Response:
-    merged = {"Content-Type": "application/pdf", "Content-Length": str(len(body)), **(headers or {})}
+    merged = {
+        "Content-Type": "application/pdf",
+        "Content-Length": str(len(body)),
+        **(headers or {}),
+    }
     return Response(status, merged, url, chunks(body), SimpleNamespace(release=lambda: None))
 
 
@@ -235,6 +239,8 @@ def test_run_downloads_downloads_pending_files_and_schedules_retries(
     summary = run(run_downloads(state, fast, transport_factory=Transport, stop=asyncio.Event()))
 
     assert summary.downloaded == 1
-    failure = state.conn.execute("SELECT stage, reason FROM failures WHERE url=?", (bad,)).fetchone()
+    failure = state.conn.execute(
+        "SELECT stage, reason FROM failures WHERE url=?", (bad,)
+    ).fetchone()
     assert failure is not None
     assert (failure["stage"], failure["reason"]) == ("download", "HTTP 503")
