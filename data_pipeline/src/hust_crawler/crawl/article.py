@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 from lxml import etree
 from lxml import html as lxml_html
 
-from .content import (
+from hust_crawler.crawl.content import (
     _NEGATIVE_HINT,
     _NONCONTENT_TAGS,
     _discoveries_from_root,
@@ -564,7 +564,7 @@ def _srcset_values(value: str) -> tuple[str, ...]:
 
 
 def _is_supported_document(value: str, declared_type: str = "") -> bool:
-    from .assets import DOCUMENT_EXTENSIONS, DOCUMENT_MIME_TYPES
+    from hust_crawler.crawl.assets import DOCUMENT_EXTENSIONS, DOCUMENT_MIME_TYPES
 
     mime = declared_type.partition(";")[0].strip().lower()
     if mime in DOCUMENT_MIME_TYPES:

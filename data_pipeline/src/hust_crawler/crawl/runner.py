@@ -10,31 +10,31 @@ from scrapy.crawler import CrawlerProcess
 from scrapy.settings import Settings
 
 from hust_crawler.config import CrawlerConfig, runtime_config_snapshot, semantic_config_snapshot
-from .assets import AssetPolicy
-from .frontier import FrontierPolicy
-from .options import CrawlOptions
-from .profiles import RuntimeTuning
-from .refresh import (
+from hust_crawler.crawl.assets import AssetPolicy
+from hust_crawler.crawl.frontier import FrontierPolicy
+from hust_crawler.crawl.options import CrawlOptions
+from hust_crawler.crawl.profiles import RuntimeTuning
+from hust_crawler.crawl.refresh import (
     RefreshSession,
     RefreshSettings,
     complete_refresh_run,
     preflight,
     prepare_refresh_run,
 )
-from .refresh_store import RefreshStore
-from .reuse import (
+from hust_crawler.crawl.refresh_store import RefreshStore
+from hust_crawler.crawl.reuse import (
     import_reused_content,
     prepare_reused_asset_targets,
     reused_asset_targets,
     validate_reuse_source,
 )
-from .reuse_spider import ReusedAssetSpider
-from .seeds import SeedSet
-from .settings import build_settings
-from .sitemaps import SitemapDiscoveryCoordinator
-from .spider import UnifiedSpider
-from .state import CrawlState, validate_resume_workflow
-from .writer import CrawlWriter
+from hust_crawler.crawl.reuse_spider import ReusedAssetSpider
+from hust_crawler.crawl.seeds import SeedSet
+from hust_crawler.crawl.settings import build_settings
+from hust_crawler.crawl.sitemaps import SitemapDiscoveryCoordinator
+from hust_crawler.crawl.spider import UnifiedSpider
+from hust_crawler.crawl.state import CrawlState, validate_resume_workflow
+from hust_crawler.crawl.writer import CrawlWriter
 
 TRUNCATION_REASONS = frozenset(
     {
@@ -228,7 +228,7 @@ def run_crawl(
         start_time = time.time()
         extensions: dict[object, int] = {}
         if tuning.progress_interval_seconds > 0:
-            from .progress import CrawlProgressReporter
+            from hust_crawler.crawl.progress import CrawlProgressReporter
 
             extensions[CrawlProgressReporter] = 500
 

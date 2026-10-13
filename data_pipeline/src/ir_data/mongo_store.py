@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pymongo import ASCENDING, MongoClient, ReplaceOne
 
-from .package import verify_corpus
+from ir_data.package import verify_corpus
 
 
 COLLECTIONS = ("datasets", "pages", "documents", "images", "links")

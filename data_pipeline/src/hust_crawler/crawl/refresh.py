@@ -14,8 +14,8 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from hust_crawler.config import CrawlerConfig
-from .refresh_store import CONTINUABLE_RUN_STATUSES, RefreshStore
-from .state import CrawlState
+from hust_crawler.crawl.refresh_store import CONTINUABLE_RUN_STATUSES, RefreshStore
+from hust_crawler.crawl.state import CrawlState
 
 RefreshReason = Literal[
     "homepage", "sitemap", "navigation", "pagination_head", "recent", "pagination_next"

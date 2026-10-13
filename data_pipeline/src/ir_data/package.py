@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from .graph import build_graph
+from ir_data.graph import build_graph
 
 
 PAYLOAD = (

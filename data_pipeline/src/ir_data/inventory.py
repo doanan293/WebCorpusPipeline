@@ -5,8 +5,8 @@ import mimetypes
 from pathlib import Path
 from urllib.parse import urldefrag, urlsplit
 
-from .models import Candidate, InventorySummary, SourceRef
-from .state import WorkState
+from ir_data.models import Candidate, InventorySummary, SourceRef
+from ir_data.state import WorkState
 
 DOC_EXT = {
     ".pdf",

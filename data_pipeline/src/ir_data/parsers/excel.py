@@ -4,8 +4,8 @@ from __future__ import annotations
 import openpyxl
 import xlrd
 
-from ..models import DownloadedFile, ExtractedPart
-from .common import result
+from ir_data.models import DownloadedFile, ExtractedPart
+from ir_data.parsers.common import result
 
 
 def _cell(value) -> str:

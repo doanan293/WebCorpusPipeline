@@ -8,8 +8,8 @@ from urllib.parse import urlsplit
 from scrapy import signals
 from scrapy.http import Request, Response
 
-from ..policies.access import classify_access
-from .resources import ResourceSampler
+from hust_crawler.policies.access import classify_access
+from hust_crawler.crawl.resources import ResourceSampler
 
 
 @dataclass(frozen=True, slots=True)

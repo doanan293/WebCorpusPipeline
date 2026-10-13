@@ -5,8 +5,8 @@ import json
 import os
 from pathlib import Path
 
-from .models import ParseResult, jsonable
-from .serializers import parse_result_from_dict
+from ir_data.models import ParseResult, jsonable
+from ir_data.serializers import parse_result_from_dict
 
 
 def cache_key(sha256: str, indices: list[int], parser: str, settings_digest: str = "") -> str:

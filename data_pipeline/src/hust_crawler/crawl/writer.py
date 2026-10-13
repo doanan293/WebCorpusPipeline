@@ -8,9 +8,9 @@ from pathlib import Path, PurePosixPath
 from typing import Literal
 from urllib.parse import urlsplit
 
-from .assets import AssetGroup, AssetRole
-from .options import CrawlOptions
-from .state import CrawlState
+from hust_crawler.crawl.assets import AssetGroup, AssetRole
+from hust_crawler.crawl.options import CrawlOptions
+from hust_crawler.crawl.state import CrawlState
 
 _MIME_TO_EXT = {
     "application/pdf": ".pdf",

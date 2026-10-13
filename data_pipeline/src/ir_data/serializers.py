@@ -1,4 +1,4 @@
-from .models import ExtractedPart, ParseResult
+from ir_data.models import ExtractedPart, ParseResult
 
 
 def parse_result_from_dict(value: dict) -> ParseResult:

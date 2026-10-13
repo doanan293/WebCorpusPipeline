@@ -6,12 +6,12 @@ import json
 import sys
 from pathlib import Path
 
-from .enrichment import extract_documents_sync
-from .enrichment_export import export_enrichment
-from .inventory import index_inventory, source_key
-from .models import jsonable
-from .settings import load_settings
-from .state import WorkState, fingerprint_source, read_crawl_id
+from ir_data.enrichment import extract_documents_sync
+from ir_data.enrichment_export import export_enrichment
+from ir_data.inventory import index_inventory, source_key
+from ir_data.models import jsonable
+from ir_data.settings import load_settings
+from ir_data.state import WorkState, fingerprint_source, read_crawl_id
 
 
 REBIND_HELP = (
@@ -101,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         return exc.code if isinstance(exc.code, int) else 2
     try:
         if args.command == "verify":
-            from .package import verify_corpus
+            from ir_data.package import verify_corpus
 
             report = verify_corpus(Path(args.corpus))
             print(json.dumps(report, ensure_ascii=False, indent=2))
@@ -109,14 +109,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "import-mongo":
             root = _repo_root()
             settings = load_settings(root)
-            from .mongo_store import import_corpus
+            from ir_data.mongo_store import import_corpus
 
             print(json.dumps(import_corpus(Path(args.corpus), settings), indent=2))
             return 0
         if args.command == "query":
             root = _repo_root()
             settings = load_settings(root)
-            from .query import query_links
+            from ir_data.query import query_links
 
             direction = "incoming" if args.incoming or not args.outgoing else "outgoing"
             print(
@@ -128,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.command == "publish":
-            from .kaggle_io import publish_corpus
+            from ir_data.kaggle_io import publish_corpus
             from dotenv import load_dotenv
 
             root = _repo_root()
@@ -139,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(result, indent=2))
             return 0
         if args.command == "pull":
-            from .kaggle_io import pull_corpus
+            from ir_data.kaggle_io import pull_corpus
             from dotenv import load_dotenv
 
             root = _repo_root()
@@ -195,7 +195,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.command == "status":
                 return _summary(state.summary(), args.json)
             if args.command == "download":
-                from .download import run_downloads
+                from ir_data.download import run_downloads
 
                 summary = asyncio.run(run_downloads(state, settings))
                 return _summary(summary, args.json)
@@ -206,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.command == "enrich-documents":
                 if not state.inventory_done(source_key(source)):
                     index_inventory(source, state)
-                from .download import run_downloads
+                from ir_data.download import run_downloads
 
                 asyncio.run(run_downloads(state, settings))
                 return _summary(
@@ -216,12 +216,12 @@ def main(argv: list[str] | None = None) -> int:
                 export_enrichment(state, Path(args.output))
                 return 0
             if args.command == "build-graph":
-                from .graph import build_graph
+                from ir_data.graph import build_graph
 
                 build_graph(source, work, Path(args.output))
                 return 0
             if args.command == "package":
-                from .package import package_corpus
+                from ir_data.package import package_corpus
 
                 package_corpus(source, work, Path(args.output))
                 return 0

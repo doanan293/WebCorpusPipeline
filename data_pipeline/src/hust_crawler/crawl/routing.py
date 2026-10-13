@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, cast
 
-from .content import resource_kind
+from hust_crawler.crawl.content import resource_kind
 
 ResponsePurpose = Literal["page", "robots", "sitemap", "asset"]
 RouteAction = Literal[

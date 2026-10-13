@@ -5,10 +5,10 @@ from pathlib import PurePosixPath
 from typing import Literal, TYPE_CHECKING
 from urllib.parse import urlsplit
 
-from .options import CrawlOptions
+from hust_crawler.crawl.options import CrawlOptions
 
 if TYPE_CHECKING:
-    from .article import ArticleAsset
+    from hust_crawler.crawl.article import ArticleAsset
 
 AssetGroup = Literal["image", "media", "document"]
 AssetRole = Literal["inline_image", "media_reference", "document_attachment"]

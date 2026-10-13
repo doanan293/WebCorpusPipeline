@@ -12,11 +12,15 @@ from collections.abc import Iterable, Mapping
 from collections import Counter, defaultdict
 from urllib.parse import urlsplit
 
-from .link_policy import classify_link
-from .recovery import POLICY_RETRY_REASONS, scheduled_retry, validate_policy_migration
+from hust_crawler.crawl.link_policy import classify_link
+from hust_crawler.crawl.recovery import (
+    POLICY_RETRY_REASONS,
+    scheduled_retry,
+    validate_policy_migration,
+)
 
 if TYPE_CHECKING:
-    from .assets import AssetRole
+    from hust_crawler.crawl.assets import AssetRole
 
 FamilyKind = Literal["pagination", "search_filter", "calendar_archive", "action_auth"]
 
@@ -1025,7 +1029,7 @@ class CrawlState:
         os.replace(tmp_summary, final / "README.json")
 
     def asset_metrics(self) -> dict[str, dict[str, int]]:
-        from .assets import classify_asset
+        from hust_crawler.crawl.assets import classify_asset
 
         groups: dict[str, dict[str, int]] = {
             "image": {"file_count": 0, "unique_bytes": 0},

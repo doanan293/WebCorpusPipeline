@@ -7,11 +7,11 @@ import scrapy
 
 from hust_crawler.config import CrawlerConfig
 
-from .assets import AssetPolicy
-from .options import CrawlOptions
-from .reuse import ReusedAssetTarget
-from .spider import UnifiedSpider
-from .writer import CrawlWriter
+from hust_crawler.crawl.assets import AssetPolicy
+from hust_crawler.crawl.options import CrawlOptions
+from hust_crawler.crawl.reuse import ReusedAssetTarget
+from hust_crawler.crawl.spider import UnifiedSpider
+from hust_crawler.crawl.writer import CrawlWriter
 
 
 class ReusedAssetSpider(UnifiedSpider):

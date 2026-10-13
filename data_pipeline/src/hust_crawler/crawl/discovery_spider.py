@@ -7,11 +7,15 @@ import scrapy
 
 from hust_crawler.config import CrawlerConfig
 from hust_crawler.policies.url import canonicalize_url
-from .content import normalize_url
-from .discovery_writer import DiscoveryWriter
-from .routing import route_response
-from .seeds import SeedSet
-from .sitemaps import SitemapDiscoveryCoordinator, SitemapParseError, parse_sitemap
+from hust_crawler.crawl.content import normalize_url
+from hust_crawler.crawl.discovery_writer import DiscoveryWriter
+from hust_crawler.crawl.routing import route_response
+from hust_crawler.crawl.seeds import SeedSet
+from hust_crawler.crawl.sitemaps import (
+    SitemapDiscoveryCoordinator,
+    SitemapParseError,
+    parse_sitemap,
+)
 
 
 class DiscoverySpider(scrapy.Spider):

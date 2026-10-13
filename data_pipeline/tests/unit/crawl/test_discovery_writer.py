@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from hust_crawler.crawl.discovery_writer import DiscoveryWriter
-from .test_state import open_state
+from crawl.test_state import open_state
 
 
 def test_discovery_export_contains_targets_but_not_probe_urls(tmp_path: Path) -> None:

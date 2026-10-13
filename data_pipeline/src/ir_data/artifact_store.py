@@ -4,7 +4,7 @@ import hashlib
 import mimetypes
 from pathlib import Path
 
-from .models import DownloadedFile
+from ir_data.models import DownloadedFile
 
 
 def sha256_file(path: Path) -> str:

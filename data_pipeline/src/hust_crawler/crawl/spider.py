@@ -12,23 +12,38 @@ from scrapy.http import Response
 from hust_crawler.config import CrawlerConfig
 from hust_crawler.policies.url import canonicalize_url
 from hust_crawler.policies.access import classify_page_gate
-from .article import analyze_article
-from .assets import (
+from hust_crawler.crawl.article import analyze_article
+from hust_crawler.crawl.assets import (
     AssetPolicy,
     classify_asset,
     is_recognizable_binary,
     recognizable_asset,
 )
-from .content import normalize_url, resource_kind
-from .frontier import Candidate, DiscoverySource, FrontierDecision, FrontierPolicy, Purpose
-from .link_policy import ClassifiedLink, classify_link, select_semantic_next
-from .options import CrawlOptions
-from .refresh import RefreshSession, classify_refetch, conditional_headers, response_validators
-from .routing import route_response
-from .seeds import SeedSet
-from .sitemaps import SitemapDiscoveryCoordinator, SitemapParseError, parse_sitemap
-from .state import FamilyObservation
-from .writer import CrawlWriter, StorageLimit, content_id_for
+from hust_crawler.crawl.content import normalize_url, resource_kind
+from hust_crawler.crawl.frontier import (
+    Candidate,
+    DiscoverySource,
+    FrontierDecision,
+    FrontierPolicy,
+    Purpose,
+)
+from hust_crawler.crawl.link_policy import ClassifiedLink, classify_link, select_semantic_next
+from hust_crawler.crawl.options import CrawlOptions
+from hust_crawler.crawl.refresh import (
+    RefreshSession,
+    classify_refetch,
+    conditional_headers,
+    response_validators,
+)
+from hust_crawler.crawl.routing import route_response
+from hust_crawler.crawl.seeds import SeedSet
+from hust_crawler.crawl.sitemaps import (
+    SitemapDiscoveryCoordinator,
+    SitemapParseError,
+    parse_sitemap,
+)
+from hust_crawler.crawl.state import FamilyObservation
+from hust_crawler.crawl.writer import CrawlWriter, StorageLimit, content_id_for
 
 
 class UnifiedSpider(scrapy.Spider):

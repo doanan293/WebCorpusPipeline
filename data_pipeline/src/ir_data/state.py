@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterable, Iterator
 
-from .models import (
+from ir_data.models import (
     Candidate,
     DownloadJob,
     DownloadedFile,
@@ -343,7 +343,7 @@ class WorkState:
         ).fetchone()
         if not row or not row[0]:
             return None
-        from .serializers import parse_result_from_dict
+        from ir_data.serializers import parse_result_from_dict
 
         return parse_result_from_dict(json.loads(row[0]))
 

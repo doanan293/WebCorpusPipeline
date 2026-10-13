@@ -19,9 +19,9 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from scrapy_playwright.page import PageMethod
 
-from ..policies.access import classify_access
-from ..policies.network import resolve_public_hostname, validate_public_web_url
-from ..policies.url import UrlPolicy
+from hust_crawler.policies.access import classify_access
+from hust_crawler.policies.network import resolve_public_hostname, validate_public_web_url
+from hust_crawler.policies.url import UrlPolicy
 
 
 _RETRYABLE_EXCEPTIONS = tuple(

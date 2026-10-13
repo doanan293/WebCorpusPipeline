@@ -7,7 +7,7 @@ import socket
 import threading
 from urllib.parse import urlsplit
 
-from .url import canonicalize_url
+from hust_crawler.policies.url import canonicalize_url
 
 
 class NonPublicAddressError(OSError):

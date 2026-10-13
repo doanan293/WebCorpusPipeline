@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from ..config import CrawlerConfig
+from hust_crawler.config import CrawlerConfig
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from .models import AccessDecision
+from hust_crawler.models import AccessDecision
 
 
 _CAPTCHA_MARKERS = ("g-recaptcha", "hcaptcha", "cf-turnstile", "captcha")

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from typing import Literal
 
 if TYPE_CHECKING:
-    from .crawl.profiles import RuntimeTuning
+    from hust_crawler.crawl.profiles import RuntimeTuning
 
 
 def normalize_hostname(value: str) -> str:

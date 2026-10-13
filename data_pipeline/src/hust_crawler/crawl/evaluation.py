@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .article import analyze_article
+from hust_crawler.crawl.article import analyze_article
 
 
 def _tokens(value: str) -> set[str]:

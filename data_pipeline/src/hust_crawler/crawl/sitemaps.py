@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
 from hust_crawler.policies.url import canonicalize_url
-from .content import normalize_url
+from hust_crawler.crawl.content import normalize_url
 
 
 DiscoveryStrategy = Literal["sitemap-only", "hybrid-unified"]

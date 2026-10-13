@@ -7,8 +7,8 @@ from docx.text.paragraph import Paragraph
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
 
-from ..models import DownloadedFile, ExtractedPart, LocalResult
-from .common import result, useful_text
+from ir_data.models import DownloadedFile, ExtractedPart, LocalResult
+from ir_data.parsers.common import result, useful_text
 
 
 def _blocks(parent) -> list[Paragraph | Table]:

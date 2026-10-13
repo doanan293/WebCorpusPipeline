@@ -7,10 +7,10 @@ import sys
 from dotenv import load_dotenv
 
 from hust_crawler.config import CrawlerConfig
-from .options import crawl_options_from_config
-from .profiles import resolve_runtime_tuning
-from .runner import run_crawl
-from .seeds import parse_seed_file
+from hust_crawler.crawl.options import crawl_options_from_config
+from hust_crawler.crawl.profiles import resolve_runtime_tuning
+from hust_crawler.crawl.runner import run_crawl
+from hust_crawler.crawl.seeds import parse_seed_file
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..models import DownloadedFile
-from .excel import parse_xls, parse_xlsx
-from .office import convert_office
-from .pdf import parse_pdf
-from .powerpoint import parse_powerpoint
-from .word import parse_word
+from ir_data.models import DownloadedFile
+from ir_data.parsers.excel import parse_xls, parse_xlsx
+from ir_data.parsers.office import convert_office
+from ir_data.parsers.pdf import parse_pdf
+from ir_data.parsers.powerpoint import parse_powerpoint
+from ir_data.parsers.word import parse_word
 
 
 def parse_local(file: DownloadedFile):
@@ -47,8 +47,8 @@ def parse_local(file: DownloadedFile):
             return parse_xlsx(derived)
     if ext in {".txt", ".csv", ".rtf"}:
         text = file.path.read_text(errors="replace")
-        from ..models import ExtractedPart
-        from .common import result
+        from ir_data.models import ExtractedPart
+        from ir_data.parsers.common import result
 
         return result(file, [ExtractedPart(1, "document", text, False, "text")], "text")
     raise ValueError(f"unsupported document extension: {ext}")

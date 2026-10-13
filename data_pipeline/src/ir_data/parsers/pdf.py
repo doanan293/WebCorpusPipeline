@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pymupdf as fitz
 
-from ..models import DownloadedFile, ExtractedPart, LocalResult
-from .common import result, useful_text
+from ir_data.models import DownloadedFile, ExtractedPart, LocalResult
+from ir_data.parsers.common import result, useful_text
 
 
 def parse_pdf(file: DownloadedFile) -> LocalResult:

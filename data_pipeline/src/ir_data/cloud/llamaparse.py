@@ -3,9 +3,9 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-from ..models import ExtractedPart, LocalResult, ParseResult
-from .errors import classify_cloud_error
-from .key_pool import KeyPool
+from ir_data.models import ExtractedPart, LocalResult, ParseResult
+from ir_data.cloud.errors import classify_cloud_error
+from ir_data.cloud.key_pool import KeyPool
 
 
 def _value(obj, name, default=None):

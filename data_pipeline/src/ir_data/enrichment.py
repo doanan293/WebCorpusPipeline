@@ -4,13 +4,13 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from .cloud.key_pool import KeyPool
-from .cloud.llamaparse import merge_parts, parse_cloud_subset
-from .models import ParseResult, RunSummary
-from .parse_cache import cache_key, read_cached, write_cached
-from .parsers import parse_local
-from .parsers.pdf import build_pdf_subset, cloud_part_indices
-from .state import WorkState
+from ir_data.cloud.key_pool import KeyPool
+from ir_data.cloud.llamaparse import merge_parts, parse_cloud_subset
+from ir_data.models import ParseResult, RunSummary
+from ir_data.parse_cache import cache_key, read_cached, write_cached
+from ir_data.parsers import parse_local
+from ir_data.parsers.pdf import build_pdf_subset, cloud_part_indices
+from ir_data.state import WorkState
 
 
 def extract_documents(state: WorkState, settings, repo_root: Path) -> RunSummary:

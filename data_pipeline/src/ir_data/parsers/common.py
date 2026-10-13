@@ -5,7 +5,7 @@ import re
 import unicodedata
 from pathlib import Path
 
-from ..models import DownloadedFile, ExtractedPart, LocalResult
+from ir_data.models import DownloadedFile, ExtractedPart, LocalResult
 
 
 def file_sha256(path: Path) -> str:

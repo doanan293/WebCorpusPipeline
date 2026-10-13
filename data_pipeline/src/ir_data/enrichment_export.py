@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .models import jsonable
+from ir_data.models import jsonable
 
 
 def export_enrichment(state, destination: Path) -> Path:

@@ -6,9 +6,9 @@ import os
 import time
 from urllib.parse import urlsplit
 
-from .artifact_store import extension_for, looks_like_document, sha256_file
-from .http_transport import PublicTransport
-from .models import DownloadJob, DownloadedFile
+from ir_data.artifact_store import extension_for, looks_like_document, sha256_file
+from ir_data.http_transport import PublicTransport
+from ir_data.models import DownloadJob, DownloadedFile
 
 
 class RetryableDownloadError(RuntimeError):

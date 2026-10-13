@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Final, Literal
 
-from .seeds import SeedSet
-from ..config import CrawlerConfig
+from hust_crawler.crawl.seeds import SeedSet
+from hust_crawler.config import CrawlerConfig
 
 AssetMode = Literal["content-only", "all"]
 ASSET_POLICY_VERSION: Final[int] = 2

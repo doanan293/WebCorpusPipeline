@@ -1,7 +1,7 @@
 """Policies shared by the domain audit and Scrapy phases."""
 
-from .access import AccessDecision, classify_access
-from .url import UrlDecision, UrlPolicy, canonicalize_url
+from hust_crawler.policies.access import AccessDecision, classify_access
+from hust_crawler.policies.url import UrlDecision, UrlPolicy, canonicalize_url
 
 __all__ = [
     "AccessDecision",

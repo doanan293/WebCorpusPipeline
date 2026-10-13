@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from .package import verify_corpus
+from ir_data.package import verify_corpus
 
 
 def _run(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:

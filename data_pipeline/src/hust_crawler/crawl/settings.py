@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..config import CrawlerConfig
+from hust_crawler.config import CrawlerConfig
 
 
 def build_settings(
@@ -13,8 +13,8 @@ def build_settings(
     tuning: object | None = None,
     extensions: dict[object, int] | None = None,
 ) -> dict[str, object]:
-    from .adaptive import AdaptiveConcurrencyMiddleware
-    from .middlewares import (
+    from hust_crawler.crawl.adaptive import AdaptiveConcurrencyMiddleware
+    from hust_crawler.crawl.middlewares import (
         ContentOnlyHeadersGuard,
         PlaywrightFallbackMiddleware,
         PoliteRetryMiddleware,

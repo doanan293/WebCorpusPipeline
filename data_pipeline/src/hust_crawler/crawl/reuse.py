@@ -12,8 +12,8 @@ from typing import Iterator
 
 from hust_crawler.policies.network import validate_public_web_url
 
-from .assets import AssetGroup, AssetRole, classify_asset
-from .state import CrawlState
+from hust_crawler.crawl.assets import AssetGroup, AssetRole, classify_asset
+from hust_crawler.crawl.state import CrawlState
 
 
 _REUSABLE_STATUSES = frozenset({"complete", "complete_with_failures", "truncated"})

@@ -7,11 +7,11 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from hust_crawler.policies.url import canonicalize_url, classify_frontier_trap
 
-from .assets import AssetGroup, AssetRole
-from .link_policy import LinkKind, is_navigation_path, query_key_kind
-from .options import CrawlOptions
-from .seeds import SeedMode, SeedSet
-from .state import FamilyObservation, RouteFamilyState
+from hust_crawler.crawl.assets import AssetGroup, AssetRole
+from hust_crawler.crawl.link_policy import LinkKind, is_navigation_path, query_key_kind
+from hust_crawler.crawl.options import CrawlOptions
+from hust_crawler.crawl.seeds import SeedMode, SeedSet
+from hust_crawler.crawl.state import FamilyObservation, RouteFamilyState
 
 DiscoverySource = Literal["seed", "sitemap", "html_link"]
 Purpose = Literal["robots", "sitemap", "page", "asset"]

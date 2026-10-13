@@ -4,7 +4,12 @@ from dataclasses import dataclass
 
 from lxml import etree
 
-from .content import _candidate_score, _select_content, _normalized_text, _parse_html
+from hust_crawler.crawl.content import (
+    _candidate_score,
+    _select_content,
+    _normalized_text,
+    _parse_html,
+)
 
 
 @dataclass(frozen=True)

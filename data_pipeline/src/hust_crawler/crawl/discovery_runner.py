@@ -9,14 +9,14 @@ from scrapy.crawler import CrawlerProcess
 from scrapy.settings import Settings
 
 from hust_crawler.config import CrawlerConfig, semantic_config_snapshot
-from .discovery_spider import DiscoverySpider
-from .discovery_writer import DiscoveryWriter
-from .profiles import RuntimeTuning
-from .runner import finish_reason_to_exit
-from .seeds import SeedSet
-from .settings import build_settings
-from .sitemaps import SitemapDiscoveryCoordinator
-from .state import CrawlState
+from hust_crawler.crawl.discovery_spider import DiscoverySpider
+from hust_crawler.crawl.discovery_writer import DiscoveryWriter
+from hust_crawler.crawl.profiles import RuntimeTuning
+from hust_crawler.crawl.runner import finish_reason_to_exit
+from hust_crawler.crawl.seeds import SeedSet
+from hust_crawler.crawl.settings import build_settings
+from hust_crawler.crawl.sitemaps import SitemapDiscoveryCoordinator
+from hust_crawler.crawl.state import CrawlState
 
 
 def run_discovery(

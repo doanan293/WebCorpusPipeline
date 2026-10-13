@@ -5,8 +5,8 @@ import re
 from typing import Final, Iterable, Literal
 from urllib.parse import parse_qsl, urlsplit
 
-from .assets import recognizable_asset
-from .content import normalize_url
+from hust_crawler.crawl.assets import recognizable_asset
+from hust_crawler.crawl.content import normalize_url
 
 LinkKind = Literal[
     "content",

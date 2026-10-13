@@ -312,7 +312,7 @@ class HtmlAnalysis:
 
 def analyze_html(html: bytes | str, url: str, encoding: str | None = None) -> HtmlAnalysis:
     """Build DOM once and produce both article extraction and discoveries."""
-    from .article import analyze_article
+    from hust_crawler.crawl.article import analyze_article
 
     res = analyze_article(html, url, encoding)
     return HtmlAnalysis(article=res.article, discoveries=res.discoveries)
