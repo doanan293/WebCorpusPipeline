@@ -17,10 +17,9 @@ repos:
     rev: v0.17.0
     hooks:
       - id: ruff-check
-        args: [--fix, --config=data_pipeline/pyproject.toml]
+        args: [--fix]
         files: ^data_pipeline/
       - id: ruff-format
-        args: [--config=data_pipeline/pyproject.toml]
         files: ^data_pipeline/
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.12.13
