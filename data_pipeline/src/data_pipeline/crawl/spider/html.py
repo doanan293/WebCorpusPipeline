@@ -152,7 +152,7 @@ class HtmlHandler:
                                 response.url,
                                 resource_kind(loc),
                                 "sitemap",
-                                False,
+                                explicit=False,
                                 discovery_source="sitemap",
                             )
                             req = self.requests.for_candidate(cand)

@@ -29,15 +29,29 @@ def is_public_address(value: str) -> bool:
 def validate_public_web_url(url: str) -> NetworkDecision:
     raw = urlsplit(url)
     if raw.scheme not in {"http", "https"}:
-        return NetworkDecision(False, None, raw.hostname, "unsupported_scheme")
+        return NetworkDecision(
+            accepted=False, canonical_url=None, hostname=raw.hostname, reason="unsupported_scheme"
+        )
     if raw.username is not None or raw.password is not None:
-        return NetworkDecision(False, None, raw.hostname, "credentials_not_allowed")
+        return NetworkDecision(
+            accepted=False,
+            canonical_url=None,
+            hostname=raw.hostname,
+            reason="credentials_not_allowed",
+        )
     canonical, hostname, reason = canonicalize_url(url)
     if canonical is None or hostname is None:
-        return NetworkDecision(False, None, None, reason or "malformed_url")
+        return NetworkDecision(
+            accepted=False, canonical_url=None, hostname=None, reason=reason or "malformed_url"
+        )
     try:
         if not is_public_address(hostname):
-            return NetworkDecision(False, canonical, hostname, "non_public_address")
+            return NetworkDecision(
+                accepted=False,
+                canonical_url=canonical,
+                hostname=hostname,
+                reason="non_public_address",
+            )
     except ValueError:
         pass
     parsed = urlsplit(canonical)
@@ -47,8 +61,10 @@ def validate_public_web_url(url: str) -> NetworkDecision:
     except ValueError:
         port = None
     if port not in {None, default_port}:
-        return NetworkDecision(False, canonical, hostname, "non_default_port")
-    return NetworkDecision(True, canonical, hostname, None)
+        return NetworkDecision(
+            accepted=False, canonical_url=canonical, hostname=hostname, reason="non_default_port"
+        )
+    return NetworkDecision(accepted=True, canonical_url=canonical, hostname=hostname, reason=None)
 
 
 def resolve_hostname(hostname: str, timeout: float = 5.0, port: int = 443) -> None:

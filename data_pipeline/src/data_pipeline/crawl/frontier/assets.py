@@ -183,18 +183,22 @@ class AssetPolicy:
 
     def validate_response(self, content_type: str, final_url: str) -> AssetResponseDecision:
         if self.options.assets != "all":
-            return AssetResponseDecision(False, None, "asset_mode_content_only")
+            return AssetResponseDecision(
+                persist=False, group=None, reason="asset_mode_content_only"
+            )
 
         mime = content_type.partition(";")[0].strip().lower()
         if mime in {"text/html", "application/xhtml+xml"} or mime.startswith("text/html"):
-            return AssetResponseDecision(False, None, "unexpected_asset_content")
+            return AssetResponseDecision(
+                persist=False, group=None, reason="unexpected_asset_content"
+            )
 
         if mime.startswith("image/"):
-            return AssetResponseDecision(True, "image", None)
+            return AssetResponseDecision(persist=True, group="image", reason=None)
         if mime.startswith(("audio/", "video/")):
-            return AssetResponseDecision(True, "media", None)
+            return AssetResponseDecision(persist=True, group="media", reason=None)
         if mime in DOCUMENT_MIME_TYPES:
-            return AssetResponseDecision(True, "document", None)
+            return AssetResponseDecision(persist=True, group="document", reason=None)
 
         if mime in {"application/octet-stream", "binary/octet-stream"}:
             try:
@@ -204,7 +208,7 @@ class AssetPolicy:
             suffix = PurePosixPath(path).suffix.lower()
             group = EXTENSION_GROUPS.get(suffix)
             if group is not None:
-                return AssetResponseDecision(True, group, None)
-            return AssetResponseDecision(False, None, "unsupported_asset_type")
+                return AssetResponseDecision(persist=True, group=group, reason=None)
+            return AssetResponseDecision(persist=False, group=None, reason="unsupported_asset_type")
 
-        return AssetResponseDecision(False, None, "unsupported_asset_type")
+        return AssetResponseDecision(persist=False, group=None, reason="unsupported_asset_type")

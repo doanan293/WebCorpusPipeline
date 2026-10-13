@@ -120,5 +120,5 @@ def index_inventory(source: Path, state: WorkState, batch_size: int = 500) -> In
     return InventorySummary(
         state.conn.execute("SELECT count(*) FROM inventory").fetchone()[0],
         state.conn.execute("SELECT count(*) FROM refs").fetchone()[0],
-        True,
+        completed=True,
     )

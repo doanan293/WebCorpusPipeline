@@ -90,11 +90,20 @@ class UrlPolicy:
     def decide(self, url: str, *, target_kind: str = "page") -> UrlDecision:
         canonical, hostname, reason = canonicalize_url(url, trap_query_keys=self.trap_query_keys)
         if reason is not None:
-            return UrlDecision(False, None, reason, target_kind)
+            return UrlDecision(
+                accepted=False, canonical_url=None, reason=reason, target_kind=target_kind
+            )
         assert canonical is not None and hostname is not None
         if hostname not in self.allowed_hostnames:
-            return UrlDecision(False, None, "host_out_of_scope", target_kind)
-        return UrlDecision(True, canonical, None, target_kind)
+            return UrlDecision(
+                accepted=False,
+                canonical_url=None,
+                reason="host_out_of_scope",
+                target_kind=target_kind,
+            )
+        return UrlDecision(
+            accepted=True, canonical_url=canonical, reason=None, target_kind=target_kind
+        )
 
 
 _AUTH_PATHS = frozenset({"login", "signin", "sign-in", "auth", "sso", "cas", "oauth"})

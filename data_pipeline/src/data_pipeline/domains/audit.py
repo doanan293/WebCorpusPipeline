@@ -47,8 +47,8 @@ def run_audit(
             except Exception as exc:
                 result = ProbeResult(
                     hostname,
-                    False,
-                    "probe_error",
+                    active=False,
+                    reason="probe_error",
                     error=f"{type(exc).__name__}: {exc}",
                 )
             results.append(result)

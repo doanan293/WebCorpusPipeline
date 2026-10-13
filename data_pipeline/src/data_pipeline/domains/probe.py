@@ -424,14 +424,14 @@ def probe_host(
         except NonPublicAddressError as exc:
             return ProbeResult(
                 hostname,
-                False,
-                "non_public_address",
+                active=False,
+                reason="non_public_address",
                 error=str(exc),
             )
         except OSError as exc:
             dns_error = exc
     if dns_error is not None:
-        return ProbeResult(hostname, False, "dns_error", error=str(dns_error))
+        return ProbeResult(hostname, active=False, reason="dns_error", error=str(dns_error))
 
     last_attempt: ProbeAttempt | None = None
     last_scheme: str | None = None
@@ -575,7 +575,7 @@ def probe_host(
                 )
 
     if last_attempt is None:
-        return ProbeResult(hostname, False, "network_error", error="no attempts")
+        return ProbeResult(hostname, active=False, reason="network_error", error="no attempts")
     if last_response is not None:
         _, reason = classify_response(
             last_response.status,
@@ -600,8 +600,8 @@ def probe_host(
         )
     return ProbeResult(
         hostname,
-        False,
-        "network_error",
+        active=False,
+        reason="network_error",
         scheme=last_scheme,
         error=last_attempt.error,
     )

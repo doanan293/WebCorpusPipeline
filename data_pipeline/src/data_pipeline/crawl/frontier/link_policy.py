@@ -292,7 +292,7 @@ def classify_link(
         raise ValueError(msg)
     group = recognizable_asset(normalized)
     if resource_kind_hint == "file" or group is not None:
-        return ClassifiedLink(normalized, "asset", None, None, False, None)
+        return ClassifiedLink(normalized, "asset", None, None, rel_next=False, reason=None)
     kind, ordinal = _classify_navigation(normalized, text.casefold(), rel)
     return ClassifiedLink(
         normalized,

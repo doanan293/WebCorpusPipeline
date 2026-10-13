@@ -121,7 +121,7 @@ def load_settings(paths: ProjectPaths, overrides: Mapping[str, Any] | None = Non
         "cloud_poll_seconds",
         "cloud_timeout_seconds",
     ):
-        values[key] = _positive(key, values[key], False)
+        values[key] = _positive(key, values[key], integer=False)
     values["project_root"] = paths.root.resolve()
     values["work_dir"] = Path(values["work_dir"])
     values["source"] = Path(values["source"])

@@ -119,7 +119,7 @@ def classify_access(*, status: int, url: str, html: str, rendered: bool) -> Acce
     lowered = html.lower()
     has_captcha_widget = _has_page_level_captcha(html, rate_limited=status == 429)
     if has_captcha_widget:
-        return AccessDecision("captcha_blocked", False, "interactive_captcha")
+        return AccessDecision("captcha_blocked", use_playwright=False, reason="interactive_captcha")
     has_password = bool(re.search(r"type\s*=\s*['\"]password['\"]", lowered))
     has_article = any(
         marker in lowered for marker in ("<article", "<main", 'itemprop="articlebody"')
@@ -132,15 +132,15 @@ def classify_access(*, status: int, url: str, html: str, rendered: bool) -> Acce
     )
     if status in {401, 403}:
         if has_login_gate:
-            return AccessDecision("login_required", False, f"http_{status}")
+            return AccessDecision("login_required", use_playwright=False, reason=f"http_{status}")
         return AccessDecision("access_denied", not rendered, f"http_{status}")
     if has_login_gate:
-        return AccessDecision("login_required", False, "access_gate")
+        return AccessDecision("login_required", use_playwright=False, reason="access_gate")
     text = _visible_body_text(html)
     shell = len(text) < 40 and "<script" in lowered
     if shell and not rendered:
-        return AccessDecision("public", True, "html_shell")
-    return AccessDecision("public", False, None)
+        return AccessDecision("public", use_playwright=True, reason="html_shell")
+    return AccessDecision("public", use_playwright=False, reason=None)
 
 
 def html_title(html: str) -> str:
@@ -153,12 +153,12 @@ def classify_page_gate(
     *, status: int, url: str, html: str, text: str, supported: bool = True
 ) -> PageGateDecision:
     if not supported:
-        return PageGateDecision(False, "unsupported")
+        return PageGateDecision(expandable=False, reason="unsupported")
     access = classify_access(status=status, url=url, html=html, rendered=True)
     if access.outcome == "login_required":
-        return PageGateDecision(False, "login")
+        return PageGateDecision(expandable=False, reason="login")
     if access.outcome == "captcha_blocked":
-        return PageGateDecision(False, "captcha")
+        return PageGateDecision(expandable=False, reason="captcha")
     heading = html_title(html).casefold().strip()
     visible = " ".join((heading, text.casefold()))
     soft_markers = (
@@ -175,7 +175,7 @@ def classify_page_gate(
         marker in visible for marker in soft_markers[1:]
     )
     if heading_is_error or phrase_is_error:
-        return PageGateDecision(False, "soft_404")
+        return PageGateDecision(expandable=False, reason="soft_404")
     if not text.strip():
-        return PageGateDecision(False, "empty")
-    return PageGateDecision(True, None)
+        return PageGateDecision(expandable=False, reason="empty")
+    return PageGateDecision(expandable=True, reason=None)

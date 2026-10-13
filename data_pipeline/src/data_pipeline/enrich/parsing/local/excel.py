@@ -32,7 +32,9 @@ def parse_xlsx(file: DownloadedFile):
             if line:
                 rows.append(line)
         text = f"[{name}]\n" + "\n".join(rows) if rows else ""
-        parts.append(ExtractedPart(index, "sheet", text, False, "openpyxl"))
+        parts.append(
+            ExtractedPart(index, "sheet", text, has_visual_content=False, parser="openpyxl")
+        )
     book_values.close()
     book_formulas.close()
     return result(file, parts, "openpyxl")
@@ -50,7 +52,11 @@ def parse_xls(file: DownloadedFile):
                 rows.append(line)
         parts.append(
             ExtractedPart(
-                index, "sheet", f"[{name}]\n" + "\n".join(rows) if rows else "", False, "xlrd"
+                index,
+                "sheet",
+                f"[{name}]\n" + "\n".join(rows) if rows else "",
+                has_visual_content=False,
+                parser="xlrd",
             )
         )
     book.release_resources()
