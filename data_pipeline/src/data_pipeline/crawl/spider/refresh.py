@@ -4,7 +4,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from http import HTTPStatus
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
 
 import scrapy
@@ -14,6 +14,7 @@ from data_pipeline.core.policies.access import classify_page_gate
 from data_pipeline.core.policies.url import canonicalize_url
 from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.extract.article import analyze_article
+from data_pipeline.crawl.frontier.seeds import SeedMode
 from data_pipeline.crawl.frontier.sitemaps import SitemapParseError, parse_sitemap
 from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.output.writer import CrawlWriter, content_id_for
@@ -186,7 +187,7 @@ class RefreshHandler:
                     parse_sitemap(
                         response.body,
                         response.url,
-                        response.headers.get(b"Content-Type", b"").decode("latin1"),
+                        (response.headers.get(b"Content-Type") or b"").decode("latin1"),
                     )
                 except SitemapParseError:
                     self.session.finish_target(url, "sitemap_parse_error")
@@ -194,7 +195,9 @@ class RefreshHandler:
             yield from self.html.handle(response)
             self.session.finish_target(url, "fetched")
             return
-        content_type = response.headers.get(b"Content-Type", b"").decode("latin1", errors="replace")
+        content_type = (response.headers.get(b"Content-Type") or b"").decode(
+            "latin1", errors="replace"
+        )
         mime = content_type.partition(";")[0].strip().lower()
         if (
             "download_stopped" in getattr(response, "flags", [])
@@ -243,5 +246,5 @@ class RefreshHandler:
             analysis,
             stored_article,
             url,
-            str(response.meta.get("seed_mode", "recursive")),
+            cast(SeedMode, response.meta.get("seed_mode", "recursive")),
         )

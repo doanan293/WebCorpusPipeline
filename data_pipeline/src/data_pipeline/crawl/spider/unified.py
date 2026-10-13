@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterable, Iterator, Mapping
-from typing import Any
+from typing import Any, override
 from urllib.parse import urlsplit
 
 import scrapy
@@ -14,6 +14,7 @@ from data_pipeline.crawl.frontier.assets import (
     AssetPolicy,
     is_recognizable_binary,
     recognizable_asset,
+    role_for_group,
 )
 from data_pipeline.crawl.frontier.frontier import (
     Candidate,
@@ -167,11 +168,6 @@ class UnifiedSpider(scrapy.Spider):
             kind = resource_kind(url)
             group = recognizable_asset(url)
             if group is not None or is_recognizable_binary(url):
-                role_map = {
-                    "image": "inline_image",
-                    "media": "media_reference",
-                    "document": "document_attachment",
-                }
                 cand = Candidate(
                     url=url,
                     source_mode=mode,
@@ -180,9 +176,7 @@ class UnifiedSpider(scrapy.Spider):
                     purpose="asset",
                     explicit=True,
                     discovery_source="seed",
-                    asset_role=role_map.get(group, "document_attachment")
-                    if group
-                    else "document_attachment",
+                    asset_role=role_for_group(group),
                     asset_group=group,
                 )
             else:
@@ -199,6 +193,7 @@ class UnifiedSpider(scrapy.Spider):
             if req is not None:
                 yield req
 
+    @override
     async def start(self) -> AsyncIterator[scrapy.Request]:
         for req in self.start_requests():
             yield req

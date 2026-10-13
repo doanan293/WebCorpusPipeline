@@ -141,6 +141,18 @@ def is_recognizable_binary(url: str) -> bool:
     }
 
 
+_ROLE_FOR_GROUP: dict[str, AssetRole] = {
+    "image": "inline_image",
+    "media": "media_reference",
+    "document": "document_attachment",
+}
+
+
+def role_for_group(group: str | None) -> AssetRole:
+    """Return the asset role implied by an asset group (documents when unknown)."""
+    return _ROLE_FOR_GROUP.get(group or "", "document_attachment")
+
+
 def classify_asset(
     content_type: str = "",
     url: str = "",

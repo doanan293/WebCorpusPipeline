@@ -4,7 +4,7 @@ from http import HTTPStatus
 
 from scrapy.http import Response
 
-from data_pipeline.crawl.frontier.assets import AssetPolicy, recognizable_asset
+from data_pipeline.crawl.frontier.assets import AssetPolicy, recognizable_asset, role_for_group
 from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.output.writer import CrawlWriter, StorageLimitError
 from data_pipeline.crawl.spider.routing import route_response
@@ -26,7 +26,9 @@ class AssetResponseHandler:
         request_scope = response.meta.get("request_scope", "page")
         discovery_source = response.meta.get("discovery_source", "seed")
         asset_role = response.meta.get("asset_role")
-        content_type = response.headers.get(b"Content-Type", b"").decode("latin1", errors="replace")
+        content_type = (response.headers.get(b"Content-Type") or b"").decode(
+            "latin1", errors="replace"
+        )
         route = route_response(
             url=response.url, status=response.status, content_type=content_type, purpose=purpose
         )
@@ -129,12 +131,7 @@ class AssetResponseHandler:
                     or recognizable_asset(response.url, content_type)
                     or "document"
                 )
-                role_map = {
-                    "image": "inline_image",
-                    "media": "media_reference",
-                    "document": "document_attachment",
-                }
-                derived_role = role_map.get(group, "document_attachment")
+                derived_role = role_for_group(group)
                 try:
                     self.writer.write_file(
                         input_url,

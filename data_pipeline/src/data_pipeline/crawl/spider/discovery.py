@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable, Iterable, Iterator
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, override
 from urllib.parse import urlsplit
 
 import scrapy
+from scrapy.http import Response
 
 from data_pipeline.core.policies.url import canonicalize_url
 from data_pipeline.crawl.config import CrawlerConfig
@@ -24,7 +25,7 @@ from data_pipeline.crawl.spider.routing import ResponseRoute, route_response
 class _Probe:
     """A robots.txt or sitemap response together with its request metadata."""
 
-    response: scrapy.http.Response
+    response: Response
     input_url: str
     logical_url: str
     purpose: str
@@ -64,6 +65,7 @@ class DiscoverySpider(scrapy.Spider):
             "unknown": self._unsupported,
         }
 
+    @override
     async def start(self) -> AsyncIterator[scrapy.Request]:
         for req in self.start_requests():
             yield req
@@ -144,13 +146,15 @@ class DiscoverySpider(scrapy.Spider):
             )
         return None
 
-    def parse_response(self, response: scrapy.Response) -> Iterator[scrapy.Request]:
+    def parse_response(self, response: Response) -> Iterator[scrapy.Request]:
         input_url = response.meta.get("input_url", response.url)
         purpose = response.meta.get(
             "response_purpose",
             "robots" if response.url.endswith("/robots.txt") else "sitemap",
         )
-        content_type = response.headers.get("Content-Type", b"").decode("latin1", errors="replace")
+        content_type = (response.headers.get("Content-Type") or b"").decode(
+            "latin1", errors="replace"
+        )
         probe = _Probe(
             response=response,
             input_url=input_url,

@@ -18,13 +18,15 @@ from data_pipeline.crawl.frontier.assets import (
     classify_asset,
     is_recognizable_binary,
     recognizable_asset,
+    role_for_group,
 )
-from data_pipeline.crawl.frontier.frontier import Candidate, FrontierPolicy
+from data_pipeline.crawl.frontier.frontier import Candidate, DiscoverySource, FrontierPolicy
 from data_pipeline.crawl.frontier.link_policy import (
     ClassifiedLink,
     classify_link,
     select_semantic_next,
 )
+from data_pipeline.crawl.frontier.seeds import SeedMode
 from data_pipeline.crawl.frontier.sitemaps import (
     SitemapDiscoveryCoordinator,
     SitemapParseError,
@@ -40,12 +42,6 @@ from data_pipeline.crawl.spider.routing import ResponseRoute, route_response
 from data_pipeline.crawl.state.discovery import FamilyObservation, put_route_family
 from data_pipeline.crawl.state.store import CrawlState
 
-_ASSET_ROLES = {
-    "image": "inline_image",
-    "media": "media_reference",
-    "document": "document_attachment",
-}
-
 
 @dataclass(frozen=True, slots=True)
 class _Page:
@@ -54,8 +50,8 @@ class _Page:
     response: Response
     input_url: str
     purpose: str
-    seed_mode: str
-    discovery_source: str
+    seed_mode: SeedMode
+    discovery_source: DiscoverySource
     content_type: str
     route: ResponseRoute
 
@@ -124,7 +120,9 @@ class HtmlHandler:
 
     def handle(self, response: Response) -> Iterator[scrapy.Request]:
         meta = response.meta
-        content_type = response.headers.get(b"Content-Type", b"").decode("latin1", errors="replace")
+        content_type = (response.headers.get(b"Content-Type") or b"").decode(
+            "latin1", errors="replace"
+        )
         page = _Page(
             response=response,
             input_url=meta.get("input_url", response.url),
@@ -243,7 +241,7 @@ class HtmlHandler:
                 yield request
 
     @staticmethod
-    def _sitemap_candidate(loc: str, source_url: str, seed_mode: str) -> Candidate:
+    def _sitemap_candidate(loc: str, source_url: str, seed_mode: SeedMode) -> Candidate:
         group = recognizable_asset(loc)
         if is_recognizable_binary(loc) or group is not None:
             return Candidate(
@@ -254,9 +252,7 @@ class HtmlHandler:
                 purpose="asset",
                 explicit=False,
                 discovery_source="sitemap",
-                asset_role=_ASSET_ROLES.get(group, "document_attachment")
-                if group
-                else "document_attachment",
+                asset_role=role_for_group(group),
                 asset_group=group,
             )
         try:
@@ -401,7 +397,7 @@ class HtmlHandler:
         analysis: Any,
         stored_article: dict[str, Any],
         input_url: str,
-        seed_mode: str,
+        seed_mode: SeedMode,
     ) -> Iterator[scrapy.Request]:
         gate_reason = self.expansion_gate_reason(response, stored_article)
         if gate_reason is not None:
@@ -417,7 +413,7 @@ class HtmlHandler:
         self.writer.checkpoint(input_url)
 
     def _asset_requests(
-        self, response: Response, analysis: Any, seed_mode: str
+        self, response: Response, analysis: Any, seed_mode: SeedMode
     ) -> Iterator[scrapy.Request]:
         for asset in analysis.assets:
             if hasattr(self.writer, "state") and hasattr(self.writer.state, "add_asset_referrer"):

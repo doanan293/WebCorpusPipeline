@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterable, Iterator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, override
 from urllib.parse import urlsplit
 
 import scrapy
@@ -45,6 +45,7 @@ class ReusedAssetSpider(UnifiedSpider):
         self.targets = targets
         self.assets = AssetResponseHandler(options=options, writer=writer, policy=policy)
 
+    @override
     def start_requests(self) -> Iterator[scrapy.Request]:
         for target in self.targets:
             for referring_page in target.referring_pages:
@@ -86,11 +87,13 @@ class ReusedAssetSpider(UnifiedSpider):
                 dont_filter=True,
             )
 
+    @override
     def parse_response(self, response: Response) -> Iterator[scrapy.Request]:
         # Reused targets are always asset requests, so no HTML expansion can follow.
         self.assets.try_handle(response)
         return iter(())
 
+    @override
     async def start(self) -> AsyncIterator[scrapy.Request]:
         for request in self.start_requests():
             yield request

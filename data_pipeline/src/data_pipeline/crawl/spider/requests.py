@@ -244,7 +244,9 @@ class RequestFactory:
                 asset_role=cast(Any, record.get("asset_role")),
                 asset_group=cast(Any, record.get("asset_group")),
             )
-            decision = FrontierDecision("schedule", url, None, int(record.get("priority") or 0))
+            decision = FrontierDecision(
+                "schedule", url, None, int(cast("int | str", record.get("priority") or 0))
+            )
             request = self.for_scheduled(candidate, decision)
             if request is not None:
                 yield request
