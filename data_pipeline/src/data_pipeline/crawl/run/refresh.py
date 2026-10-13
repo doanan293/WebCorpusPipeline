@@ -5,15 +5,13 @@ import os
 import shutil
 import sqlite3
 import time
-from collections import defaultdict
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 from urllib.parse import urlsplit
 
-from data_pipeline.crawl.config import CrawlerConfig
+from data_pipeline.crawl.spider.refresh import RefreshSession, RefreshSettings
 from data_pipeline.crawl.state.export import iter_final_articles
 from data_pipeline.crawl.state.refresh_store import CONTINUABLE_RUN_STATUSES, RefreshStore
 from data_pipeline.crawl.state.requeue import restore_status
@@ -24,23 +22,6 @@ RefreshReason = Literal[
 ]
 FINISHED_CRAWL_STATUSES = frozenset({"complete", "complete_with_failures", "truncated"})
 RUN_ID_FORMAT = "%Y%m%dT%H%M%SZ"
-
-
-@dataclass(frozen=True, slots=True)
-class RefreshSettings:
-    pagination_empty_pages: int = 1
-    recent_days: int = 60
-    recent_runs: int = 4
-    recheck_limit: int = 5000
-
-    @classmethod
-    def from_config(cls, config: CrawlerConfig) -> RefreshSettings:
-        return cls(
-            pagination_empty_pages=config.refresh_pagination_empty_pages,
-            recent_days=config.refresh_recent_days,
-            recent_runs=config.refresh_recent_runs,
-            recheck_limit=config.refresh_recheck_limit,
-        )
 
 
 def new_run_id(now: float) -> str:
@@ -227,74 +208,6 @@ def select_targets(
         for url in urls:
             selected.setdefault(url, reason)
     return sorted(selected.items())
-
-
-def conditional_headers(record: Mapping[str, object]) -> dict[str, str]:
-    headers: dict[str, str] = {}
-    if record.get("etag"):
-        headers["If-None-Match"] = str(record["etag"])
-    if record.get("last_modified"):
-        headers["If-Modified-Since"] = str(record["last_modified"])
-    return headers
-
-
-def response_validators(headers: Any) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for header, key in ((b"ETag", "etag"), (b"Last-Modified", "last_modified")):
-        raw = headers.get(header)
-        if raw:
-            values[key] = raw.decode("latin1") if isinstance(raw, bytes) else str(raw)
-    return values
-
-
-def classify_refetch(
-    previous_content_id: str | None, content_id: str, gate_reason: str | None
-) -> str:
-    if gate_reason is not None:
-        return f"gate_{gate_reason}"
-    if previous_content_id is None:
-        return "new"
-    return "unchanged" if previous_content_id == content_id else "modified"
-
-
-class RefreshSession:
-    def __init__(self, store: RefreshStore, run_id: str, settings: RefreshSettings) -> None:
-        self.store = store
-        self.run_id = run_id
-        self.settings = settings
-        self._empty_pages: dict[str, int] = defaultdict(int)
-
-    def follow_pagination(self, family_key: str, new_content_count: int) -> bool:
-        if new_content_count > 0:
-            self._empty_pages[family_key] = 0
-            return True
-        self._empty_pages[family_key] += 1
-        return self._empty_pages[family_key] < self.settings.pagination_empty_pages
-
-    def add_pagination_target(self, url: str) -> bool:
-        return self.store.add_target(self.run_id, url, "pagination_next")
-
-    def finish_target(self, url: str, outcome: str, error: str | None = None) -> None:
-        self.store.finish_target(self.run_id, url, outcome, error)
-
-    def record_change(
-        self,
-        url: str,
-        change: str,
-        *,
-        page_role: str,
-        content_id: str,
-        previous_content_id: str | None = None,
-    ) -> None:
-        record: dict[str, object] = {
-            "url": url,
-            "change": change,
-            "page_role": page_role,
-            "content_id": content_id,
-        }
-        if previous_content_id is not None:
-            record["previous_content_id"] = previous_content_id
-        self.store.record_change(self.run_id, record)
 
 
 def prepare_refresh_run(

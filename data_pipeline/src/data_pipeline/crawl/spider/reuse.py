@@ -4,12 +4,14 @@ from typing import Any, AsyncIterator, Iterable, Iterator
 from urllib.parse import urlsplit
 
 import scrapy
+from scrapy.http import Response
 
 from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.frontier.assets import AssetPolicy
 from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.output.writer import CrawlWriter
 from data_pipeline.crawl.run.reuse import ReusedAssetTarget
+from data_pipeline.crawl.spider.assets import AssetResponseHandler
 from data_pipeline.crawl.spider.unified import UnifiedSpider
 
 
@@ -32,6 +34,7 @@ class ReusedAssetSpider(UnifiedSpider):
         self.writer = writer
         self.policy = policy
         self.targets = targets
+        self.assets = AssetResponseHandler(options=options, writer=writer, policy=policy)
 
     def start_requests(self) -> Iterator[scrapy.Request]:
         for target in self.targets:
@@ -73,6 +76,11 @@ class ReusedAssetSpider(UnifiedSpider):
                 },
                 dont_filter=True,
             )
+
+    def parse_response(self, response: Response) -> Iterator[scrapy.Request]:
+        # Reused targets are always asset requests, so no HTML expansion can follow.
+        self.assets.try_handle(response)
+        return iter(())
 
     async def start(self) -> AsyncIterator[scrapy.Request]:
         for request in self.start_requests():

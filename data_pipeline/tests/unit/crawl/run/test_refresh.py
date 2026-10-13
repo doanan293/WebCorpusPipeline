@@ -8,17 +8,19 @@ from pathlib import Path
 import pytest
 
 from data_pipeline.crawl.run.refresh import (
-    RefreshSession,
-    RefreshSettings,
-    classify_refetch,
     complete_refresh_run,
-    conditional_headers,
     new_run_id,
     preflight,
     prepare_refresh_run,
-    response_validators,
     select_recent,
     select_targets,
+)
+from data_pipeline.crawl.spider.refresh import (
+    RefreshSession,
+    RefreshSettings,
+    classify_refetch,
+    conditional_headers,
+    response_validators,
 )
 from data_pipeline.crawl.state.refresh_store import RefreshStore
 from data_pipeline.crawl.state.store import CrawlState

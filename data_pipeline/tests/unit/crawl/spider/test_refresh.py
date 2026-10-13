@@ -15,7 +15,7 @@ from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
 from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.output.writer import CrawlWriter
-from data_pipeline.crawl.run.refresh import RefreshSession, RefreshSettings
+from data_pipeline.crawl.spider.refresh import RefreshSession, RefreshSettings
 from data_pipeline.crawl.spider.unified import UnifiedSpider
 from data_pipeline.crawl.state.refresh_store import RefreshStore
 from data_pipeline.crawl.state.store import CrawlState
