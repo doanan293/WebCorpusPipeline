@@ -162,7 +162,6 @@ class RefreshHandler:
         )
 
     def pagination_request(self, url: str) -> scrapy.Request | None:
-        assert self.session is not None
         canonical, _, _ = canonicalize_url(url)
         if not canonical:
             return None
@@ -174,7 +173,6 @@ class RefreshHandler:
         return self.request(canonical, "pagination_next")
 
     def handle(self, response: Response) -> Iterator[scrapy.Request]:
-        assert self.session is not None
         url = str(response.meta.get("input_url", response.url))
         if response.status == HTTPStatus.NOT_MODIFIED:
             self.session.finish_target(url, "not_modified")

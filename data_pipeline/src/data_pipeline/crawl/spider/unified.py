@@ -111,9 +111,8 @@ class UnifiedSpider(scrapy.Spider):
 
     def start_requests(self) -> Iterator[scrapy.Request]:
         yield from self.requests.resume(self.resume_records)
-        if self.refresh is not None:
+        if self.refresh_handler is not None:
             for url, reason in self.refresh_targets:
-                assert self.refresh_handler is not None
                 yield self.refresh_handler.request(url, reason)
             return
 

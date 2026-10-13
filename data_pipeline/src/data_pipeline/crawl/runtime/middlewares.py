@@ -5,6 +5,7 @@ import random
 from collections.abc import Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
+from typing import ClassVar
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from playwright.async_api import Error as PlaywrightError
@@ -81,7 +82,7 @@ async def _wait_for_stable_body(page) -> None:
 
 
 class SafeRedirectMiddleware:
-    redirect_statuses = {301, 302, 303, 307, 308}
+    redirect_statuses: ClassVar[frozenset[int]] = frozenset({301, 302, 303, 307, 308})
 
     def __init__(self, max_redirects: int = 20) -> None:
         self.max_redirects = max_redirects
@@ -118,7 +119,7 @@ class SafeRedirectMiddleware:
             raise IgnoreRequest("redirect_limit")
 
         meta = dict(request.meta)
-        redirect_urls = tuple(meta.get("redirect_urls", ())) + (request.url,)
+        redirect_urls = (*meta.get("redirect_urls", ()), request.url)
         meta["redirect_times"] = redirect_times
         meta["redirect_urls"] = redirect_urls
         redirect = request.replace(url=canonical_target, meta=meta, dont_filter=True)
@@ -167,7 +168,9 @@ class PoliteRetryMiddleware:
         self.retry_statuses = retry_statuses or {408, 425, 429, 500, 502, 503, 504}
         self.base_delay = base_delay
         self.max_delay = max_delay
-        self.jitter = jitter or (lambda delay: random.uniform(delay * 0.5, delay * 1.5))
+        self.jitter = jitter or (
+            lambda delay: random.uniform(delay * 0.5, delay * 1.5)  # noqa: S311 -- retry jitter, not security
+        )
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -219,7 +222,7 @@ class PoliteRetryMiddleware:
             request.url[:240],
         )
         clock = self.clock if self.clock is not None else _reactor_clock()
-        delayed = deferLater(clock, delay, lambda: retry)
+        delayed = task.deferLater(clock, delay, lambda: retry)
         if self.stats is not None:
             self.stats.inc_value("hust/retry/count")
             self.stats.inc_value("hust/retry/waiting")
@@ -257,15 +260,9 @@ class PoliteRetryMiddleware:
         return await self._retry(request, None, type(exception).__name__)
 
 
-def deferLater(clock, delay: float, callable, *args, **kwargs):
-    if isinstance(clock, task.Clock):
-        return task.deferLater(clock, delay, callable, *args, **kwargs)
-    return task.deferLater(clock, delay, callable, *args, **kwargs)
-
-
 class PlaywrightFallbackMiddleware:
     @classmethod
-    def from_crawler(cls, crawler):
+    def from_crawler(cls, crawler):  # noqa: ARG003 -- Scrapy component interface
         return cls()
 
     def process_response(self, request: Request, response: Response):
@@ -318,7 +315,13 @@ class ContentOnlyHeadersGuard:
         crawler.signals.connect(instance.headers_received, signal=signals.headers_received)
         return instance
 
-    def headers_received(self, headers, body_length: int, request: Request, spider) -> None:
+    def headers_received(
+        self,
+        headers,
+        body_length: int,  # noqa: ARG002 -- Scrapy passes every signal argument
+        request: Request,
+        spider,  # noqa: ARG002 -- Scrapy passes every signal argument
+    ) -> None:
         if request.meta.get("asset_mode") != "content-only":
             return
         raw = headers.get(b"Content-Type") or headers.get("Content-Type") or b""

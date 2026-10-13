@@ -50,7 +50,9 @@ class RequestFactory:
         self, candidate: Candidate, decision: FrontierDecision
     ) -> scrapy.Request | None:
         canonical = decision.canonical_url
-        assert canonical is not None
+        if canonical is None:
+            msg = "a scheduled decision must carry a canonical URL"
+            raise ValueError(msg)
 
         # Skip completed URLs on resume
         state = getattr(self.writer, "state", None)

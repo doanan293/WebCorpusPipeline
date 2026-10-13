@@ -171,7 +171,7 @@ class AdaptiveConcurrencyMiddleware:
             )
         return health
 
-    def process_request(self, request: Request, spider=None):
+    def process_request(self, request: Request, spider=None):  # noqa: ARG002 -- Scrapy middleware interface
         self._started[id(request)] = monotonic()
 
     def _observe_response(self, request: Request, response: Response) -> None:
@@ -204,7 +204,12 @@ class AdaptiveConcurrencyMiddleware:
         self._update_resource_pressure()
         self.reconcile_host(self._host(request), request)
 
-    def _response_downloaded(self, request: Request, response: Response, spider=None) -> None:
+    def _response_downloaded(
+        self,
+        request: Request,
+        response: Response,
+        spider=None,  # noqa: ARG002 -- Scrapy signal handler interface
+    ) -> None:
         self._observe_response(request, response)
         self._signal_observed_responses.add(id(response))
 

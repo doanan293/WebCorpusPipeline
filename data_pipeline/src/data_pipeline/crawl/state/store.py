@@ -412,7 +412,9 @@ class CrawlState:
             "SELECT url FROM content_owner WHERE content_id = ?;", (content_id,)
         )
         row = cursor.fetchone()
-        assert row is not None
+        if row is None:
+            msg = f"content owner missing after claim: {content_id}"
+            raise RuntimeError(msg)
         return str(row[0])
 
     def counts(self) -> dict[str, int]:

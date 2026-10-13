@@ -93,7 +93,7 @@ class CrawlProgressReporter:
             crawler.signals.connect(reporter.close, signal=signals.spider_closed)
         return reporter
 
-    def close(self, *args) -> None:
+    def close(self, *args) -> None:  # noqa: ARG002 -- signal handler arguments are ignored
         loop = getattr(self, "_loop", None)
         if loop is not None and loop.running:
             loop.stop()

@@ -42,7 +42,9 @@ class PublicTransport:
             await self.session.close()
 
     async def get(self, url: str, headers: dict[str, str] | None = None) -> Response:
-        assert self.session is not None
+        if self.session is None:
+            msg = "PublicTransport must be used as an async context manager"
+            raise RuntimeError(msg)
         response = await self.session.get(
             url, headers=headers, allow_redirects=True, max_redirects=self.settings.max_redirects
         )
