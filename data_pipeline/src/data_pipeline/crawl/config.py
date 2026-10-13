@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal
 import yaml
 
 from data_pipeline.core.hostnames import load_hostnames
+from data_pipeline.core.paths import project_paths
 
 if TYPE_CHECKING:
     from data_pipeline.crawl.runtime.profiles import RuntimeTuning
@@ -68,14 +69,17 @@ class CrawlerConfig:
     def load(
         cls,
         config_path: Path,
-        domains_path: Path = Path("docs/domain_active.txt"),
+        domains_path: Path | None = None,
         *,
         environ: Mapping[str, str] | None = None,
         hostnames: frozenset[str] | None = None,
     ) -> "CrawlerConfig":
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         environment = os.environ if environ is None else environ
-        hostnames = load_hostnames(domains_path) if hostnames is None else frozenset(hostnames)
+        if hostnames is None:
+            hostnames = load_hostnames(domains_path or project_paths().domains_active)
+        else:
+            hostnames = frozenset(hostnames)
         contact = environment.get("CRAWLER_CONTACT", "").strip()
         if not contact:
             contact = str(raw.get("contact", "")).strip()

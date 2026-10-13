@@ -13,12 +13,8 @@ from data_pipeline.enrich.parsing.local.pdf import build_pdf_subset, cloud_part_
 from data_pipeline.enrich.state import WorkState
 
 
-def extract_documents(state: WorkState, settings, repo_root: Path) -> RunSummary:
-    keys = KeyPool(
-        __import__("data_pipeline.core.settings", fromlist=["load_api_keys"]).load_api_keys(
-            repo_root
-        )
-    )
+def extract_documents(state: WorkState, settings, *, api_keys: list[tuple[str, str]]) -> RunSummary:
+    keys = KeyPool(api_keys)
     cache_root = state.root / "cache"
     pending = list(state.pending_parse())
 
@@ -65,7 +61,3 @@ def extract_documents(state: WorkState, settings, repo_root: Path) -> RunSummary
             merged = merge_parts(local, remote)
             state.mark_parse(file.url, merged, cache_root / f"{key}.json")
     return state.summary()
-
-
-def extract_documents_sync(state, settings, repo_root):
-    return extract_documents(state, settings, repo_root)

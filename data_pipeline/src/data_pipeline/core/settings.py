@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -9,10 +10,12 @@ from typing import Any
 import yaml
 from dotenv import dotenv_values
 
+from data_pipeline.core.paths import ProjectPaths
+
 
 @dataclass(frozen=True)
 class Settings:
-    repo_root: Path
+    project_root: Path
     work_dir: Path = Path("data/enrichment")
     source: Path = Path("data/crawl/final")
     concurrency: int = 64
@@ -34,10 +37,6 @@ class Settings:
     extra: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @property
-    def project_root(self) -> Path:
-        return self.repo_root / "data_pipeline"
-
-    @property
     def source_path(self) -> Path:
         return self.source if self.source.is_absolute() else self.project_root / self.source
 
@@ -51,8 +50,8 @@ def _numbered_key(name: str) -> tuple[int, str]:
     return (int(m.group(1)) if m else 0, name)
 
 
-def load_api_keys(repo_root: Path) -> list[tuple[str, str]]:
-    values = {**dotenv_values(repo_root / ".env"), **os.environ}
+def load_api_keys(env_file: Path) -> list[tuple[str, str]]:
+    values = {**dotenv_values(env_file), **os.environ}
     result: list[tuple[str, str]] = []
     seen: set[str] = set()
     for name in sorted(
@@ -72,9 +71,8 @@ def _positive(name: str, value: Any, integer: bool = True) -> int | float:
     return result
 
 
-def load_settings(repo_root: Path, overrides: dict[str, Any] | None = None) -> Settings:
-    repo_root = repo_root.resolve()
-    config_path = repo_root / "data_pipeline/config/data.yaml"
+def load_settings(paths: ProjectPaths, overrides: Mapping[str, Any] | None = None) -> Settings:
+    config_path = paths.pipeline_config
     config = yaml.safe_load(config_path.read_text()) if config_path.exists() else {}
     config = config or {}
     d = {**config.get("download", {}), **config.get("parser", {})}
@@ -122,7 +120,7 @@ def load_settings(repo_root: Path, overrides: dict[str, Any] | None = None) -> S
         "cloud_timeout_seconds",
     ):
         values[key] = _positive(key, values[key], False)
-    values["repo_root"] = repo_root
+    values["project_root"] = paths.root.resolve()
     values["work_dir"] = Path(values["work_dir"])
     values["source"] = Path(values["source"])
     return Settings(**values)

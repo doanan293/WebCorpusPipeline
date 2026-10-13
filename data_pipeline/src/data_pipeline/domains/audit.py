@@ -9,6 +9,7 @@ from functools import partial
 from pathlib import Path
 from urllib.parse import urlparse
 
+from data_pipeline.core.paths import project_paths
 from data_pipeline.core.policies.network import resolve_hostname
 from data_pipeline.domains.browser import browser_probe_results
 from data_pipeline.domains.probe import (
@@ -186,9 +187,9 @@ def _apply_browser_attempts(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="hust-domain-audit")
-    parser.add_argument("--all-domains", type=Path, default=Path("docs/domain_all.txt"))
-    parser.add_argument("--active-domains", type=Path, default=Path("docs/domain_active.txt"))
-    parser.add_argument("--report", type=Path, default=Path("docs/domain_status.jsonl"))
+    parser.add_argument("--all-domains", type=Path, default=project_paths().domains_all)
+    parser.add_argument("--active-domains", type=Path, default=project_paths().domains_active)
+    parser.add_argument("--report", type=Path, default=project_paths().domains_status)
     parser.add_argument("--workers", type=int, default=32)
     parser.add_argument("--browser-workers", type=int, default=6)
     parser.add_argument("--browser-timeout", type=float, default=15.0)

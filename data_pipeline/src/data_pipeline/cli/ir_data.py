@@ -6,21 +6,19 @@ import json
 import sys
 from pathlib import Path
 
-from data_pipeline.core.settings import load_settings
+from data_pipeline.core.env import load_env
+from data_pipeline.core.paths import project_paths
+from data_pipeline.core.settings import load_api_keys, load_settings
 from data_pipeline.enrich.export import export_enrichment
 from data_pipeline.enrich.inventory import index_inventory, source_key
 from data_pipeline.enrich.models import jsonable
-from data_pipeline.enrich.parsing.pipeline import extract_documents_sync
+from data_pipeline.enrich.parsing.pipeline import extract_documents
 from data_pipeline.enrich.state import WorkState, fingerprint_source, read_crawl_id
 
 REBIND_HELP = (
     "accept a changed source for this work directory (needed once after upgrading, "
     "or when the source is not a refresh of the same crawl)"
 )
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[4]
 
 
 def parser() -> argparse.ArgumentParser:
@@ -77,8 +75,10 @@ def parser() -> argparse.ArgumentParser:
 
 
 def _settings(args):
-    root = _repo_root()
-    return root, load_settings(root, {"source": Path(args.source), "work_dir": Path(args.work_dir)})
+    paths = project_paths()
+    return paths, load_settings(
+        paths, {"source": Path(args.source), "work_dir": Path(args.work_dir)}
+    )
 
 
 def _summary(summary, as_json=False):
@@ -106,15 +106,15 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(report, ensure_ascii=False, indent=2))
             return 0 if report["valid"] else 3
         if args.command == "import-mongo":
-            root = _repo_root()
-            settings = load_settings(root)
+            paths = project_paths()
+            settings = load_settings(paths)
             from data_pipeline.corpus.mongo import import_corpus
 
             print(json.dumps(import_corpus(Path(args.corpus), settings), indent=2))
             return 0
         if args.command == "query":
-            root = _repo_root()
-            settings = load_settings(root)
+            paths = project_paths()
+            settings = load_settings(paths)
             from data_pipeline.corpus.query import query_links
 
             direction = "incoming" if args.incoming or not args.outgoing else "outgoing"
@@ -127,27 +127,21 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.command == "publish":
-            from dotenv import load_dotenv
-
             from data_pipeline.corpus.kaggle import publish_corpus
 
-            root = _repo_root()
-            load_dotenv(root / ".env", override=False)
+            paths = project_paths()
+            load_env(paths)
             result = publish_corpus(
-                Path(args.corpus), root / "data_pipeline" / args.config, args.update, args.message
+                Path(args.corpus), paths.root / args.config, args.update, args.message
             )
             print(json.dumps(result, indent=2))
             return 0
         if args.command == "pull":
-            from dotenv import load_dotenv
-
             from data_pipeline.corpus.kaggle import pull_corpus
 
-            root = _repo_root()
-            load_dotenv(root / ".env", override=False)
-            result = pull_corpus(
-                root / "data_pipeline" / args.lock, root / "data_pipeline" / args.destination
-            )
+            paths = project_paths()
+            load_env(paths)
+            result = pull_corpus(paths.root / args.lock, paths.root / args.destination)
             print(result)
             return 0
         if args.command == "evaluate-extraction":
@@ -160,8 +154,8 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.command == "reconcile-job":
-            root = _repo_root()
-            settings = load_settings(root, {"work_dir": Path(args.work_dir)})
+            paths = project_paths()
+            settings = load_settings(paths, {"work_dir": Path(args.work_dir)})
             import sqlite3
 
             conn = sqlite3.connect(settings.work_path / "state.sqlite3")
@@ -178,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
             return 0
-        root, settings = _settings(args)
+        paths, settings = _settings(args)
         source = settings.source_path
         work = settings.work_path
         fp = fingerprint_source(source)
@@ -202,7 +196,8 @@ def main(argv: list[str] | None = None) -> int:
                 return _summary(summary, args.json)
             if args.command == "extract":
                 return _summary(
-                    extract_documents_sync(state, settings, root), getattr(args, "json", False)
+                    extract_documents(state, settings, api_keys=load_api_keys(paths.env_file)),
+                    getattr(args, "json", False),
                 )
             if args.command == "enrich-documents":
                 if not state.inventory_done(source_key(source)):
@@ -211,7 +206,8 @@ def main(argv: list[str] | None = None) -> int:
 
                 asyncio.run(run_downloads(state, settings))
                 return _summary(
-                    extract_documents_sync(state, settings, root), getattr(args, "json", False)
+                    extract_documents(state, settings, api_keys=load_api_keys(paths.env_file)),
+                    getattr(args, "json", False),
                 )
             if args.command == "export":
                 export_enrichment(state, Path(args.output))
