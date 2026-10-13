@@ -293,7 +293,7 @@ class UnifiedSpider(scrapy.Spider):
 
         # 4. Coordinator notification
         if purpose == "sitemap":
-            self.coordinator.complete_sitemap(hostname, request.url, result="failed", targets=0)
+            self.coordinator.complete_sitemap(hostname, request.url, result="failed")
         elif purpose == "robots":
             self.coordinator.complete_robots(hostname)
 

@@ -134,9 +134,7 @@ class HtmlHandler:
             try:
                 parsed = parse_sitemap(response.body, response.url, route.content_type)
             except SitemapParseError:
-                self.coordinator.complete_sitemap(
-                    hostname, response.url, result="failed", targets=0
-                )
+                self.coordinator.complete_sitemap(hostname, response.url, result="failed")
                 self.writer.write_error({"url": input_url, "error": "sitemap_parse_error"})
                 self.writer.checkpoint(input_url)
                 return
@@ -158,9 +156,7 @@ class HtmlHandler:
                             req = self.requests.for_candidate(cand)
                             if req is not None:
                                 yield req
-                self.coordinator.complete_sitemap(
-                    hostname, response.url, result="success", targets=0
-                )
+                self.coordinator.complete_sitemap(hostname, response.url, result="success")
             else:
                 valid_targets = 0
                 for loc in parsed.locations:
@@ -214,18 +210,14 @@ class HtmlHandler:
                         req = self.requests.for_candidate(cand)
                         if req is not None:
                             yield req
-                self.coordinator.complete_sitemap(
-                    hostname, response.url, result="success", targets=valid_targets
-                )
+                self.coordinator.complete_sitemap(hostname, response.url, result="success")
 
             self.writer.checkpoint(input_url)
 
         elif route.action == "optional_absent":
             hostname = (urlsplit(response.url).hostname or "").lower().rstrip(".")
             if purpose == "sitemap":
-                self.coordinator.complete_sitemap(
-                    hostname, response.url, result="absent", targets=0
-                )
+                self.coordinator.complete_sitemap(hostname, response.url, result="absent")
             elif purpose == "robots":
                 self.coordinator.complete_robots(hostname)
             self.writer.record_absent(
@@ -241,9 +233,7 @@ class HtmlHandler:
         elif route.action == "http_error":
             hostname = (urlsplit(response.url).hostname or "").lower().rstrip(".")
             if purpose == "sitemap":
-                self.coordinator.complete_sitemap(
-                    hostname, response.url, result="failed", targets=0
-                )
+                self.coordinator.complete_sitemap(hostname, response.url, result="failed")
             elif purpose == "robots":
                 self.coordinator.complete_robots(hostname)
 

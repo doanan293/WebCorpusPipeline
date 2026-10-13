@@ -139,7 +139,6 @@ class SitemapDiscoveryCoordinator:
         url: str,
         *,
         result: Literal["success", "failed", "absent"],
-        targets: int = 0,
     ) -> None:
         clean = self._clean_url(url)
         host = self._get_or_create_host(hostname)
@@ -237,7 +236,7 @@ def _ordered_unique_locations(
 def parse_sitemap(body: bytes, base_url: str, content_type: str = "") -> SitemapParseResult:
     source = _maybe_decompress(body, base_url, content_type)
     try:
-        root = ElementTree.fromstring(source)
+        root = ElementTree.fromstring(source)  # noqa: S314 -- expat limits entity expansion; response size is capped
     except ElementTree.ParseError as exc:
         raise SitemapParseError("invalid_xml") from exc
     except Exception as exc:

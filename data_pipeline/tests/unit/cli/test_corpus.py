@@ -47,7 +47,7 @@ def test_build_graph_passes_the_output_directory(
     recorded: dict[str, object], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[Path] = []
-    monkeypatch.setattr(graph, "build_graph", lambda source, work, output: calls.append(output))
+    monkeypatch.setattr(graph, "build_graph", lambda source, output: calls.append(output))
 
     assert main(["corpus", "build-graph", "--output", str(tmp_path / "g"), "--rebind-source"]) == 0
     assert calls == [tmp_path / "g"]

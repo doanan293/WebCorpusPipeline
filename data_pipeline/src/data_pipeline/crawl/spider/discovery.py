@@ -172,7 +172,7 @@ class DiscoverySpider(scrapy.Spider):
                         "message": str(exc),
                     }
                 )
-                self.coordinator.complete_sitemap(hostname, logical_url, result="failed", targets=0)
+                self.coordinator.complete_sitemap(hostname, logical_url, result="failed")
                 return
 
             if parsed.kind == "index":
@@ -186,9 +186,7 @@ class DiscoverySpider(scrapy.Spider):
                             )
                             if req is not None:
                                 yield req
-                self.coordinator.complete_sitemap(
-                    hostname, logical_url, result="success", targets=0
-                )
+                self.coordinator.complete_sitemap(hostname, logical_url, result="success")
             else:
                 valid_targets = 0
                 for loc in parsed.locations:
@@ -201,9 +199,7 @@ class DiscoverySpider(scrapy.Spider):
                                 {"url": canonical, "discovered_from": response.url}
                             )
                             valid_targets += 1
-                self.coordinator.complete_sitemap(
-                    hostname, logical_url, result="success", targets=valid_targets
-                )
+                self.coordinator.complete_sitemap(hostname, logical_url, result="success")
             self.writer.record_probe(
                 {
                     "url": input_url,
@@ -218,7 +214,7 @@ class DiscoverySpider(scrapy.Spider):
             if purpose == "robots":
                 self.coordinator.complete_robots(hostname)
             elif purpose == "sitemap":
-                self.coordinator.complete_sitemap(hostname, logical_url, result="absent", targets=0)
+                self.coordinator.complete_sitemap(hostname, logical_url, result="absent")
             self.writer.record_probe(
                 {
                     "url": input_url,
@@ -237,7 +233,7 @@ class DiscoverySpider(scrapy.Spider):
             if purpose == "robots":
                 self.coordinator.complete_robots(hostname)
             elif purpose == "sitemap":
-                self.coordinator.complete_sitemap(hostname, logical_url, result="failed", targets=0)
+                self.coordinator.complete_sitemap(hostname, logical_url, result="failed")
             self.writer.write_error(
                 {
                     "url": input_url,
@@ -263,7 +259,7 @@ class DiscoverySpider(scrapy.Spider):
         if purpose == "robots":
             self.coordinator.complete_robots(hostname)
         elif purpose == "sitemap":
-            self.coordinator.complete_sitemap(hostname, logical_url, result="failed", targets=0)
+            self.coordinator.complete_sitemap(hostname, logical_url, result="failed")
 
         self.writer.write_error(
             {"url": input_url, "error": "request_failed", "message": str(failure.value)}

@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from data_pipeline.crawl.options import CrawlOptions
-from data_pipeline.crawl.output.writer import CrawlWriter, StorageLimit, content_id_for
+from data_pipeline.crawl.output.writer import CrawlWriter, StorageLimitError, content_id_for
 from data_pipeline.crawl.state.store import CrawlState
 
 
@@ -46,7 +46,7 @@ def test_identical_files_share_one_blob(tmp_path: Path) -> None:
 
 def test_file_size_limit_rejection(tmp_path: Path) -> None:
     writer = make_writer(tmp_path, max_file_bytes=3)
-    with pytest.raises(StorageLimit) as exc_info:
+    with pytest.raises(StorageLimitError) as exc_info:
         writer.write_file(
             "https://a.test/large.pdf", "https://a.test/large.pdf", "application/pdf", b"four"
         )
@@ -59,7 +59,7 @@ def test_storage_budget_rejection(tmp_path: Path) -> None:
     writer.write_file("https://a.test/1.pdf", "https://a.test/1.pdf", "application/pdf", b"abc")
     assert writer.stored_bytes == 3
 
-    with pytest.raises(StorageLimit) as exc_info:
+    with pytest.raises(StorageLimitError) as exc_info:
         writer.write_file("https://a.test/2.pdf", "https://a.test/2.pdf", "application/pdf", b"def")
     assert exc_info.value.reason == "storage_budget"
     assert writer.stored_bytes == 3

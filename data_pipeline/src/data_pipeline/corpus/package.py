@@ -111,7 +111,7 @@ def package_corpus(source: Path, enrichment: Path, output: Path) -> Path:
             conn.close()
         else:
             (staging / "documents.jsonl").write_text("")
-        build_graph(source, enrichment, staging)
+        build_graph(source, staging)
         report = staging / "extraction-report.json"
         exported_report = enrichment / "extraction-report.json"
         if exported_report.exists():

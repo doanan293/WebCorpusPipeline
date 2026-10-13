@@ -160,7 +160,7 @@ class AssetPolicy:
     def __init__(self, options: CrawlOptions | None = None) -> None:
         self.options = options if options is not None else CrawlOptions()
 
-    def consider(self, asset: ArticleAsset, source_page: str) -> AssetDecision:
+    def consider(self, asset: ArticleAsset) -> AssetDecision:
         group = recognizable_asset(asset.url)
         if group is None:
             if asset.role == "inline_image":

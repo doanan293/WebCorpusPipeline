@@ -87,7 +87,7 @@ def test_empty_discovery_finishes_as_no_sitemap() -> None:
     coordinator = SitemapDiscoveryCoordinator()
     coordinator.register_sitemap("a.test", "https://a.test/sitemap.xml", required=False)
     coordinator.complete_robots("a.test")
-    coordinator.complete_sitemap("a.test", "https://a.test/sitemap.xml", result="absent", targets=0)
+    coordinator.complete_sitemap("a.test", "https://a.test/sitemap.xml", result="absent")
     host = coordinator.snapshot()["hosts"]["a.test"]
     assert host["mode"] == "no_sitemap"
     assert "fallback_targets" not in host
@@ -103,8 +103,8 @@ def test_partial_sitemap_mode() -> None:
     coordinator.register_sitemap("a.test", "https://a.test/broken.xml", required=True)
     coordinator.record_sitemap_target("a.test", "https://a.test/article")
     coordinator.complete_robots("a.test")
-    coordinator.complete_sitemap("a.test", "https://a.test/root.xml", result="success", targets=1)
-    coordinator.complete_sitemap("a.test", "https://a.test/broken.xml", result="failed", targets=0)
+    coordinator.complete_sitemap("a.test", "https://a.test/root.xml", result="success")
+    coordinator.complete_sitemap("a.test", "https://a.test/broken.xml", result="failed")
     assert coordinator.snapshot()["hosts"]["a.test"]["mode"] == "sitemap_partial"
 
 

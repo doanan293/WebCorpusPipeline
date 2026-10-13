@@ -6,7 +6,7 @@ from scrapy.http import Response
 
 from data_pipeline.crawl.frontier.assets import AssetPolicy, recognizable_asset
 from data_pipeline.crawl.options import CrawlOptions
-from data_pipeline.crawl.output.writer import CrawlWriter, StorageLimit
+from data_pipeline.crawl.output.writer import CrawlWriter, StorageLimitError
 from data_pipeline.crawl.spider.routing import route_response
 
 
@@ -76,7 +76,7 @@ class AssetResponseHandler:
                         asset_role=asset_role or "document_attachment",
                         referring_page=response.meta.get("referring_page"),
                     )
-                except StorageLimit as exc:
+                except StorageLimitError as exc:
                     self.writer.record_skipped(
                         {
                             "url": input_url,
@@ -145,7 +145,7 @@ class AssetResponseHandler:
                         asset_role=derived_role,
                         referring_page=response.meta.get("referring_page"),
                     )
-                except StorageLimit as exc:
+                except StorageLimitError as exc:
                     self.writer.record_skipped(
                         {
                             "url": input_url,

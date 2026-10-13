@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 from pymongo import ASCENDING, MongoClient, ReplaceOne
@@ -59,6 +60,17 @@ def _page_value(value: dict) -> dict:
     return {key: value[key] for key in fields if key in value}
 
 
+def _snapshot_values(file: Path, collection: str, snapshot_id: str) -> Iterator[dict]:
+    with file.open(encoding="utf-8") as stream:
+        for line in stream:
+            value = json.loads(line)
+            if collection == "pages":
+                value = _page_value(value)
+            value["snapshot_id"] = snapshot_id
+            value["_id"] = _record_id(value, collection) + ":" + snapshot_id
+            yield value
+
+
 def _replace_batches(collection, values) -> None:
     operations = []
     batch_bytes = 0
@@ -108,23 +120,14 @@ def import_corpus(path: Path, settings) -> dict:
             if not file.exists():
                 continue
 
-            def values():
-                with file.open(encoding="utf-8") as stream:
-                    for line in stream:
-                        value = json.loads(line)
-                        if collection == "pages":
-                            value = _page_value(value)
-                        value["snapshot_id"] = sid
-                        value["_id"] = _record_id(value, collection) + ":" + sid
-                        yield value
-
-            _replace_batches(db[collection], values())
+            _replace_batches(db[collection], _snapshot_values(file, collection, sid))
         db.datasets.update_one({"_id": sid}, {"$set": {"status": "ready", "error": None}})
-        return {"snapshot_id": sid, "status": "ready"}
     except Exception as exc:
         db.datasets.update_one(
             {"_id": sid}, {"$set": {"status": "failed", "error": str(exc)[:1000]}}
         )
         raise
+    else:
+        return {"snapshot_id": sid, "status": "ready"}
     finally:
         client.close()

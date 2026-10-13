@@ -36,7 +36,7 @@ def build_graph(
 
     settings = context.build_settings(source, work_dir)
     with session.open_work_state(settings, rebind=rebind_source):
-        graph.build_graph(settings.source_path, settings.work_path, output)
+        graph.build_graph(settings.source_path, output)
     return 0
 
 

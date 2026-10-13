@@ -141,7 +141,7 @@ class CrawlerConfig:
             value = raw[name]
             if not isinstance(value, bool):
                 msg = f"{name} must be a boolean"
-                raise ValueError(msg)
+                raise ValueError(msg)  # noqa: TRY004 -- invalid configuration is a ValueError
             return value
 
         values = {

@@ -456,13 +456,13 @@ def test_asset_policy_schedules_in_all_and_records_in_content_only() -> None:
     light_policy = AssetPolicy(CrawlOptions(assets="content-only"))
     assert (
         light_policy.consider(
-            ArticleAsset("https://a.test/photo.jpg", "inline_image", external=False), page
+            ArticleAsset("https://a.test/photo.jpg", "inline_image", external=False)
         ).action
         == "record_only"
     )
     assert (
         light_policy.consider(
-            ArticleAsset("https://a.test/report.pdf", "document_attachment", external=False), page
+            ArticleAsset("https://a.test/report.pdf", "document_attachment", external=False)
         ).action
         == "record_only"
     )
@@ -470,13 +470,13 @@ def test_asset_policy_schedules_in_all_and_records_in_content_only() -> None:
     all_policy = AssetPolicy(CrawlOptions(assets="all"))
     assert (
         all_policy.consider(
-            ArticleAsset("https://a.test/photo.jpg", "inline_image", external=False), page
+            ArticleAsset("https://a.test/photo.jpg", "inline_image", external=False)
         ).action
         == "schedule"
     )
     assert (
         all_policy.consider(
-            ArticleAsset("https://a.test/report.pdf", "document_attachment", external=False), page
+            ArticleAsset("https://a.test/report.pdf", "document_attachment", external=False)
         ).action
         == "schedule"
     )

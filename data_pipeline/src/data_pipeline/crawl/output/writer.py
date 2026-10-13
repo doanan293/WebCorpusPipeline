@@ -60,7 +60,7 @@ def content_id_for(text: str) -> str:
     return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
 
 
-class StorageLimit(Exception):
+class StorageLimitError(Exception):
     def __init__(self, reason: Literal["file_size_limit", "storage_budget"]) -> None:
         super().__init__(reason)
         self.reason = reason
@@ -130,7 +130,7 @@ class CrawlWriter:
     ) -> dict[str, object]:
         body_len = len(body)
         if body_len > self.options.max_file_bytes:
-            raise StorageLimit("file_size_limit")
+            raise StorageLimitError("file_size_limit")
 
         digest = hashlib.sha256(body).hexdigest()
         ext = self._resolve_extension(final_url, url, content_type)
@@ -139,7 +139,7 @@ class CrawlWriter:
         dest = self.files_dir / filename
         if not dest.exists():
             if self._stored_bytes + body_len > self.options.max_total_file_bytes:
-                raise StorageLimit("storage_budget")
+                raise StorageLimitError("storage_budget")
             self.files_dir.mkdir(parents=True, exist_ok=True)
             tmp_path = self.files_dir / f".{digest}.tmp"
             with tmp_path.open("wb") as f:

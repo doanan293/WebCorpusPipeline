@@ -188,31 +188,33 @@ class HtmlDiscovery(TypedDict):
     rel: list[str]
 
 
-def resource_kind(url: str, content_type: str = "") -> str:
-    """Classify a URL using response MIME when known, otherwise its extension."""
-    mime = content_type.partition(";")[0].strip().lower()
-    if mime:
-        if mime in {"text/html", "application/xhtml+xml"}:
-            return "html"
-        if mime in {
-            "text/css",
-            "text/javascript",
-            "application/font-woff",
-            "application/javascript",
-            "application/vnd.ms-fontobject",
-            "application/x-javascript",
-            "application/x-font-opentype",
-            "application/x-font-ttf",
-            "application/ecmascript",
-            "text/ecmascript",
-        } or mime.startswith("font/"):
-            return "transient"
-        if mime.startswith(("image/", "video/", "audio/")):
-            return "file"
-        if mime.startswith("application/") or mime.startswith("text/"):
-            return "file"
-        return "unknown"
+_TRANSIENT_MIMES = frozenset(
+    {
+        "text/css",
+        "text/javascript",
+        "application/font-woff",
+        "application/javascript",
+        "application/vnd.ms-fontobject",
+        "application/x-javascript",
+        "application/x-font-opentype",
+        "application/x-font-ttf",
+        "application/ecmascript",
+        "text/ecmascript",
+    }
+)
 
+
+def _kind_from_mime(mime: str) -> str:
+    if mime in {"text/html", "application/xhtml+xml"}:
+        return "html"
+    if mime in _TRANSIENT_MIMES or mime.startswith("font/"):
+        return "transient"
+    if mime.startswith(("image/", "video/", "audio/", "application/", "text/")):
+        return "file"
+    return "unknown"
+
+
+def _kind_from_extension(url: str) -> str:
     try:
         path = urlsplit(url).path
     except ValueError:
@@ -227,10 +229,16 @@ def resource_kind(url: str, content_type: str = "") -> str:
     return "unknown"
 
 
+def resource_kind(url: str, content_type: str = "") -> str:
+    """Classify a URL using response MIME when known, otherwise its extension."""
+    mime = content_type.partition(";")[0].strip().lower()
+    return _kind_from_mime(mime) if mime else _kind_from_extension(url)
+
+
 def _srcset_urls(value: str) -> list[str]:
     urls: list[str] = []
-    for candidate in value.split(","):
-        candidate = candidate.strip()
+    for raw_candidate in value.split(","):
+        candidate = raw_candidate.strip()
         if candidate:
             urls.append(candidate.split()[0])
     return urls

@@ -12,7 +12,7 @@ def _url(value):
     return urldefrag(str(value or "").strip())[0]
 
 
-def build_graph(source: Path, enrichment: Path, output: Path) -> dict:
+def build_graph(source: Path, output: Path) -> dict:
     articles = source / "articles.jsonl" if source.is_dir() else source
     output.mkdir(parents=True, exist_ok=True)
     # A crawl can contain millions of references.  Keep the deduplication index

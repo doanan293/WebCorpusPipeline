@@ -20,13 +20,13 @@ from data_pipeline.crawl.options import CrawlOptions
 )
 def test_all_schedules_supported_semantic_assets(url: str, role: str, group: str) -> None:
     asset = ArticleAsset(url=url, role=role, alt="", caption="", external=True)
-    decision = AssetPolicy(CrawlOptions(assets="all")).consider(asset, "https://a.test/p")
+    decision = AssetPolicy(CrawlOptions(assets="all")).consider(asset)
     assert (decision.action, decision.group, decision.reason) == ("schedule", group, None)
 
 
 def test_content_only_records_without_scheduling() -> None:
     asset = ArticleAsset("https://a.test/a.pdf", "document_attachment", "", "", False)
-    decision = AssetPolicy(CrawlOptions()).consider(asset, "https://a.test/p")
+    decision = AssetPolicy(CrawlOptions()).consider(asset)
     assert (decision.action, decision.reason) == ("record_only", "asset_mode_content_only")
 
 

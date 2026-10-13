@@ -12,7 +12,9 @@ from data_pipeline.corpus.package import verify_corpus
 
 
 def _run(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True, env=None)
+    return subprocess.run(  # noqa: S603 -- fixed argv, no shell
+        args, cwd=cwd, check=True, capture_output=True, text=True, env=None
+    )
 
 
 def _metadata(config: dict, folder: Path) -> Path:
