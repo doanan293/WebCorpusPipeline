@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 import pytest
 
 from tests.fixtures.generated_site import run_generated_site
@@ -42,7 +43,11 @@ def test_unclassifiable_generator_is_truncated_by_circuit_breaker(tmp_path: Path
         routes=routes,
     )
     requested_path = tmp_path / "requested_urls.txt"
-    requests = [line.strip() for line in requested_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    requests = [
+        line.strip()
+        for line in requested_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     assert len(requests) <= 12
 
 
@@ -51,23 +56,23 @@ def test_recognized_pagination_closes_before_circuit_breaker(tmp_path: Path) -> 
     routes = {
         "/": '<main><h1>Home</h1><a href="/news?page=1">News</a></main>',
         "/news?page=1": (
-            '<main><h1>News 1</h1><p>Body 1</p>'
+            "<main><h1>News 1</h1><p>Body 1</p>"
             '<a href="/article/100">A100</a>'
             '<a href="/news?page=2" rel="next">2</a>'
             '<a href="/news?page=3">3</a>'
-            '</main>'
+            "</main>"
         ),
         "/news?page=2": (
-            '<main><h1>News 2</h1><p>Body 2</p>'
+            "<main><h1>News 2</h1><p>Body 2</p>"
             '<a href="/article/101">A101</a>'
             '<a href="/news?page=3" rel="next">3</a>'
-            '</main>'
+            "</main>"
         ),
         "/news?page=3": (
-            '<main><h1>News 3</h1><p>Body 3</p>'
+            "<main><h1>News 3</h1><p>Body 3</p>"
             '<a href="/article/101">A101</a>'
             '<a href="/news?page=4" rel="next">4</a>'
-            '</main>'
+            "</main>"
         ),
         "/article/100": "<main><h1>Article 100</h1><p>Body 100</p></main>",
         "/article/101": "<main><h1>Article 101</h1><p>Body 101</p></main>",
@@ -82,5 +87,9 @@ def test_recognized_pagination_closes_before_circuit_breaker(tmp_path: Path) -> 
         routes=routes,
     )
     requested_path = tmp_path / "requested_urls.txt"
-    requests = [line.strip() for line in requested_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    requests = [
+        line.strip()
+        for line in requested_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     assert not any("page=4" in url for url in requests)

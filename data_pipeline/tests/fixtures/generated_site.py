@@ -1,22 +1,25 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import urlsplit
 
 from scrapy.http import HtmlResponse, Request, Response, TextResponse
 
-from hust_crawler.config import CrawlerConfig
-from hust_crawler.crawl.assets import AssetPolicy
-from hust_crawler.crawl.frontier import FrontierPolicy
-from hust_crawler.crawl.options import CrawlOptions
-from hust_crawler.crawl.seeds import SeedSet
-from hust_crawler.crawl.sitemaps import SitemapDiscoveryCoordinator
-from hust_crawler.crawl.spider import UnifiedSpider
-from hust_crawler.crawl.state import CrawlState
-from hust_crawler.crawl.writer import CrawlWriter
+from data_pipeline.crawl.config import CrawlerConfig
+from data_pipeline.crawl.frontier.assets import AssetPolicy
+from data_pipeline.crawl.frontier.frontier import FrontierPolicy
+from data_pipeline.crawl.frontier.seeds import SeedSet
+from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
+from data_pipeline.crawl.options import CrawlOptions
+from data_pipeline.crawl.output.writer import CrawlWriter
+from data_pipeline.crawl.spider.unified import UnifiedSpider
+from data_pipeline.crawl.state.discovery import upsert_host_discovery
+from data_pipeline.crawl.state.store import CrawlState
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,14 +82,14 @@ def _build_response(handler: Any, url: str, req: Request) -> Response:
         )
     if isinstance(handler, bytes):
         return Response(url=url, status=200, body=handler, request=req)
-    raise TypeError(f"Unknown route handler type: {type(handler)}")
+    msg = f"Unknown route handler type: {type(handler)}"
+    raise TypeError(msg)
 
 
 def default_routes() -> dict[str, Any]:
     routes: dict[str, Any] = {}
     routes["/html-only/"] = html(
-        '<a href="/html-only/article">Article</a>'
-        '<a href="/html-only/report.pdf">Report</a>'
+        '<a href="/html-only/article">Article</a><a href="/html-only/report.pdf">Report</a>'
     )
     routes["/html-only/article"] = html("<main><h1>HTML only</h1><p>Body</p></main>")
     routes["/html-only/report.pdf"] = response(b"%PDF-1.4", "application/pdf")
@@ -128,7 +131,7 @@ def run_generated_site(
     policy = AssetPolicy(options)
     coordinator = SitemapDiscoveryCoordinator(
         exact_hostnames=frozenset(),
-        on_change=state.upsert_host_discovery,
+        on_change=partial(upsert_host_discovery, state),
         strategy="hybrid-unified",
     )
     spider = UnifiedSpider(
@@ -152,11 +155,12 @@ def run_generated_site(
     sitemap_xml = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{sitemap_locs}</urlset>'
 
     # Build cross product of list links
-    list_links: list[str] = []
-    for f in range(filters):
-        for s in range(sorts):
-            for l_idx in range(languages):
-                list_links.append(f'<a href="/list?filter={f}&amp;sort={s}&amp;lang={l_idx}">Link</a>')
+    list_links = [
+        f'<a href="/list?filter={f}&amp;sort={s}&amp;lang={l_idx}">Link</a>'
+        for f in range(filters)
+        for s in range(sorts)
+        for l_idx in range(languages)
+    ]
     list_links_html = "".join(list_links)
 
     queue: deque[Request] = deque(spider.start_requests())
@@ -170,7 +174,7 @@ def run_generated_site(
         req = queue.popleft()
         url = req.url
         logical_fetches[url] += 1
-        with open(request_log_path, "a", encoding="utf-8") as f:
+        with Path(request_log_path).open("a", encoding="utf-8") as f:
             f.write(f"{url}\n")
 
         parsed = urlsplit(url)
@@ -205,7 +209,7 @@ def run_generated_site(
             body = (
                 f'<main><h1>Home</h1><a href="/list?filter=0&amp;sort=0&amp;lang=0">List</a>'
                 f"{list_links_html}</main>"
-            ).encode("utf-8")
+            ).encode()
             resp = HtmlResponse(
                 url=url,
                 status=200,
@@ -220,7 +224,7 @@ def run_generated_site(
             detail_links = "".join(
                 f'<a href="/detail/{i}">Detail {i}</a>' for i in range(min(20, detail_pages))
             )
-            body = f"<main><h1>List</h1>{detail_links}{list_links_html}</main>".encode("utf-8")
+            body = f"<main><h1>List</h1>{detail_links}{list_links_html}</main>".encode()
             resp = HtmlResponse(
                 url=url,
                 status=200,
@@ -230,7 +234,7 @@ def run_generated_site(
                 request=req,
             )
         elif path.startswith("/detail/"):
-            body = f"<main><h1>Detail</h1><p>Body text for {path}</p></main>".encode("utf-8")
+            body = f"<main><h1>Detail</h1><p>Body text for {path}</p></main>".encode()
             resp = HtmlResponse(
                 url=url,
                 status=200,

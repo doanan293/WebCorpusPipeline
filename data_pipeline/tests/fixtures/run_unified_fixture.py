@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
+from typing import Any, cast
+
 import yaml
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
@@ -10,25 +12,26 @@ from scrapy.utils.reactor import install_reactor
 
 install_reactor("twisted.internet.asyncioreactor.AsyncioSelectorReactor")
 
-from scrapy import signals  # noqa: E402
-from hust_crawler.crawl.adaptive import AdaptiveConcurrencyMiddleware  # noqa: E402
-from hust_crawler.crawl import cli  # noqa: E402
-from hust_crawler.crawl import runner  # noqa: E402
-import hust_crawler.crawl.settings as crawl_settings  # noqa: E402
-from hust_crawler.policies.network import NonPublicAddressError  # noqa: E402
+from scrapy import signals
+
+import data_pipeline.crawl.runtime.settings as crawl_settings
+from data_pipeline.cli.main import main as cli_main
+from data_pipeline.core.policies.network import NonPublicAddressError
+from data_pipeline.crawl.run import full as runner
+from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware
 
 
 class InterruptExtension:
     @classmethod
-    def from_crawler(cls, crawler):
+    def from_crawler(cls, crawler: Any):
         ext = cls(crawler)
         crawler.signals.connect(ext.on_response, signal=signals.response_downloaded)
         return ext
 
-    def __init__(self, crawler):
+    def __init__(self, crawler: Any):
         self.crawler = crawler
 
-    def on_response(self, response, **kw):
+    def on_response(self, response: Any, **kw: Any):
         if response.url == "https://a.test/article":
             self.crawler.engine.close_spider(self.crawler.spider, "shutdown")
 
@@ -59,7 +62,9 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
     config_file = root / "config.yaml"
     if not config_file.exists():
         values = yaml.safe_load(Path("config/crawler.yaml").read_text(encoding="utf-8"))
-        values.update(contact="ops@example.org", retry_backoff_base_seconds=0.01, download_delay_seconds=0.001)
+        values.update(
+            contact="ops@example.org", retry_backoff_base_seconds=0.01, download_delay_seconds=0.001
+        )
         if mode == "policy_recovery_initial":
             values.update(
                 access_policy_revision=1,
@@ -80,7 +85,14 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
     original_build_settings = crawl_settings.build_settings
     request_log_path = root / "requested_urls.txt"
 
-    def fixture_build_settings(cfg, *, state_dir, phase: str = "crawl", tuning=None, extensions=None):
+    def fixture_build_settings(
+        cfg: Any,
+        *,
+        state_dir: Any,
+        phase: str = "crawl",
+        tuning: Any = None,
+        extensions: Any = None,
+    ):
         vals = original_build_settings(
             cfg, state_dir=state_dir, phase=phase, tuning=tuning, extensions=extensions
         )
@@ -91,10 +103,12 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
         vals["FIXTURE_REQUEST_LOG"] = str(request_log_path)
         vals["FIXTURE_MODE"] = mode
 
-        async def fixture_resolver(hostname: str, port: int = 443, timeout_seconds: float = 5.0) -> None:
+        async def fixture_resolver(
+            hostname: str, port: int = 443, timeout_seconds: float = 5.0
+        ) -> None:
             if mode == "reuse_private_dns" and hostname == "cdn.test":
-                raise NonPublicAddressError("hostname resolves to non-public address")
-            return None
+                msg = "hostname resolves to non-public address"
+                raise NonPublicAddressError(msg)
 
         vals["HUST_PUBLIC_RESOLVER"] = fixture_resolver
 
@@ -103,8 +117,8 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
         vals.setdefault("DOWNLOADER_MIDDLEWARES", {})[AdaptiveConcurrencyMiddleware] = None
         return vals
 
-    crawl_settings.build_settings = fixture_build_settings
-    runner.build_settings = fixture_build_settings
+    crawl_settings.build_settings = cast(Any, fixture_build_settings)
+    runner.build_settings = cast(Any, fixture_build_settings)
 
     reuse_source = root / "crawl" if mode.startswith("reuse") else None
     output_dir = root / "crawl-all" if reuse_source is not None else root / "crawl"
@@ -131,7 +145,7 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
     elif mode == "policy_recovery_resume":
         argv.extend(["--resume", "--retry-policy-skips"])
 
-    return cli.main(argv)
+    return cli_main(["crawl", "run", *argv])
 
 
 if __name__ == "__main__":

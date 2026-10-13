@@ -1,20 +1,23 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sqlite3
 import subprocess
 import sys
+from pathlib import Path
 
 URL = "https://news.test"
 
 
-def run(root: Path, step: str, version: int, fail_paths: str = "") -> subprocess.CompletedProcess[str]:
+def run(
+    root: Path, step: str, version: int, fail_paths: str = ""
+) -> subprocess.CompletedProcess[str]:
     script = Path(__file__).parents[1] / "fixtures" / "run_refresh_fixture.py"
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603 -- runs the repo's own fixture script
         [sys.executable, str(script), str(root), step, str(version), fail_paths],
         capture_output=True,
         text=True,
+        check=False,
     )
 
 
@@ -29,7 +32,9 @@ def sessions(root: Path) -> list[list[str]]:
 
 
 def read_jsonl(path: Path) -> list[dict[str, object]]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
 
 
 def run_dirs(root: Path) -> list[Path]:
@@ -57,10 +62,15 @@ def test_refresh_fetches_hubs_and_new_pages_only(tmp_path: Path) -> None:
     [run_dir] = run_dirs(tmp_path)
     changes = {str(c["url"]): str(c["change"]) for c in read_jsonl(run_dir / "changes.jsonl")}
     assert {u for u, c in changes.items() if c == "new"} == {
-        f"{URL}/bai/n1", f"{URL}/bai/n2", f"{URL}/bai/n3", f"{URL}/tin-tuc?page=3",
+        f"{URL}/bai/n1",
+        f"{URL}/bai/n2",
+        f"{URL}/bai/n3",
+        f"{URL}/tin-tuc?page=3",
     }
     assert {u for u, c in changes.items() if c == "modified"} == {
-        f"{URL}/bai/a5", f"{URL}/tin-tuc", f"{URL}/tin-tuc?page=2",
+        f"{URL}/bai/a5",
+        f"{URL}/tin-tuc",
+        f"{URL}/tin-tuc?page=2",
     }
     assert {str(a["url"]) for a in read_jsonl(run_dir / "articles.jsonl")} == set(changes)
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
@@ -105,7 +115,9 @@ def test_interrupted_refresh_continues_the_same_run(tmp_path: Path) -> None:
     assert run_dirs(tmp_path) == []
     connection = sqlite3.connect(tmp_path / "crawl" / "state" / "index.sqlite3")
     run_id, status = connection.execute("SELECT run_id, status FROM refresh_runs").fetchone()
-    done_before = {row[0] for row in connection.execute("SELECT url FROM refresh_targets WHERE done = 1")}
+    done_before = {
+        row[0] for row in connection.execute("SELECT url FROM refresh_targets WHERE done = 1")
+    }
     connection.close()
     assert status == "interrupted"
 

@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 from urllib.parse import urlsplit
 
 
 def run_fixture(root: Path, mode: str, assets: str) -> subprocess.CompletedProcess[str]:
     script = Path(__file__).parents[1] / "fixtures" / "run_unified_fixture.py"
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603 -- runs the repo's own fixture script
         [sys.executable, str(script), str(root), mode, assets],
         capture_output=True,
         text=True,
+        check=False,
     )
 
 

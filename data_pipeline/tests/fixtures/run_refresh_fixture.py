@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -11,25 +12,27 @@ from scrapy.utils.reactor import install_reactor
 
 install_reactor("twisted.internet.asyncioreactor.AsyncioSelectorReactor")
 
-from scrapy import signals  # noqa: E402
-from hust_crawler.crawl import cli, runner  # noqa: E402
-from hust_crawler.crawl.adaptive import AdaptiveConcurrencyMiddleware  # noqa: E402
-import hust_crawler.crawl.settings as crawl_settings  # noqa: E402
+from scrapy import signals
+
+import data_pipeline.crawl.runtime.settings as crawl_settings
+from data_pipeline.cli.main import main as cli_main
+from data_pipeline.crawl.run import full as runner
+from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware
 
 
 class StopAfterResponse:
     target = "https://news.test/bai/n1"
 
     @classmethod
-    def from_crawler(cls, crawler):
+    def from_crawler(cls, crawler: Any):
         extension = cls(crawler)
         crawler.signals.connect(extension.on_response, signal=signals.response_downloaded)
         return extension
 
-    def __init__(self, crawler):
+    def __init__(self, crawler: Any):
         self.crawler = crawler
 
-    def on_response(self, response, **kwargs):
+    def on_response(self, response: Any, **kwargs: Any):
         if response.url == self.target:
             self.crawler.engine.close_spider(self.crawler.spider, "shutdown")
 
@@ -52,7 +55,14 @@ def main(root: Path, step: str, version: int, fail_paths: str = "") -> int:
 
     original_build_settings = crawl_settings.build_settings
 
-    def fixture_build_settings(cfg, *, state_dir, phase="crawl", tuning=None, extensions=None):
+    def fixture_build_settings(
+        cfg: Any,
+        *,
+        state_dir: Any,
+        phase: Any = "crawl",
+        tuning: Any = None,
+        extensions: Any = None,
+    ):
         values = original_build_settings(
             cfg, state_dir=state_dir, phase=phase, tuning=tuning, extensions=extensions
         )
@@ -66,23 +76,34 @@ def main(root: Path, step: str, version: int, fail_paths: str = "") -> int:
             values.setdefault("EXTENSIONS", {})[StopAfterResponse] = 50
         return values
 
-    crawl_settings.build_settings = fixture_build_settings
-    runner.build_settings = fixture_build_settings
+    crawl_settings.build_settings = cast(Any, fixture_build_settings)
+    runner.build_settings = cast(Any, fixture_build_settings)
 
     argv = [
-        "--input", str(seeds_file),
-        "--output", str(root / "crawl"),
-        "--config", str(config_file),
-        "--profile", "safe-fast",
-        "--concurrency", "4",
-        "--max-per-host", "2",
+        "--input",
+        str(seeds_file),
+        "--output",
+        str(root / "crawl"),
+        "--config",
+        str(config_file),
+        "--profile",
+        "safe-fast",
+        "--concurrency",
+        "4",
+        "--max-per-host",
+        "2",
     ]
     if step != "initial":
         argv.append("--refresh")
-    return cli.main(argv)
+    return cli_main(["crawl", "run", *argv])
 
 
 if __name__ == "__main__":
     raise SystemExit(
-        main(Path(sys.argv[1]), sys.argv[2], int(sys.argv[3]), sys.argv[4] if len(sys.argv) > 4 else "")
+        main(
+            Path(sys.argv[1]),
+            sys.argv[2],
+            int(sys.argv[3]),
+            sys.argv[4] if len(sys.argv) > 4 else "",
+        )
     )

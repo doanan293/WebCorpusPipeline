@@ -3,7 +3,7 @@ requires = ["hatchling==1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "hust-data-pipeline"
+name = "data-pipeline"
 version = "0.1.0"
 description = "Crawl, download, extract, store and share the HUST document corpus"
 requires-python = ">=3.13,<3.14"
@@ -12,6 +12,7 @@ dependencies = [
     "PyYAML==6.0.2",
     "pymongo>=4.10,<5",
     "kaggle>=1.7,<2",
+    "typer>=0.20,<1",
 ]
 
 [project.optional-dependencies]
@@ -21,8 +22,8 @@ crawl = [
     "Scrapy==2.17.0",
     "scrapy-playwright==0.0.48",
 ]
-producer = [
-    "hust-data-pipeline[crawl]",
+enrich = [
+    "data-pipeline[crawl]",
     "aiohttp>=3.11,<4",
     "PyMuPDF>=1.25,<2",
     "python-docx>=1.1,<2",
@@ -32,26 +33,29 @@ producer = [
     "llama-cloud>=1,<2",
     "filelock>=3.16,<4",
 ]
+[dependency-groups]
 dev = [
-    "hust-data-pipeline[crawl]",
+    "data-pipeline[enrich]",
     "pytest==9.1.1",
     "pytest-asyncio>=0.24,<2",
-    "ruff==0.12.10",
+    "ruff==0.17.0",
+    "pyrefly==1.3.2",
+    "pre-commit>=4.7,<5",
+    "types-PyYAML>=6,<7",
+    "types-openpyxl>=3.1,<4",
 ]
 
 [project.scripts]
-ir-data = "ir_data.cli:main"
-hust-discover = "hust_crawler.crawl.discovery_cli:main"
-hust-crawl = "hust_crawler.crawl.cli:main"
-hust-domain-audit = "hust_crawler.domain_audit:main"
+data-pipeline = "data_pipeline.cli.main:run"
 
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/hust_crawler", "src/ir_data"]
+packages = ["src/data_pipeline"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = "--strict-markers -m 'not performance'"
 markers = [
     "performance: local algorithmic performance tests",
 ]
@@ -59,3 +63,37 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+src = ["src", "tests"]
+extend-exclude = ["data"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "B", "UP", "SIM", "RUF", "PL", "PTH", "N", "C4", "PERF", "RET", "TRY",
+    "ARG", "ERA", "S", "T20", "DTZ", "BLE", "FBT", "TID",
+]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.isort]
+known-first-party = ["data_pipeline"]
+
+[tool.ruff.lint.pylint]
+max-args = 8
+max-positional-args = 8
+max-branches = 16
+max-returns = 8
+max-statements = 60
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E501", "S101", "PLR2004", "ARG", "FBT", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR0917"]
+# The fixtures install the Twisted reactor before importing Scrapy code.
+"tests/fixtures/run_*_fixture.py" = ["E402"]
+# Typer passes options by keyword, so boolean flags in command signatures are fine.
+"src/data_pipeline/cli/**" = ["PLC0415", "T20", "FBT001", "FBT002", "PLR0913", "PLR0917"]
+
+[tool.pyrefly]
+preset = "strict"
+project-includes = ["src", "tests"]
+search-path = ["src", "."]
+python-interpreter-path = ".venv/bin/python"

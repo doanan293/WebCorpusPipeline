@@ -1,0 +1,44 @@
+default_install_hook_types: [pre-commit, pre-push]
+exclude: ^(data_pipeline/data/|lucene/)
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: detect-private-key
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.0
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: ^data_pipeline/
+      - id: ruff-format
+        files: ^data_pipeline/
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.12.13
+    hooks:
+      - id: uv-lock
+        args: [--project, data_pipeline]
+        files: ^data_pipeline/(pyproject\.toml|uv\.lock)$
+  - repo: local
+    hooks:
+      - id: pyrefly
+        name: pyrefly check
+        entry: uv run --directory data_pipeline pyrefly check
+        language: system
+        pass_filenames: false
+        files: ^data_pipeline/.*\.py$
+      - id: pytest
+        name: pytest
+        entry: uv run --directory data_pipeline pytest -q
+        language: system
+        pass_filenames: false
+        files: ^data_pipeline/
+        stages: [pre-push]

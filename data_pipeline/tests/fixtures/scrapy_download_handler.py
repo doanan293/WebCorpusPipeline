@@ -1,4 +1,6 @@
 import gzip
+from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 from scrapy.http import Request, Response, TextResponse
@@ -20,13 +22,13 @@ class StaticDownloadHandler:
 
     lazy = True
 
-    def __init__(self, settings, crawler=None):
+    def __init__(self, settings: Any, crawler: Any = None):
         self.attempts: dict[str, int] = {}
         self.request_log = settings.get("FIXTURE_REQUEST_LOG")
         self.fixture_mode = settings.get("FIXTURE_MODE", "complete")
 
     @classmethod
-    def from_crawler(cls, crawler):
+    def from_crawler(cls, crawler: Any):
         return cls(crawler.settings, crawler)
 
     async def close(self):
@@ -35,12 +37,12 @@ class StaticDownloadHandler:
     async def download_request(self, request: Request):
         self.attempts[request.url] = self.attempts.get(request.url, 0) + 1
         if self.request_log:
-            with open(self.request_log, "a", encoding="utf-8") as f:
+            with Path(self.request_log).open("a", encoding="utf-8") as f:
                 f.write(f"{request.url}\n")
         url = request.url
 
         if self.fixture_mode in {"policy_recovery_initial", "policy_recovery_resume"}:
-            user_agent = request.headers.get(b"User-Agent", b"").decode("latin1")
+            user_agent = (request.headers.get(b"User-Agent") or b"").decode("latin1")
             if url == "https://ua-gated.test/" and "Mozilla/5.0" not in user_agent:
                 return TextResponse(
                     url,
@@ -98,17 +100,19 @@ class StaticDownloadHandler:
                     request=request,
                 )
             if url == "https://a.test/news?page=1":
-                pagination_links = "".join(f'<a href="/news?page={i}">{i}</a>' for i in range(2, 21))
+                pagination_links = "".join(
+                    f'<a href="/news?page={i}">{i}</a>' for i in range(2, 21)
+                )
                 body = (
-                    f'<main><h1>News 1</h1><p>Listing body page 1</p>'
+                    f"<main><h1>News 1</h1><p>Listing body page 1</p>"
                     f'<a href="/article/123">Article 123</a>'
-                    f'{pagination_links}'
+                    f"{pagination_links}"
                     f'<a href="/cycle-a">Cycle A</a>'
                     f'<a href="/archive/2026/09">Archive</a>'
                     f'<a href="/filter?cat=1&amp;sort=asc">Filter</a>'
                     f'<a href="/news?page=1">Self</a>'
-                    f'</main>'
-                ).encode("utf-8")
+                    f"</main>"
+                ).encode()
                 return TextResponse(
                     url,
                     status=200,
@@ -118,14 +122,16 @@ class StaticDownloadHandler:
                     request=request,
                 )
             if url == "https://a.test/news?page=2":
-                pagination_links = "".join(f'<a href="/news?page={i}">{i}</a>' for i in range(3, 21))
+                pagination_links = "".join(
+                    f'<a href="/news?page={i}">{i}</a>' for i in range(3, 21)
+                )
                 body = (
-                    f'<main><h1>News 2</h1><p>Listing body page 2</p>'
+                    f"<main><h1>News 2</h1><p>Listing body page 2</p>"
                     f'<a href="/article/124">Article 124</a>'
                     f'<a href="/article/125">Article 125</a>'
-                    f'{pagination_links}'
-                    f'</main>'
-                ).encode("utf-8")
+                    f"{pagination_links}"
+                    f"</main>"
+                ).encode()
                 return TextResponse(
                     url,
                     status=200,
@@ -135,14 +141,16 @@ class StaticDownloadHandler:
                     request=request,
                 )
             if url == "https://a.test/news?page=3":
-                pagination_links = "".join(f'<a href="/news?page={i}">{i}</a>' for i in range(4, 21))
+                pagination_links = "".join(
+                    f'<a href="/news?page={i}">{i}</a>' for i in range(4, 21)
+                )
                 body = (
-                    f'<main><h1>News 3</h1><p>Listing body page 3</p>'
+                    f"<main><h1>News 3</h1><p>Listing body page 3</p>"
                     f'<a href="/article/124">Article 124</a>'
                     f'<a href="/article/125">Article 125</a>'
-                    f'{pagination_links}'
-                    f'</main>'
-                ).encode("utf-8")
+                    f"{pagination_links}"
+                    f"</main>"
+                ).encode()
                 return TextResponse(
                     url,
                     status=200,
@@ -152,15 +160,50 @@ class StaticDownloadHandler:
                     request=request,
                 )
             if url == "https://a.test/article/123":
-                return TextResponse(url, status=200, body=b'<main><h1>Article 123</h1><p>Body 123</p></main>', encoding="utf-8", headers={b"Content-Type": b"text/html"}, request=request)
+                return TextResponse(
+                    url,
+                    status=200,
+                    body=b"<main><h1>Article 123</h1><p>Body 123</p></main>",
+                    encoding="utf-8",
+                    headers={b"Content-Type": b"text/html"},
+                    request=request,
+                )
             if url == "https://a.test/article/124":
-                return TextResponse(url, status=200, body=b'<main><h1>Article 124</h1><p>Body 124</p></main>', encoding="utf-8", headers={b"Content-Type": b"text/html"}, request=request)
+                return TextResponse(
+                    url,
+                    status=200,
+                    body=b"<main><h1>Article 124</h1><p>Body 124</p></main>",
+                    encoding="utf-8",
+                    headers={b"Content-Type": b"text/html"},
+                    request=request,
+                )
             if url == "https://a.test/article/125":
-                return TextResponse(url, status=200, body=b'<main><h1>Article 125</h1><p>Body 125</p></main>', encoding="utf-8", headers={b"Content-Type": b"text/html"}, request=request)
+                return TextResponse(
+                    url,
+                    status=200,
+                    body=b"<main><h1>Article 125</h1><p>Body 125</p></main>",
+                    encoding="utf-8",
+                    headers={b"Content-Type": b"text/html"},
+                    request=request,
+                )
             if url == "https://a.test/cycle-a":
-                return TextResponse(url, status=200, body=b'<main><h1>Cycle A</h1><p>Body A</p><a href="/cycle-b">Cycle B</a></main>', encoding="utf-8", headers={b"Content-Type": b"text/html"}, request=request)
+                return TextResponse(
+                    url,
+                    status=200,
+                    body=b'<main><h1>Cycle A</h1><p>Body A</p><a href="/cycle-b">Cycle B</a></main>',
+                    encoding="utf-8",
+                    headers={b"Content-Type": b"text/html"},
+                    request=request,
+                )
             if url == "https://a.test/cycle-b":
-                return TextResponse(url, status=200, body=b'<main><h1>Cycle B</h1><p>Body B</p><a href="/cycle-a">Cycle A</a></main>', encoding="utf-8", headers={b"Content-Type": b"text/html"}, request=request)
+                return TextResponse(
+                    url,
+                    status=200,
+                    body=b'<main><h1>Cycle B</h1><p>Body B</p><a href="/cycle-a">Cycle A</a></main>',
+                    encoding="utf-8",
+                    headers={b"Content-Type": b"text/html"},
+                    request=request,
+                )
             return Response(url, status=404, body=b"", request=request)
 
         # Observable semantic assets
@@ -198,14 +241,21 @@ class StaticDownloadHandler:
                 request=request,
             )
         if url in {"https://a.test/robots.txt", "https://no-map.test/robots.txt"}:
-            if self.fixture_mode == "robots_redirect_disallow" and url.startswith("https://a.test/"):
+            if self.fixture_mode == "robots_redirect_disallow" and url.startswith(
+                "https://a.test/"
+            ):
                 return Response(
                     url,
                     status=301,
                     headers={b"Location": b"/robots-public.txt"},
                     request=request,
                 )
-            disallow = b"/about" if self.fixture_mode in {"robots_disallow", "policy_recovery_initial"} and url.startswith("https://a.test/") else b""
+            disallow = (
+                b"/about"
+                if self.fixture_mode in {"robots_disallow", "policy_recovery_initial"}
+                and url.startswith("https://a.test/")
+                else b""
+            )
             return TextResponse(
                 url,
                 status=200,
@@ -246,10 +296,10 @@ class StaticDownloadHandler:
         if url == "https://a.test/sitemap.xml":
             index_xml = (
                 b'<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-                b'<sitemap><loc>https://a.test/sitemaps/posts</loc></sitemap>'
-                b'<sitemap><loc>https://a.test/sitemaps/pages.xml.gz</loc></sitemap>'
-                b'<sitemap><loc>https://a.test/sitemaps/broken.xml</loc></sitemap>'
-                b'</sitemapindex>'
+                b"<sitemap><loc>https://a.test/sitemaps/posts</loc></sitemap>"
+                b"<sitemap><loc>https://a.test/sitemaps/pages.xml.gz</loc></sitemap>"
+                b"<sitemap><loc>https://a.test/sitemaps/broken.xml</loc></sitemap>"
+                b"</sitemapindex>"
             )
             return TextResponse(
                 url,
@@ -262,10 +312,10 @@ class StaticDownloadHandler:
         if url == "https://a.test/sitemaps/posts":
             posts_xml = (
                 b'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-                b'<url><loc>https://a.test/article</loc></url>'
-                b'<url><loc>https://a.test/article2</loc></url>'
-                b'<url><loc>https://a.test/article3</loc></url>'
-                b'</urlset>'
+                b"<url><loc>https://a.test/article</loc></url>"
+                b"<url><loc>https://a.test/article2</loc></url>"
+                b"<url><loc>https://a.test/article3</loc></url>"
+                b"</urlset>"
             )
             return TextResponse(
                 url,
@@ -278,8 +328,8 @@ class StaticDownloadHandler:
         if url == "https://a.test/sitemaps/pages.xml.gz":
             pages_xml = (
                 b'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-                b'<url><loc>https://a.test/about</loc></url>'
-                b'</urlset>'
+                b"<url><loc>https://a.test/about</loc></url>"
+                b"</urlset>"
             )
             return Response(
                 url,
@@ -307,7 +357,7 @@ class StaticDownloadHandler:
                 request=request,
             )
         if url == "https://no-map.test/page1":
-            body = b'<main><h1>Page 1</h1></main>'
+            body = b"<main><h1>Page 1</h1></main>"
             return TextResponse(
                 url,
                 status=200,
@@ -318,13 +368,17 @@ class StaticDownloadHandler:
             )
         if url == "https://a.test/":
             body = (
-                b'<main><h1>A home</h1>'
+                b"<main><h1>A home</h1>"
                 b'<a href="/article">Article</a>'
-                + (b'<a href="/about">About</a>' if self.fixture_mode == "policy_recovery_initial" else b"")
+                + (
+                    b'<a href="/about">About</a>'
+                    if self.fixture_mode == "policy_recovery_initial"
+                    else b""
+                )
                 + b'<a href="/report.pdf">Report</a>'
                 b'<a href="https://b.test/news">B news</a>'
                 b'<img src="/dynamic-image?id=1">'
-                b'</main>'
+                b"</main>"
             )
             return TextResponse(
                 url,
@@ -345,7 +399,7 @@ class StaticDownloadHandler:
                 request=request,
             )
         if url == "https://b.test/two":
-            body = b'<main><h1>B two</h1></main>'
+            body = b"<main><h1>B two</h1></main>"
             return TextResponse(
                 url,
                 status=200,
@@ -365,7 +419,7 @@ class StaticDownloadHandler:
                 request=request,
             )
         if url == "https://b.test/explicit":
-            body = b'<main><h1>Explicit page</h1><p>Content</p></main>'
+            body = b"<main><h1>Explicit page</h1><p>Content</p></main>"
             return TextResponse(
                 url,
                 status=200,
@@ -396,7 +450,7 @@ class StaticDownloadHandler:
                 )
             else:
                 body = (
-                    b'<main><h1>Article</h1><p>Body</p>'
+                    b"<main><h1>Article</h1><p>Body</p>"
                     b'<a href="/report.pdf">Download PDF</a>'
                     b'<a href="/spec.docx">Spec</a>'
                     b'<a href="/outside-sitemap">Outside</a>'
@@ -406,7 +460,7 @@ class StaticDownloadHandler:
                     b'<a href="https://cdn.test/frame.html">Frame</a>'
                     b'<img src="https://cdn.test/private-redirect">'
                     b'<audio src="/assets/a.mp3"></audio>'
-                    b'</main>'
+                    b"</main>"
                 )
             return TextResponse(
                 url,
@@ -425,7 +479,7 @@ class StaticDownloadHandler:
                 request=request,
             )
         if url == "https://a.test/outside-sitemap":
-            body = b'<main><h1>Outside</h1><p>Outside sitemap</p></main>'
+            body = b"<main><h1>Outside</h1><p>Outside sitemap</p></main>"
             return TextResponse(
                 url,
                 status=200,
@@ -436,9 +490,9 @@ class StaticDownloadHandler:
             )
         if url == "https://a.test/article2":
             body = (
-                b'<main><h1>Article 2</h1><p>Body</p>'
+                b"<main><h1>Article 2</h1><p>Body</p>"
                 b'<img src="https://cdn.test/assets/a.png">'
-                b'</main>'
+                b"</main>"
             )
             return TextResponse(
                 url,
@@ -449,7 +503,7 @@ class StaticDownloadHandler:
                 request=request,
             )
         if url == "https://a.test/article3":
-            body = b'<main><h1>Article 3</h1><p>Body</p></main>'
+            body = b"<main><h1>Article 3</h1><p>Body</p></main>"
             return TextResponse(
                 url,
                 status=200,
@@ -467,7 +521,7 @@ class StaticDownloadHandler:
                 request=request,
             )
         if url == "https://a.test/about":
-            body = b'<main><h1>About</h1><p>About page</p></main>'
+            body = b"<main><h1>About</h1><p>About page</p></main>"
             return TextResponse(
                 url,
                 status=200,
@@ -477,7 +531,7 @@ class StaticDownloadHandler:
                 request=request,
             )
         if url == "https://b.test/news":
-            body = b'<main><h1>News</h1><p>Story</p></main>'
+            body = b"<main><h1>News</h1><p>Story</p></main>"
             return TextResponse(
                 url,
                 status=200,
@@ -499,7 +553,9 @@ class StaticDownloadHandler:
                 url,
                 status=200,
                 body=b"PK\x03\x04docx-fixture-bytes",
-                headers={b"Content-Type": b"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+                headers={
+                    b"Content-Type": b"application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                },
                 request=request,
             )
         if url == "https://a.test/image":
@@ -529,7 +585,9 @@ class StaticDownloadHandler:
                 request=request,
             )
         if url == "https://a.test/login-page":
-            body = b'<main><h1>Login</h1><form action="/login"><input type="password"></form></main>'
+            body = (
+                b'<main><h1>Login</h1><form action="/login"><input type="password"></form></main>'
+            )
             return TextResponse(
                 url,
                 status=401,
@@ -545,7 +603,7 @@ class StaticDownloadHandler:
             return TextResponse(
                 url,
                 status=200,
-                body=b'<main><h1>Retry Success</h1><p>Recovered after 503</p></main>',
+                body=b"<main><h1>Retry Success</h1><p>Recovered after 503</p></main>",
                 encoding="utf-8",
                 headers={b"Content-Type": b"text/html"},
                 request=request,
@@ -556,8 +614,8 @@ class StaticDownloadHandler:
             sitemap_xml = (
                 b'<?xml version="1.0" encoding="UTF-8"?>'
                 b'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-                b'<url><loc>https://map.test/from-sitemap</loc></url>'
-                b'</urlset>'
+                b"<url><loc>https://map.test/from-sitemap</loc></url>"
+                b"</urlset>"
             )
             return TextResponse(
                 url,
@@ -580,7 +638,7 @@ class StaticDownloadHandler:
                 request=request,
             )
         if url == "https://map.test/from-sitemap":
-            body = b'<main><h1>From Sitemap</h1><p>Content from sitemap</p></main>'
+            body = b"<main><h1>From Sitemap</h1><p>Content from sitemap</p></main>"
             return TextResponse(
                 url,
                 status=200,
@@ -590,7 +648,7 @@ class StaticDownloadHandler:
                 request=request,
             )
         if url == "https://map.test/outside-sitemap":
-            body = b'<main><h1>Outside Sitemap</h1><p>Content outside sitemap</p></main>'
+            body = b"<main><h1>Outside Sitemap</h1><p>Content outside sitemap</p></main>"
             return TextResponse(
                 url,
                 status=200,
@@ -605,14 +663,14 @@ class StaticDownloadHandler:
             return Response(url, status=404, body=b"Not found", request=request)
         if url in {"https://html-only.test/", "https://html-only.test/html-only/"}:
             body = (
-                b'<main><h1>HTML Only</h1>'
+                b"<main><h1>HTML Only</h1>"
                 b'<a href="/article">Article</a>'
                 b'<a href="/report.pdf">Report</a>'
                 b'<a href="/html-only/article">HTML Article</a>'
                 b'<a href="/html-only/report.pdf">HTML Report</a>'
                 b'<img src="/photo.jpg" alt="test">'
                 b'<video src="/clip.mp4"></video>'
-                b'</main>'
+                b"</main>"
             )
             return TextResponse(
                 url,
@@ -623,7 +681,7 @@ class StaticDownloadHandler:
                 request=request,
             )
         if url in {"https://html-only.test/article", "https://html-only.test/html-only/article"}:
-            body = b'<main><h1>HTML only</h1><p>Body</p></main>'
+            body = b"<main><h1>HTML only</h1><p>Body</p></main>"
             return TextResponse(
                 url,
                 status=200,
@@ -632,7 +690,10 @@ class StaticDownloadHandler:
                 headers={b"Content-Type": b"text/html"},
                 request=request,
             )
-        if url in {"https://html-only.test/report.pdf", "https://html-only.test/html-only/report.pdf"}:
+        if url in {
+            "https://html-only.test/report.pdf",
+            "https://html-only.test/html-only/report.pdf",
+        }:
             return Response(
                 url,
                 status=200,

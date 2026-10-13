@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import time
+
 import pytest
 
-from hust_crawler.crawl.sitemaps import parse_sitemap
-from hust_crawler.policies.url import canonicalize_url
+from data_pipeline.core.policies.url import canonicalize_url
+from data_pipeline.crawl.frontier.sitemaps import parse_sitemap
 
 
 @pytest.mark.performance
@@ -20,8 +21,7 @@ def test_large_sitemap_parsing_and_canonical_deduplication() -> None:
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ]
-    for u in duplicated_urls:
-        xml_parts.append(f"<url><loc>{u}</loc></url>")
+    xml_parts.extend(f"<url><loc>{u}</loc></url>" for u in duplicated_urls)
     xml_parts.append("</urlset>")
     xml_content = "\n".join(xml_parts).encode("utf-8")
 

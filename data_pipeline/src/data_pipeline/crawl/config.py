@@ -1,0 +1,305 @@
+from __future__ import annotations
+
+import os
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal
+
+import yaml
+
+from data_pipeline.core.hostnames import load_hostnames
+from data_pipeline.core.paths import project_paths
+
+MIN_HTTP_STATUS = 100
+MAX_HTTP_STATUS = 599
+MAX_PERCENT = 100
+
+if TYPE_CHECKING:
+    from data_pipeline.crawl.runtime.profiles import RuntimeTuning
+
+
+def validate_network_contact(contact: str) -> None:
+    normalized = contact.strip().lower()
+    if not normalized or ".invalid" in normalized:
+        msg = "a non-placeholder operator contact is required"
+        raise ValueError(msg)
+
+
+_REQUIRED_SETTINGS = (
+    "user_agent_name",
+    "user_agent_version",
+    "concurrent_requests",
+    "access_policy_revision",
+    "browser_user_agent",
+    "concurrent_per_host",
+    "download_delay_seconds",
+    "download_timeout_seconds",
+    "max_response_bytes",
+    "robots_txt_obey",
+    "cookies_enabled",
+    "redirect_max_times",
+    "autothrottle_enabled",
+    "autothrottle_target_concurrency",
+    "throttle_start_seconds",
+    "throttle_max_seconds",
+    "retry_times",
+    "retry_statuses",
+    "retry_backoff_base_seconds",
+    "retry_max_delay_seconds",
+    "playwright_max_pages",
+    "resource_limit_percent",
+    "assets",
+    "max_file_bytes",
+    "max_total_file_bytes",
+    "max_query_variants_per_path",
+    "pagination_empty_pages",
+    "max_urls_per_host",
+    "max_total_urls",
+    "journal_batch_size",
+    "journal_flush_seconds",
+    "progress_interval_seconds",
+    "refresh_pagination_empty_pages",
+    "refresh_recent_days",
+    "refresh_recent_runs",
+    "refresh_recheck_limit",
+)
+_NON_POSITIVE_SETTINGS = frozenset(
+    {
+        "user_agent_name",
+        "user_agent_version",
+        "browser_user_agent",
+        "robots_txt_obey",
+        "cookies_enabled",
+        "autothrottle_enabled",
+        "assets",
+        "retry_statuses",
+    }
+)
+_POSITIVE_SETTINGS = tuple(
+    name for name in _REQUIRED_SETTINGS if name not in _NON_POSITIVE_SETTINGS
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CrawlerConfig:
+    hostnames: frozenset[str]
+    contact: str
+    concurrent_requests: int = 64
+    concurrent_per_host: int = 2
+    playwright_max_pages: int = 8
+    download_delay_seconds: float = 0.25
+    throttle_start_seconds: float = 0.25
+    throttle_max_seconds: float = 5.0
+    retry_times: int = 3
+    retry_statuses: tuple[int, ...] = (408, 425, 429, 500, 502, 503, 504)
+    retry_backoff_base_seconds: float = 2.0
+    retry_max_delay_seconds: float = 3600.0
+    download_timeout_seconds: float = 60.0
+    max_response_bytes: int = 100 * 1024 * 1024
+    user_agent_name: str = "HUSTPublicCrawler"
+    user_agent_version: str = "1.0"
+    access_policy_revision: int = 2
+    browser_user_agent: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+    )
+    robots_txt_obey: bool = False
+    cookies_enabled: bool = False
+    redirect_max_times: int = 20
+    autothrottle_enabled: bool = True
+    autothrottle_target_concurrency: float = 2.0
+    resource_limit_percent: int = 80
+    assets: Literal["content-only", "all"] = "content-only"
+    max_file_bytes: int = 100 * 1024 * 1024
+    max_total_file_bytes: int = 100 * 1024**3
+    max_query_variants_per_path: int = 20
+    pagination_empty_pages: int = 3
+    max_urls_per_host: int = 100_000
+    max_total_urls: int = 1_000_000
+    journal_batch_size: int = 500
+    journal_flush_seconds: float = 2.0
+    progress_interval_seconds: float = 10.0
+    refresh_pagination_empty_pages: int = 1
+    refresh_recent_days: int = 60
+    refresh_recent_runs: int = 4
+    refresh_recheck_limit: int = 5000
+
+    @classmethod
+    def load(
+        cls,
+        config_path: Path,
+        domains_path: Path | None = None,
+        *,
+        environ: Mapping[str, str] | None = None,
+        hostnames: frozenset[str] | None = None,
+    ) -> CrawlerConfig:
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        environment = os.environ if environ is None else environ
+        if hostnames is None:
+            hostnames = load_hostnames(domains_path or project_paths().domains_active)
+        else:
+            hostnames = frozenset(hostnames)
+        contact = environment.get("CRAWLER_CONTACT", "").strip()
+        if not contact:
+            contact = str(raw.get("contact", "")).strip()
+        if not contact:
+            msg = "contact is required"
+            raise ValueError(msg)
+        validate_network_contact(contact)
+        missing = sorted(name for name in _REQUIRED_SETTINGS if name not in raw)
+        if "contact" not in raw and not environment.get("CRAWLER_CONTACT", "").strip():
+            missing.insert(0, "contact")
+        if missing:
+            msg = f"missing required crawler settings: {', '.join(missing)}"
+            raise ValueError(msg)
+
+        def required_bool(name: str) -> bool:
+            value = raw[name]
+            if not isinstance(value, bool):
+                msg = f"{name} must be a boolean"
+                raise ValueError(msg)  # noqa: TRY004 -- invalid configuration is a ValueError
+            return value
+
+        config = cls(
+            hostnames=hostnames,
+            contact=contact,
+            user_agent_name=str(raw["user_agent_name"]),
+            user_agent_version=str(raw["user_agent_version"]),
+            access_policy_revision=int(raw["access_policy_revision"]),
+            browser_user_agent=str(raw["browser_user_agent"]),
+            concurrent_requests=int(raw["concurrent_requests"]),
+            concurrent_per_host=int(raw["concurrent_per_host"]),
+            playwright_max_pages=int(raw["playwright_max_pages"]),
+            download_delay_seconds=float(raw["download_delay_seconds"]),
+            throttle_start_seconds=float(raw["throttle_start_seconds"]),
+            throttle_max_seconds=float(raw["throttle_max_seconds"]),
+            retry_times=int(raw["retry_times"]),
+            retry_statuses=tuple(int(status) for status in raw["retry_statuses"]),
+            retry_backoff_base_seconds=float(raw["retry_backoff_base_seconds"]),
+            retry_max_delay_seconds=float(raw["retry_max_delay_seconds"]),
+            download_timeout_seconds=float(raw["download_timeout_seconds"]),
+            max_response_bytes=int(raw["max_response_bytes"]),
+            robots_txt_obey=required_bool("robots_txt_obey"),
+            cookies_enabled=required_bool("cookies_enabled"),
+            redirect_max_times=int(raw["redirect_max_times"]),
+            autothrottle_enabled=required_bool("autothrottle_enabled"),
+            autothrottle_target_concurrency=float(raw["autothrottle_target_concurrency"]),
+            resource_limit_percent=int(raw["resource_limit_percent"]),
+            assets=raw["assets"],
+            max_file_bytes=int(raw["max_file_bytes"]),
+            max_total_file_bytes=int(raw["max_total_file_bytes"]),
+            max_query_variants_per_path=int(raw["max_query_variants_per_path"]),
+            pagination_empty_pages=int(raw["pagination_empty_pages"]),
+            max_urls_per_host=int(raw["max_urls_per_host"]),
+            max_total_urls=int(raw["max_total_urls"]),
+            journal_batch_size=int(raw["journal_batch_size"]),
+            journal_flush_seconds=float(raw["journal_flush_seconds"]),
+            progress_interval_seconds=float(raw["progress_interval_seconds"]),
+            refresh_pagination_empty_pages=int(raw["refresh_pagination_empty_pages"]),
+            refresh_recent_days=int(raw["refresh_recent_days"]),
+            refresh_recent_runs=int(raw["refresh_recent_runs"]),
+            refresh_recheck_limit=int(raw["refresh_recheck_limit"]),
+        )
+        config._validate()
+        return config
+
+    def _validate(self) -> None:
+        for name in _POSITIVE_SETTINGS:
+            if getattr(self, name) <= 0:
+                msg = f"{name} must be positive"
+                raise ValueError(msg)
+        if not self.retry_statuses or any(
+            status < MIN_HTTP_STATUS or status > MAX_HTTP_STATUS for status in self.retry_statuses
+        ):
+            msg = "retry_statuses must contain HTTP status codes"
+            raise ValueError(msg)
+        if self.download_delay_seconds <= 0:
+            msg = "download_delay_seconds must be positive"
+            raise ValueError(msg)
+        if (
+            self.throttle_start_seconds <= 0
+            or self.throttle_max_seconds <= 0
+            or self.throttle_start_seconds > self.throttle_max_seconds
+        ):
+            msg = "throttle delays must be positive and ordered"
+            raise ValueError(msg)
+        if self.autothrottle_target_concurrency > self.concurrent_per_host:
+            msg = "autothrottle_target_concurrency must not exceed concurrent_per_host"
+            raise ValueError(msg)
+        if not 1 <= self.resource_limit_percent <= MAX_PERCENT:
+            msg = "resource_limit_percent must be between 1 and 100"
+            raise ValueError(msg)
+        if self.assets not in {"content-only", "all"}:
+            msg = "assets must be content-only or all"
+            raise ValueError(msg)
+
+
+_RUNTIME_CONFIG_KEYS = {
+    "concurrent_requests",
+    "concurrent_per_host",
+    "playwright_max_pages",
+    "download_delay_seconds",
+    "throttle_start_seconds",
+    "throttle_max_seconds",
+    "autothrottle_enabled",
+    "autothrottle_target_concurrency",
+    "download_timeout_seconds",
+    "retry_times",
+    "retry_backoff_base_seconds",
+    "retry_max_delay_seconds",
+    "resource_limit_percent",
+    "journal_batch_size",
+    "journal_flush_seconds",
+    "progress_interval_seconds",
+    "refresh_pagination_empty_pages",
+    "refresh_recent_days",
+    "refresh_recent_runs",
+    "refresh_recheck_limit",
+}
+
+
+def _normalized_snapshot(values: dict[str, object]) -> dict[str, object]:
+    def normalize(value: object) -> object:
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, (set, frozenset)):
+            items: list[Any] = [normalize(item) for item in value]
+            return sorted(items)
+        if isinstance(value, tuple):
+            return [normalize(item) for item in value]
+        if isinstance(value, dict):
+            return {
+                str(key): normalize(item)
+                for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+            }
+        return value
+
+    return {key: normalize(value) for key, value in sorted(values.items())}
+
+
+def config_snapshot(config: CrawlerConfig, *, concurrency: int) -> dict[str, object]:
+    """Return a deterministic JSON-safe configuration snapshot for phase state."""
+
+    values = asdict(config)
+    values["concurrent_requests"] = concurrency
+
+    return _normalized_snapshot(values)
+
+
+def semantic_config_snapshot(config: CrawlerConfig) -> dict[str, object]:
+    """Return the configuration fields that define phase identity."""
+
+    values = asdict(config)
+    for key in _RUNTIME_CONFIG_KEYS:
+        values.pop(key, None)
+    return _normalized_snapshot(values)
+
+
+def runtime_config_snapshot(config: CrawlerConfig, tuning: RuntimeTuning) -> dict[str, object]:
+    """Return the active performance knobs recorded for a run."""
+
+    values = asdict(config)
+    values = {key: values[key] for key in _RUNTIME_CONFIG_KEYS}
+    values.update(asdict(tuning))
+    return _normalized_snapshot(values)

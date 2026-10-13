@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import time
+from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 from scrapy.http import HtmlResponse, Request, Response
@@ -23,7 +25,9 @@ def article(slug: str, version: int, published: str, extra: str = "") -> str:
 def listing(title: str, slugs: list[str], pages: list[int]) -> str:
     items = "".join(f'<li><a href="/bai/{slug}">Bài {slug}</a></li>' for slug in slugs)
     pager = "".join(
-        f'<a href="/tin-tuc?page={number}">{number}</a>' if number > 1 else '<a href="/tin-tuc">1</a>'
+        f'<a href="/tin-tuc?page={number}">{number}</a>'
+        if number > 1
+        else '<a href="/tin-tuc">1</a>'
         for number in pages
     )
     return (
@@ -70,13 +74,13 @@ class RefreshSiteHandler:
 
     lazy = True
 
-    def __init__(self, settings, crawler=None):
+    def __init__(self, settings: Any, crawler: Any = None):
         self.request_log = settings.get("FIXTURE_REQUEST_LOG")
         self.version = int(settings.get("FIXTURE_SITE_VERSION", 1))
         self.fail_paths = {p for p in str(settings.get("FIXTURE_FAIL_PATHS", "")).split(",") if p}
 
     @classmethod
-    def from_crawler(cls, crawler):
+    def from_crawler(cls, crawler: Any):
         return cls(crawler.settings, crawler)
 
     async def close(self):
@@ -84,7 +88,7 @@ class RefreshSiteHandler:
 
     async def download_request(self, request: Request):
         if self.request_log:
-            with open(self.request_log, "a", encoding="utf-8") as log:
+            with Path(self.request_log).open("a", encoding="utf-8") as log:
                 log.write(f"{request.url}\n")
         parts = urlsplit(request.url)
         key = parts.path + (f"?{parts.query}" if parts.query else "")
@@ -102,8 +106,10 @@ class RefreshSiteHandler:
             return Response(request.url, status=404, body=b"", request=request)
         encoded = body.encode("utf-8")
         etag = '"' + hashlib.sha256(encoded).hexdigest()[:16] + '"'
-        if request.headers.get(b"If-None-Match", b"").decode("latin1") == etag:
-            return Response(request.url, status=304, headers={b"ETag": etag.encode()}, body=b"", request=request)
+        if (request.headers.get(b"If-None-Match") or b"").decode("latin1") == etag:
+            return Response(
+                request.url, status=304, headers={b"ETag": etag.encode()}, body=b"", request=request
+            )
         return HtmlResponse(
             request.url,
             status=200,
