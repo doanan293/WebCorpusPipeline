@@ -7,175 +7,137 @@ from lxml import etree
 
 from data_pipeline.crawl.extract.links import normalized_text
 
+_HEADINGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
 
-def blocks_from_article(element: etree._Element) -> list[dict[str, Any]]:
-    blocks: list[dict[str, Any]] = []
-    heading_stack: dict[int, str] = {}
 
-    def current_heading_path() -> list[str]:
-        return [heading_stack[lvl] for lvl in sorted(heading_stack.keys())]
+def _text(node: etree._Element) -> str:
+    return normalized_text(list(node.itertext()))
 
-    def walk(node: etree._Element) -> None:
+
+def _row_cells(tr: etree._Element) -> list[str]:
+    return [_text(cell) for cell in tr.xpath("./th | ./td")]
+
+
+class _BlockCollector:
+    """Walks a sanitized article tree and records its structural blocks."""
+
+    def __init__(self) -> None:
+        self.blocks: list[dict[str, Any]] = []
+        self._heading_stack: dict[int, str] = {}
+
+    def _add(self, **block: Any) -> None:
+        path = [self._heading_stack[level] for level in sorted(self._heading_stack)]
+        self.blocks.append({**block, "heading_path": path})
+
+    def walk(self, node: etree._Element) -> None:
         if not isinstance(node.tag, str):
             return
         tag = node.tag.lower()
-
-        if tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
-            level = int(tag[1])
-            text = normalized_text(list(node.itertext()))
-            if text:
-                for lvl in list(heading_stack.keys()):
-                    if lvl >= level:
-                        del heading_stack[lvl]
-                heading_stack[level] = text
-                blocks.append(
-                    {
-                        "type": "heading",
-                        "level": level,
-                        "text": text,
-                        "heading_path": current_heading_path(),
-                    }
-                )
+        if tag in _HEADINGS:
+            self._heading(node, int(tag[1]))
         elif tag == "p":
-            text = normalized_text(list(node.itertext()))
-            if text:
-                blocks.append(
-                    {
-                        "type": "paragraph",
-                        "text": text,
-                        "heading_path": current_heading_path(),
-                    }
-                )
+            self._text_block("paragraph", node)
         elif tag in {"ul", "ol"}:
-            items: list[str] = []
-            for li in node.xpath(".//li"):
-                li_copy = deepcopy(li)
-                for sublist in li_copy.xpath(".//ul | .//ol"):
-                    sublist.drop_tree()
-                item_text = normalized_text(list(li_copy.itertext()))
-                if item_text:
-                    items.append(item_text)
-            if items:
-                blocks.append(
-                    {
-                        "type": "list",
-                        "ordered": tag == "ol",
-                        "items": items,
-                        "heading_path": current_heading_path(),
-                    }
-                )
+            self._list(node, ordered=tag == "ol")
         elif tag == "blockquote":
-            text = normalized_text(list(node.itertext()))
-            if text:
-                blocks.append(
-                    {
-                        "type": "quote",
-                        "text": text,
-                        "heading_path": current_heading_path(),
-                    }
-                )
+            self._text_block("quote", node)
         elif tag == "pre":
-            code_el = node.find(".//code")
-            target = code_el if code_el is not None else node
-            code_text = "".join(target.itertext()).strip("\r\n")
-            if code_text:
-                blocks.append(
-                    {
-                        "type": "code",
-                        "text": code_text,
-                        "heading_path": current_heading_path(),
-                    }
-                )
+            self._code(node)
         elif tag == "table":
-            headers: list[list[str]] = []
-            rows: list[list[str]] = []
-            thead_trs = node.xpath(".//thead/tr")
-            if thead_trs:
-                for tr in thead_trs:
-                    row = [normalized_text(list(c.itertext())) for c in tr.xpath("./th | ./td")]
-                    if any(row):
-                        headers.append(row)
-                for tr in node.xpath(".//tbody/tr | ./tr"):
-                    row = [normalized_text(list(c.itertext())) for c in tr.xpath("./th | ./td")]
-                    if any(row):
-                        rows.append(row)
-            else:
-                for tr in node.xpath(".//tbody/tr | ./tr"):
-                    ths = tr.xpath("./th")
-                    row = [normalized_text(list(c.itertext())) for c in tr.xpath("./th | ./td")]
-                    if not any(row):
-                        continue
-                    if ths and not headers and not rows:
-                        headers.append(row)
-                    else:
-                        rows.append(row)
-            if headers or rows:
-                blocks.append(
-                    {
-                        "type": "table",
-                        "headers": headers,
-                        "rows": rows,
-                        "heading_path": current_heading_path(),
-                    }
-                )
+            self._table(node)
         elif tag == "figure":
-            img = node.find(".//img")
-            caption_el = node.find(".//figcaption")
-            asset_url = img.get("src", "") if img is not None else ""
-            alt = img.get("alt", "") if img is not None else ""
-            caption = normalized_text(list(caption_el.itertext())) if caption_el is not None else ""
-            blocks.append(
-                {
-                    "type": "figure",
-                    "asset_url": asset_url,
-                    "alt": alt,
-                    "caption": caption,
-                    "heading_path": current_heading_path(),
-                }
-            )
+            self._figure(node)
         elif tag == "img":
-            blocks.append(
-                {
-                    "type": "figure",
-                    "asset_url": node.get("src", ""),
-                    "alt": node.get("alt", ""),
-                    "caption": "",
-                    "heading_path": current_heading_path(),
-                }
+            self._add(
+                type="figure", asset_url=node.get("src", ""), alt=node.get("alt", ""), caption=""
             )
         elif tag == "hr":
-            blocks.append(
-                {
-                    "type": "separator",
-                    "heading_path": current_heading_path(),
-                }
-            )
+            self._add(type="separator")
         else:
-            if node.text and node.text.strip():
-                t = normalized_text([node.text])
-                if t:
-                    blocks.append(
-                        {
-                            "type": "paragraph",
-                            "text": t,
-                            "heading_path": current_heading_path(),
-                        }
-                    )
-            for child in node:
-                walk(child)
-                if child.tail and child.tail.strip():
-                    t = normalized_text([child.tail])
-                    if t:
-                        blocks.append(
-                            {
-                                "type": "paragraph",
-                                "text": t,
-                                "heading_path": current_heading_path(),
-                            }
-                        )
+            self._container(node)
 
-    walk(element)
-    return blocks
+    def _heading(self, node: etree._Element, level: int) -> None:
+        text = _text(node)
+        if not text:
+            return
+        for known in list(self._heading_stack):
+            if known >= level:
+                del self._heading_stack[known]
+        self._heading_stack[level] = text
+        self._add(type="heading", level=level, text=text)
+
+    def _text_block(self, kind: str, node: etree._Element) -> None:
+        text = _text(node)
+        if text:
+            self._add(type=kind, text=text)
+
+    def _list(self, node: etree._Element, *, ordered: bool) -> None:
+        items: list[str] = []
+        for li in node.xpath(".//li"):
+            li_copy = deepcopy(li)
+            for sublist in li_copy.xpath(".//ul | .//ol"):
+                sublist.drop_tree()
+            item_text = _text(li_copy)
+            if item_text:
+                items.append(item_text)
+        if items:
+            self._add(type="list", ordered=ordered, items=items)
+
+    def _code(self, node: etree._Element) -> None:
+        code_el = node.find(".//code")
+        target = code_el if code_el is not None else node
+        code_text = "".join(target.itertext()).strip("\r\n")
+        if code_text:
+            self._add(type="code", text=code_text)
+
+    def _table(self, node: etree._Element) -> None:
+        headers: list[list[str]] = []
+        rows: list[list[str]] = []
+        body_rows = node.xpath(".//tbody/tr | ./tr")
+        thead_trs = node.xpath(".//thead/tr")
+        if thead_trs:
+            headers.extend(row for row in map(_row_cells, thead_trs) if any(row))
+            rows.extend(row for row in map(_row_cells, body_rows) if any(row))
+        else:
+            for tr in body_rows:
+                row = _row_cells(tr)
+                if not any(row):
+                    continue
+                if tr.xpath("./th") and not headers and not rows:
+                    headers.append(row)
+                else:
+                    rows.append(row)
+        if headers or rows:
+            self._add(type="table", headers=headers, rows=rows)
+
+    def _figure(self, node: etree._Element) -> None:
+        img = node.find(".//img")
+        caption_el = node.find(".//figcaption")
+        self._add(
+            type="figure",
+            asset_url=img.get("src", "") if img is not None else "",
+            alt=img.get("alt", "") if img is not None else "",
+            caption=_text(caption_el) if caption_el is not None else "",
+        )
+
+    def _container(self, node: etree._Element) -> None:
+        if node.text and node.text.strip():
+            self._paragraph_from([node.text])
+        for child in node:
+            self.walk(child)
+            if child.tail and child.tail.strip():
+                self._paragraph_from([child.tail])
+
+    def _paragraph_from(self, pieces: list[str]) -> None:
+        text = normalized_text(pieces)
+        if text:
+            self._add(type="paragraph", text=text)
+
+
+def blocks_from_article(element: etree._Element) -> list[dict[str, Any]]:
+    collector = _BlockCollector()
+    collector.walk(element)
+    return collector.blocks
 
 
 def text_from_blocks(blocks: list[dict[str, Any]]) -> str:
@@ -187,9 +149,7 @@ def text_from_blocks(blocks: list[dict[str, Any]]) -> str:
             if t and isinstance(t, str):
                 lines.append(t)
         elif btype == "list":
-            for item in block.get("items", []):
-                if item and isinstance(item, str):
-                    lines.append(item)
+            lines.extend(item for item in block.get("items", []) if item and isinstance(item, str))
         elif btype == "code":
             t = block.get("text")
             if t and isinstance(t, str):
