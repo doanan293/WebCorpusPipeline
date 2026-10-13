@@ -52,14 +52,15 @@ async def download_one(
     response = await transport.get(job.url, headers)
     try:
         if response.status in (408, 425, 429) or 500 <= response.status < 600:
-            raise RetryableDownloadError(
-                f"HTTP {response.status}",
-                float(response.headers.get("Retry-After", "0") or 0) or None,
-            )
+            msg = f"HTTP {response.status}"
+            retry_after = float(response.headers.get("Retry-After", "0") or 0) or None
+            raise RetryableDownloadError(msg, retry_after)
         if response.status in (404, 410):
-            raise PermanentDownloadError(f"HTTP {response.status}")
+            msg = f"HTTP {response.status}"
+            raise PermanentDownloadError(msg)
         if response.status not in (200, 206):
-            raise PermanentDownloadError(f"HTTP {response.status}")
+            msg = f"HTTP {response.status}"
+            raise PermanentDownloadError(msg)
         etag = response.headers.get("ETag")
         if offset and response.status != 206:
             offset = 0
@@ -76,12 +77,14 @@ async def download_one(
             await response.close()
             response = await transport.get(job.url)
             if response.status != 200:
-                raise RetryableDownloadError("validator changed while resuming")
+                msg = "validator changed while resuming"
+                raise RetryableDownloadError(msg)
             etag = response.headers.get("ETag")
         total = response.headers.get("Content-Length")
         total_int = int(total) + offset if total and total.isdigit() else None
         if total_int and total_int > settings.max_file_bytes:
-            raise PermanentDownloadError("file exceeds max_file_bytes")
+            msg = "file exceeds max_file_bytes"
+            raise PermanentDownloadError(msg)
         job.strong_etag = etag if _strong(etag) else None
         job.final_url = response.final_url
         job.expected_size = total_int
@@ -94,7 +97,8 @@ async def download_one(
                     continue
                 written += len(chunk)
                 if written > settings.max_file_bytes:
-                    raise PermanentDownloadError("file exceeds max_file_bytes")
+                    msg = "file exceeds max_file_bytes"
+                    raise PermanentDownloadError(msg)
                 stream.write(chunk)
                 if (
                     written - last_flush >= settings.checkpoint_bytes
@@ -112,10 +116,12 @@ async def download_one(
     finally:
         await response.close()
     if job.expected_size and job.part_path.stat().st_size != job.expected_size:
-        raise RetryableDownloadError("truncated response")
+        msg = "truncated response"
+        raise RetryableDownloadError(msg)
     mime = response.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0].lower()
     if not looks_like_document(job.part_path, mime):
-        raise PermanentDownloadError("response is not a document")
+        msg = "response is not a document"
+        raise PermanentDownloadError(msg)
     digest = sha256_file(job.part_path)
     final = (
         state.root

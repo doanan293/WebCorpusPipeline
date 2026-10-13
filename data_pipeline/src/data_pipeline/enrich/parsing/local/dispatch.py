@@ -51,4 +51,5 @@ def parse_local(file: DownloadedFile):
         from data_pipeline.enrich.parsing.local.common import result
 
         return result(file, [ExtractedPart(1, "document", text, False, "text")], "text")
-    raise ValueError(f"unsupported document extension: {ext}")
+    msg = f"unsupported document extension: {ext}"
+    raise ValueError(msg)

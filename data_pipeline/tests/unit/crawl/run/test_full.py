@@ -289,7 +289,8 @@ def test_crawl_runner_cleans_reuse_destination_when_scrapy_setup_fails(
     output = tmp_path / "crawl-all"
 
     def fail_process(*args, **kwargs):
-        raise RuntimeError("scrapy setup failed")
+        msg = "scrapy setup failed"
+        raise RuntimeError(msg)
 
     monkeypatch.setattr(runner, "CrawlerProcess", fail_process)
     with pytest.raises(RuntimeError, match="scrapy setup failed"):

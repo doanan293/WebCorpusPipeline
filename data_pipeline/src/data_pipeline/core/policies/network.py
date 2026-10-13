@@ -66,7 +66,8 @@ def resolve_hostname(hostname: str, timeout: float = 5.0, port: int = 443) -> No
 
     threading.Thread(target=resolve, daemon=True).start()
     if not completed.wait(timeout):
-        raise TimeoutError(f"DNS resolution timed out after {timeout:g}s")
+        msg = f"DNS resolution timed out after {timeout:g}s"
+        raise TimeoutError(msg)
     answers, error = outcome[0]
     if error is not None:
         raise error
@@ -75,9 +76,8 @@ def resolve_hostname(hostname: str, timeout: float = 5.0, port: int = 443) -> No
         address for address in addresses if not ipaddress.ip_address(address).is_global
     )
     if non_public:
-        raise NonPublicAddressError(
-            f"hostname resolves to non-public address: {', '.join(non_public)}"
-        )
+        msg = f"hostname resolves to non-public address: {', '.join(non_public)}"
+        raise NonPublicAddressError(msg)
 
 
 async def resolve_public_hostname(

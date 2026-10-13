@@ -18,7 +18,8 @@ if TYPE_CHECKING:
 def validate_network_contact(contact: str) -> None:
     normalized = contact.strip().lower()
     if not normalized or ".invalid" in normalized:
-        raise ValueError("a non-placeholder operator contact is required")
+        msg = "a non-placeholder operator contact is required"
+        raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,7 +85,8 @@ class CrawlerConfig:
         if not contact:
             contact = str(raw.get("contact", "")).strip()
         if not contact:
-            raise ValueError("contact is required")
+            msg = "contact is required"
+            raise ValueError(msg)
         validate_network_contact(contact)
         required = (
             "user_agent_name",
@@ -128,12 +130,14 @@ class CrawlerConfig:
         if "contact" not in raw and not environment.get("CRAWLER_CONTACT", "").strip():
             missing.insert(0, "contact")
         if missing:
-            raise ValueError(f"missing required crawler settings: {', '.join(missing)}")
+            msg = f"missing required crawler settings: {', '.join(missing)}"
+            raise ValueError(msg)
 
         def required_bool(name: str) -> bool:
             value = raw[name]
             if not isinstance(value, bool):
-                raise ValueError(f"{name} must be a boolean")
+                msg = f"{name} must be a boolean"
+                raise ValueError(msg)
             return value
 
         values = {
@@ -193,25 +197,32 @@ class CrawlerConfig:
         )
         for name in positive:
             if values[name] <= 0:
-                raise ValueError(f"{name} must be positive")
+                msg = f"{name} must be positive"
+                raise ValueError(msg)
         if not values["retry_statuses"] or any(
             status < 100 or status > 599 for status in values["retry_statuses"]
         ):
-            raise ValueError("retry_statuses must contain HTTP status codes")
+            msg = "retry_statuses must contain HTTP status codes"
+            raise ValueError(msg)
         if values["download_delay_seconds"] <= 0:
-            raise ValueError("download_delay_seconds must be positive")
+            msg = "download_delay_seconds must be positive"
+            raise ValueError(msg)
         if (
             values["throttle_start_seconds"] <= 0
             or values["throttle_max_seconds"] <= 0
             or values["throttle_start_seconds"] > values["throttle_max_seconds"]
         ):
-            raise ValueError("throttle delays must be positive and ordered")
+            msg = "throttle delays must be positive and ordered"
+            raise ValueError(msg)
         if values["autothrottle_target_concurrency"] > values["concurrent_per_host"]:
-            raise ValueError("autothrottle_target_concurrency must not exceed concurrent_per_host")
+            msg = "autothrottle_target_concurrency must not exceed concurrent_per_host"
+            raise ValueError(msg)
         if not 1 <= values["resource_limit_percent"] <= 100:
-            raise ValueError("resource_limit_percent must be between 1 and 100")
+            msg = "resource_limit_percent must be between 1 and 100"
+            raise ValueError(msg)
         if values["assets"] not in {"content-only", "all"}:
-            raise ValueError("assets must be content-only or all")
+            msg = "assets must be content-only or all"
+            raise ValueError(msg)
         return cls(**values)
 
 

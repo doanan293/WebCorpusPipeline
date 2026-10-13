@@ -186,7 +186,8 @@ def test_reports_runner_validation_errors(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     def reject_run(**kwargs: object) -> int:
-        raise ValueError("source crawl is still running")
+        msg = "source crawl is still running"
+        raise ValueError(msg)
 
     monkeypatch.setattr(run_full, "run_crawl", reject_run)
 

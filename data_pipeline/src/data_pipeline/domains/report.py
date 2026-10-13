@@ -15,7 +15,8 @@ def load_candidate_hostnames(path: Path) -> tuple[str, ...]:
         if not hostname or hostname.startswith("#"):
             continue
         if hostname != "hust.edu.vn" and not hostname.endswith(".hust.edu.vn"):
-            raise ValueError(f"{path}:{line_number}: hostname outside HUST scope: {hostname}")
+            msg = f"{path}:{line_number}: hostname outside HUST scope: {hostname}"
+            raise ValueError(msg)
         hostnames.add(hostname)
     return tuple(sorted(hostnames))
 

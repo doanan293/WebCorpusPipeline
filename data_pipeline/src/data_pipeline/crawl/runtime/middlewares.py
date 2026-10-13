@@ -72,7 +72,8 @@ async def _wait_for_stable_body(page) -> None:
                 document_id = current_id
                 stable_samples = 0
         await page.wait_for_timeout(250)
-    raise PlaywrightTimeoutError("rendered body did not stabilize within 30 seconds")
+    msg = "rendered body did not stabilize within 30 seconds"
+    raise PlaywrightTimeoutError(msg)
 
 
 class SafeRedirectMiddleware:

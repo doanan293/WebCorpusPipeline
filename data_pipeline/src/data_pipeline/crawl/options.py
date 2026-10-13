@@ -22,10 +22,12 @@ class CrawlOptions:
 
     def __post_init__(self) -> None:
         if self.assets not in {"content-only", "all"}:
-            raise ValueError("assets must be content-only or all")
+            msg = "assets must be content-only or all"
+            raise ValueError(msg)
         for name, value in asdict(self).items():
             if name != "assets" and int(value) <= 0:
-                raise ValueError(f"{name} must be positive")
+                msg = f"{name} must be positive"
+                raise ValueError(msg)
 
     def semantic_snapshot(self, seeds: SeedSet | None = None) -> dict[str, object]:
         return {

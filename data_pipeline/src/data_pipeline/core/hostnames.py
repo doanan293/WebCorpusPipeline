@@ -7,10 +7,12 @@ from urllib.parse import urlsplit
 def normalize_hostname(value: str) -> str:
     hostname = value.strip().lower().rstrip(".")
     if not hostname or any(char.isspace() for char in hostname):
-        raise ValueError(f"invalid hostname: {value!r}")
+        msg = f"invalid hostname: {value!r}"
+        raise ValueError(msg)
     parsed = urlsplit(f"//{hostname}")
     if parsed.hostname != hostname or parsed.port is not None or "/" in hostname:
-        raise ValueError(f"expected hostname, got: {value!r}")
+        msg = f"expected hostname, got: {value!r}"
+        raise ValueError(msg)
     return hostname
 
 
@@ -21,11 +23,13 @@ def load_hostnames(path: Path) -> frozenset[str]:
         if not value or value.startswith("#"):
             continue
         if value.lower().startswith(("http://", "https://")):
-            raise ValueError(f"{path}:{line_number}: expected hostname, got URL: {value!r}")
+            msg = f"{path}:{line_number}: expected hostname, got URL: {value!r}"
+            raise ValueError(msg)
         if value.startswith("-") or ":" in value or " " in value:
             continue
         try:
             hostnames.add(normalize_hostname(value))
         except ValueError as exc:
-            raise ValueError(f"{path}:{line_number}: {exc}") from exc
+            msg = f"{path}:{line_number}: {exc}"
+            raise ValueError(msg) from exc
     return frozenset(hostnames)

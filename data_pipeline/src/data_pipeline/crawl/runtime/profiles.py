@@ -27,7 +27,8 @@ def resolve_runtime_tuning(
 ) -> RuntimeTuning:
     name = profile or "safe-fast"
     if name != "safe-fast":
-        raise ValueError(f"unknown profile: {name}")
+        msg = f"unknown profile: {name}"
+        raise ValueError(msg)
     if config is None:
         config = CrawlerConfig(hostnames=frozenset(), contact="ops@example.org")
     tuning = RuntimeTuning(
@@ -45,9 +46,11 @@ def resolve_runtime_tuning(
         progress_interval_seconds=config.progress_interval_seconds,
     )
     if tuning.max_concurrency <= 0 or tuning.max_per_host <= 0:
-        raise ValueError("concurrency limits must be positive")
+        msg = "concurrency limits must be positive"
+        raise ValueError(msg)
     if not 1 <= tuning.resource_limit_percent <= 100:
-        raise ValueError("resource limit percent must be between 1 and 100")
+        msg = "resource limit percent must be between 1 and 100"
+        raise ValueError(msg)
     return tuning
 
 

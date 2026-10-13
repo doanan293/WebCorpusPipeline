@@ -82,7 +82,8 @@ def _build_response(handler: Any, url: str, req: Request) -> Response:
         )
     if isinstance(handler, bytes):
         return Response(url=url, status=200, body=handler, request=req)
-    raise TypeError(f"Unknown route handler type: {type(handler)}")
+    msg = f"Unknown route handler type: {type(handler)}"
+    raise TypeError(msg)
 
 
 def default_routes() -> dict[str, Any]:

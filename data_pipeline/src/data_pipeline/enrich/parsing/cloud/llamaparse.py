@@ -34,7 +34,8 @@ def parse_cloud_subset(
     try:
         from llama_cloud import LlamaCloud
     except ImportError as exc:
-        raise RuntimeError("install the producer extra to use LlamaParse") from exc
+        msg = "install the producer extra to use LlamaParse"
+        raise RuntimeError(msg) from exc
     pending = list(mapping.items())
     label, secret = pool.current()
     request_id = uuid.uuid4().hex

@@ -41,11 +41,13 @@ def _dataset_files(dataset: str) -> list[str]:
             index for index, line in enumerate(lines) if line.strip() == "name,size,creationDate"
         )
     except StopIteration as exc:
-        raise ValueError("Kaggle did not return a file listing") from exc
+        msg = "Kaggle did not return a file listing"
+        raise ValueError(msg) from exc
     rows = csv.DictReader(io.StringIO("\n".join(lines[header:])))
     names = [str(row["name"]).strip() for row in rows if row.get("name")]
     if not names:
-        raise ValueError("Kaggle dataset file listing is empty")
+        msg = "Kaggle dataset file listing is empty"
+        raise ValueError(msg)
     return names
 
 
@@ -64,7 +66,8 @@ def publish_corpus(
         _metadata(config, staging)
         if update:
             if not message:
-                raise ValueError("--message is required for update")
+                msg = "--message is required for update"
+                raise ValueError(msg)
             _run(
                 [
                     "kaggle",
@@ -95,7 +98,8 @@ def pull_corpus(lock_path: Path, destination: Path) -> Path:
     owner = lock.get("owner")
     slug = lock.get("slug")
     if not owner or not slug:
-        raise ValueError("corpus lock needs owner and slug")
+        msg = "corpus lock needs owner and slug"
+        raise ValueError(msg)
     destination = destination.resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="ir-kaggle-pull-") as temp:
@@ -123,11 +127,13 @@ def pull_corpus(lock_path: Path, destination: Path) -> Path:
         # Kaggle wraps a multi-file dataset in an archive; locate the manifest safely.
         manifests = list(staging.rglob("manifest.json"))
         if len(manifests) != 1:
-            raise ValueError("download must contain exactly one manifest.json")
+            msg = "download must contain exactly one manifest.json"
+            raise ValueError(msg)
         corpus = manifests[0].parent
         report = verify_corpus(corpus)
         if not report["valid"] or report["snapshot_id"] != lock.get("snapshot_id"):
-            raise ValueError("downloaded corpus does not match pinned lock")
+            msg = "downloaded corpus does not match pinned lock"
+            raise ValueError(msg)
         if destination.exists():
             shutil.rmtree(destination)
         shutil.copytree(corpus, destination)

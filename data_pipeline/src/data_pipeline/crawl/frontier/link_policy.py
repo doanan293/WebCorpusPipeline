@@ -288,7 +288,8 @@ def classify_link(
 ) -> ClassifiedLink:
     normalized = normalize_url(url, source_url)
     if normalized is None:
-        raise ValueError("link URL is not normalizable")
+        msg = "link URL is not normalizable"
+        raise ValueError(msg)
     group = recognizable_asset(normalized)
     if resource_kind_hint == "file" or group is not None:
         return ClassifiedLink(normalized, "asset", None, None, False, None)

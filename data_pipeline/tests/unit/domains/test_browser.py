@@ -54,7 +54,8 @@ def test_browser_request_policy_blocks_external_and_non_public_targets(
     def resolve(hostname: str, timeout: float = 5.0) -> None:
         resolved.append(hostname)
         if hostname == "private.hust.edu.vn":
-            raise NonPublicAddressError("private target")
+            msg = "private target"
+            raise NonPublicAddressError(msg)
 
     monkeypatch.setattr(domain_browser, "resolve_hostname", resolve)
 

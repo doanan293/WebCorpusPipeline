@@ -68,7 +68,8 @@ def parse_seed_file(path: Path) -> SeedSet:
     rec_frozen = frozenset(recursive_hosts)
 
     if not rec_frozen and not sorted_exact:
-        raise ValueError("input contains no valid seeds")
+        msg = "input contains no valid seeds"
+        raise ValueError(msg)
 
     return SeedSet(
         recursive_hostnames=rec_frozen,

@@ -24,14 +24,17 @@ def validate_policy_migration(saved: Mapping[str, object], effective: Mapping[st
     saved_revision = int(saved.get("access_policy_revision", 1))
     effective_revision = int(effective.get("access_policy_revision", 1))
     if saved_revision != 1 or effective_revision != 2:
-        raise ValueError(
+        msg = (
             "unsupported access policy revision migration: "
             f"{saved_revision} -> {effective_revision}"
         )
+        raise ValueError(msg)
     if saved.get("robots_txt_obey", True) is not True:
-        raise ValueError("policy migration requires saved robots_txt_obey=true")
+        msg = "policy migration requires saved robots_txt_obey=true"
+        raise ValueError(msg)
     if effective.get("robots_txt_obey") is not False:
-        raise ValueError("policy migration requires effective robots_txt_obey=false")
+        msg = "policy migration requires effective robots_txt_obey=false"
+        raise ValueError(msg)
 
     saved_other = {
         key: value for key, value in saved.items() if key not in ACCESS_POLICY_SEMANTIC_KEYS
@@ -94,6 +97,5 @@ def validate_resume_workflow(state_root: Path, expected: str) -> None:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     actual = manifest.get("semantic_config", {}).get("crawl_strategy")
     if actual != expected:
-        raise ValueError(
-            f"cannot resume {actual or 'legacy'} state as {expected}; use a new output directory"
-        )
+        msg = f"cannot resume {actual or 'legacy'} state as {expected}; use a new output directory"
+        raise ValueError(msg)

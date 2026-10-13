@@ -34,9 +34,11 @@ def validate_reuse_source(source_output: Path, input_path: Path) -> tuple[Path, 
     manifest_path = state_dir / "manifest.json"
     database_path = state_dir / "index.sqlite3"
     if _lock_is_live(state_dir / "run.lock"):
-        raise ValueError(f"source crawl is still running: {source_output}")
+        msg = f"source crawl is still running: {source_output}"
+        raise ValueError(msg)
     if not manifest_path.is_file() or not database_path.is_file():
-        raise ValueError(f"source is not a reusable crawl output: {source_output}")
+        msg = f"source is not a reusable crawl output: {source_output}"
+        raise ValueError(msg)
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     semantic = manifest.get("semantic_config", {})
@@ -48,13 +50,16 @@ def validate_reuse_source(source_output: Path, input_path: Path) -> tuple[Path, 
         or semantic.get("assets") != "content-only"
         or semantic.get("asset_policy_version") != 2
     ):
-        raise ValueError("source is not a compatible content-only crawl")
+        msg = "source is not a compatible content-only crawl"
+        raise ValueError(msg)
     if manifest.get("status") not in _REUSABLE_STATUSES:
-        raise ValueError("source crawl has not completed with reusable output")
+        msg = "source crawl has not completed with reusable output"
+        raise ValueError(msg)
 
     input_sha256 = hashlib.sha256(input_path.read_bytes()).hexdigest()
     if manifest.get("input_sha256") != input_sha256:
-        raise ValueError("source crawl input does not match --input")
+        msg = "source crawl input does not match --input"
+        raise ValueError(msg)
     return database_path, manifest
 
 
@@ -79,16 +84,19 @@ def import_reused_content(
             source = sqlite3.connect(staged_database, autocommit=True)
             try:
                 if _lock_is_live(state_dir / "run.lock"):
-                    raise ValueError(f"source crawl is still running: {source_output}")
+                    msg = f"source crawl is still running: {source_output}"
+                    raise ValueError(msg)
                 source.backup(destination.connection)
             finally:
                 source.close()
     except sqlite3.Error as exc:
-        raise ValueError(f"could not import reusable crawl: {exc}") from exc
+        msg = f"could not import reusable crawl: {exc}"
+        raise ValueError(msg) from exc
 
     manifest_after = hashlib.sha256(manifest_path.read_bytes()).digest()
     if _lock_is_live(state_dir / "run.lock") or manifest_after != manifest_before:
-        raise ValueError("source crawl changed while reusable content was imported")
+        msg = "source crawl changed while reusable content was imported"
+        raise ValueError(msg)
 
 
 def prepare_reused_asset_targets(state: CrawlState) -> None:
@@ -130,7 +138,8 @@ def prepare_reused_asset_targets(state: CrawlState) -> None:
                 if referring_page:
                     state.add_asset_referrer(url, referring_page, role)
     except (AttributeError, json.JSONDecodeError, TypeError) as exc:
-        raise ValueError(f"could not read reused article metadata: {exc}") from exc
+        msg = f"could not read reused article metadata: {exc}"
+        raise ValueError(msg) from exc
 
 
 def reused_asset_targets(state: CrawlState) -> Iterator[ReusedAssetTarget]:

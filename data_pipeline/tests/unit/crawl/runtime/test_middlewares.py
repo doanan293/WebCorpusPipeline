@@ -31,7 +31,8 @@ def test_redirect_outside_exact_hosts_raises_ignore_request() -> None:
     except Exception as exc:
         assert "redirect_out_of_scope" in str(exc)
     else:
-        raise AssertionError("out-of-scope redirect was accepted")
+        msg = "out-of-scope redirect was accepted"
+        raise AssertionError(msg)
 
 
 def test_redirect_cannot_cross_request_host_even_if_other_host_in_crawl() -> None:
@@ -48,7 +49,8 @@ def test_redirect_cannot_cross_request_host_even_if_other_host_in_crawl() -> Non
     except Exception as exc:
         assert "redirect_out_of_scope:host_out_of_scope" in str(exc)
     else:
-        raise AssertionError("cross-host redirect between crawl hosts was accepted")
+        msg = "cross-host redirect between crawl hosts was accepted"
+        raise AssertionError(msg)
 
 
 def test_redirect_loop_is_rejected_before_refetching_seen_url() -> None:

@@ -38,7 +38,8 @@ class HostHealth:
         change_interval: float = 30.0,
     ) -> None:
         if not 1 <= start_concurrency <= hard_ceiling:
-            raise ValueError("start concurrency must be within hard ceiling")
+            msg = "start concurrency must be within hard ceiling"
+            raise ValueError(msg)
         self.current = start_concurrency
         self.normal_ceiling = min(normal_ceiling, hard_ceiling)
         self.hard_ceiling = hard_ceiling
@@ -134,7 +135,8 @@ class AdaptiveConcurrencyMiddleware:
     def from_crawler(cls, crawler):
         tuning = crawler.settings.get("HUST_TUNING")
         if tuning is None:
-            raise ValueError("HUST_TUNING is required for adaptive middleware")
+            msg = "HUST_TUNING is required for adaptive middleware"
+            raise ValueError(msg)
         middleware = cls(
             crawler,
             max_per_host=int(tuning.max_per_host),

@@ -315,7 +315,8 @@ def test_failed_prepare_restores_finished_crawl_status(tmp_path: Path, monkeypat
     assert state.manifest["status"] == "running"
 
     def disk_full(destination: Path) -> None:
-        raise OSError("No space left on device")
+        msg = "No space left on device"
+        raise OSError(msg)
 
     monkeypatch.setattr(state, "backup_to", disk_full)
     with pytest.raises(OSError):

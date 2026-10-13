@@ -40,7 +40,8 @@ def _assert_enrichment_complete(db_path: Path) -> None:
         ).fetchall()
         if pending:
             details = ", ".join(f"{status}={count}" for status, count in pending)
-            raise ValueError(f"cannot package while downloads are pending: {details}")
+            msg = f"cannot package while downloads are pending: {details}"
+            raise ValueError(msg)
 
         unparsed = conn.execute(
             "select count(*) from inventory i "
@@ -48,7 +49,8 @@ def _assert_enrichment_complete(db_path: Path) -> None:
             "where i.status='downloaded' and p.url is null"
         ).fetchone()[0]
         if unparsed:
-            raise ValueError(f"cannot package while {unparsed} downloaded files are unparsed")
+            msg = f"cannot package while {unparsed} downloaded files are unparsed"
+            raise ValueError(msg)
 
         blocked = conn.execute(
             "select status,count(*) from parse_results "
@@ -56,7 +58,8 @@ def _assert_enrichment_complete(db_path: Path) -> None:
         ).fetchall()
         if blocked:
             details = ", ".join(f"{status}={count}" for status, count in blocked)
-            raise ValueError(f"cannot package while cloud extraction is blocked: {details}")
+            msg = f"cannot package while cloud extraction is blocked: {details}"
+            raise ValueError(msg)
     finally:
         conn.close()
 

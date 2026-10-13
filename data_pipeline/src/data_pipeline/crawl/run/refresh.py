@@ -70,13 +70,15 @@ def preflight(state_dir: Path) -> str | None:
     """Return the refresh run to continue, or None to start a new one."""
     manifest_path = state_dir / "manifest.json"
     if not manifest_path.exists():
-        raise ValueError(f"--refresh requires an existing crawl: {state_dir.parent}")
+        msg = f"--refresh requires an existing crawl: {state_dir.parent}"
+        raise ValueError(msg)
     latest = _latest_run(state_dir / "index.sqlite3")
     if latest is not None and latest[1] in CONTINUABLE_RUN_STATUSES:
         return latest[0]
     status = json.loads(manifest_path.read_text(encoding="utf-8")).get("status")
     if status not in FINISHED_CRAWL_STATUSES:
-        raise ValueError(f"--refresh requires a finished crawl; current status is {status}")
+        msg = f"--refresh requires a finished crawl; current status is {status}"
+        raise ValueError(msg)
     return None
 
 

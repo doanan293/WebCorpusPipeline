@@ -103,10 +103,12 @@ def iter_final_articles(
                             "SELECT payload FROM articles WHERE url = ?", (owner_url,)
                         ).fetchone()
                         if owner_row is None:
-                            raise ValueError(f"missing duplicate owner article: {owner_url}")
+                            msg = f"missing duplicate owner article: {owner_url}"
+                            raise ValueError(msg)
                         text = json.loads(owner_row[0]).get("text")
                         if text is None:
-                            raise ValueError(f"duplicate owner has no text: {owner_url}")
+                            msg = f"duplicate owner has no text: {owner_url}"
+                            raise ValueError(msg)
                         owner_text[owner_url] = str(text)
                     article["text"] = owner_text[owner_url]
                     article.pop("duplicate_of", None)

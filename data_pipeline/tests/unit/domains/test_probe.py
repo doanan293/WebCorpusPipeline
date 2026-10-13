@@ -523,7 +523,8 @@ def test_probe_rejects_client_redirect_to_non_public_hust_host() -> None:
 
     def resolve(hostname: str) -> None:
         if hostname == "private.hust.edu.vn":
-            raise NonPublicAddressError("private target")
+            msg = "private target"
+            raise NonPublicAddressError(msg)
 
     def fetch(url: str, timeout: float) -> ProbeAttempt:
         fetched.append(url)
@@ -810,7 +811,8 @@ def test_probe_retries_rate_limit_but_rejects_persistent_rate_limit() -> None:
 
 def test_probe_reports_dns_failure_without_http_attempt() -> None:
     def fail_dns(hostname: str) -> None:
-        raise OSError("name not known")
+        msg = "name not known"
+        raise OSError(msg)
 
     result = probe_host(
         "missing.hust.edu.vn",
@@ -831,7 +833,8 @@ def test_probe_retries_transient_dns_failure() -> None:
         nonlocal dns_attempts
         dns_attempts += 1
         if dns_attempts == 1:
-            raise OSError("temporary failure")
+            msg = "temporary failure"
+            raise OSError(msg)
 
     result = probe_host(
         "example.hust.edu.vn",
@@ -984,7 +987,8 @@ def test_fetch_url_does_not_follow_hust_redirect_to_non_public_address(
 
     def resolve(hostname: str, timeout: float = 5.0) -> None:
         assert hostname == "private.hust.edu.vn"
-        raise NonPublicAddressError("private target")
+        msg = "private target"
+        raise NonPublicAddressError(msg)
 
     monkeypatch.setattr(domain_probe, "resolve_hostname", resolve)
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)

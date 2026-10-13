@@ -67,7 +67,8 @@ def load_api_keys(env_file: Path) -> list[tuple[str, str]]:
 def _positive(name: str, value: Any, integer: bool = True) -> int | float:
     result = int(value) if integer else float(value)
     if result <= 0:
-        raise ValueError(f"{name} must be positive")
+        msg = f"{name} must be positive"
+        raise ValueError(msg)
     return result
 
 
@@ -99,7 +100,8 @@ def load_settings(paths: ProjectPaths, overrides: Mapping[str, Any] | None = Non
     }
     values.update(overrides or {})
     if values["per_host"] > values["concurrency"]:
-        raise ValueError("per_host cannot exceed concurrency")
+        msg = "per_host cannot exceed concurrency"
+        raise ValueError(msg)
     for key in (
         "concurrency",
         "per_host",

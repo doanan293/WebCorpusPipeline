@@ -12,7 +12,8 @@ class KeyPool:
         for item in self.keys:
             if item[0] not in self.exhausted:
                 return item
-        raise RuntimeError("all LlamaParse keys are quota exhausted")
+        msg = "all LlamaParse keys are quota exhausted"
+        raise RuntimeError(msg)
 
     def mark_quota_exhausted(self, label: str) -> None:
         self.exhausted.add(label)

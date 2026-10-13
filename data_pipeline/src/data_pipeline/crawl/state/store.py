@@ -59,12 +59,14 @@ class CrawlState:
             except (OSError, ValueError):
                 lock_path.unlink(missing_ok=True)
             else:
-                raise RuntimeError(f"crawl is already running with PID {pid}")
+                msg = f"crawl is already running with PID {pid}"
+                raise RuntimeError(msg)
 
         try:
             fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError as exc:
-            raise RuntimeError(f"crawl state is locked: {root}") from exc
+            msg = f"crawl state is locked: {root}"
+            raise RuntimeError(msg) from exc
         os.write(fd, f"{os.getpid()}\n".encode())
         os.close(fd)
 
@@ -72,20 +74,25 @@ class CrawlState:
             if manifest_path.exists():
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                 if not resume:
-                    raise FileExistsError(f"crawl state already exists: {root}")
+                    msg = f"crawl state already exists: {root}"
+                    raise FileExistsError(msg)
                 if manifest.get("state_version") != 4:
-                    raise ValueError("resume state version does not match saved crawl")
+                    msg = "resume state version does not match saved crawl"
+                    raise ValueError(msg)
                 if manifest.get("phase") != phase:
-                    raise ValueError("resume phase does not match saved run")
+                    msg = "resume phase does not match saved run"
+                    raise ValueError(msg)
                 if manifest.get("input_sha256") != input_sha256:
-                    raise ValueError("resume input does not match saved crawl")
+                    msg = "resume input does not match saved crawl"
+                    raise ValueError(msg)
                 saved_semantic = normalize_legacy_semantic_config(
                     manifest.get("semantic_config", {})
                 )
                 effective_semantic = normalize_legacy_semantic_config(semantic_config)
                 if saved_semantic != effective_semantic:
                     if not allow_policy_migration:
-                        raise ValueError("resume semantic configuration does not match saved crawl")
+                        msg = "resume semantic configuration does not match saved crawl"
+                        raise ValueError(msg)
                     validate_policy_migration(saved_semantic, effective_semantic)
                     migrations = list(manifest.get("policy_migrations", []))
                     if not any(
@@ -111,7 +118,8 @@ class CrawlState:
 
             else:
                 if resume:
-                    raise ValueError(f"cannot resume non-existent crawl state: {root}")
+                    msg = f"cannot resume non-existent crawl state: {root}"
+                    raise ValueError(msg)
                 manifest = {
                     "state_version": 4,
                     "phase": phase,

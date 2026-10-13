@@ -89,23 +89,29 @@ def run_crawl(
         or retry_access_gates
         or retry_policy_skips
     ):
-        raise ValueError(
-            "--refresh cannot be combined with --resume, --reuse-content-from or --retry-* flags"
-        )
+        msg = "--refresh cannot be combined with --resume, --reuse-content-from or --retry-* flags"
+        raise ValueError(msg)
     if retry_failed and not resume:
-        raise ValueError("--retry-failed requires --resume")
+        msg = "--retry-failed requires --resume"
+        raise ValueError(msg)
     if retry_truncated and not resume:
-        raise ValueError("--retry-truncated requires --resume")
+        msg = "--retry-truncated requires --resume"
+        raise ValueError(msg)
     if retry_access_gates and not resume:
-        raise ValueError("--retry-access-gates requires --resume")
+        msg = "--retry-access-gates requires --resume"
+        raise ValueError(msg)
     if retry_policy_skips and not resume:
-        raise ValueError("--retry-policy-skips requires --resume")
+        msg = "--retry-policy-skips requires --resume"
+        raise ValueError(msg)
     if reuse_content_from is not None and resume:
-        raise ValueError("--reuse-content-from cannot be combined with --resume")
+        msg = "--reuse-content-from cannot be combined with --resume"
+        raise ValueError(msg)
     if reuse_content_from is not None and reuse_content_from.resolve() == output.resolve():
-        raise ValueError("--reuse-content-from must differ from --output")
+        msg = "--reuse-content-from must differ from --output"
+        raise ValueError(msg)
     if reuse_content_from is not None and output.exists():
-        raise FileExistsError(f"reuse output already exists: {output}")
+        msg = f"reuse output already exists: {output}"
+        raise FileExistsError(msg)
     if reuse_content_from is not None:
         validate_reuse_source(reuse_content_from, input_path)
 

@@ -101,7 +101,8 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
             hostname: str, port: int = 443, timeout_seconds: float = 5.0
         ) -> None:
             if mode == "reuse_private_dns" and hostname == "cdn.test":
-                raise NonPublicAddressError("hostname resolves to non-public address")
+                msg = "hostname resolves to non-public address"
+                raise NonPublicAddressError(msg)
 
         vals["HUST_PUBLIC_RESOLVER"] = fixture_resolver
 

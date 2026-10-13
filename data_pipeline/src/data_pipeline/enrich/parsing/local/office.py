@@ -27,6 +27,7 @@ def convert_office(source: Path, destination_dir: Path, target: str) -> Path:
     if not result.exists():
         matches = list(destination_dir.glob(f"{source.stem}.*"))
         if not matches:
-            raise RuntimeError(f"LibreOffice did not create output for {source}")
+            msg = f"LibreOffice did not create output for {source}"
+            raise RuntimeError(msg)
         result = matches[0]
     return result

@@ -141,7 +141,8 @@ def test_business_errors_print_an_error_line_and_exit_2(
     from data_pipeline.corpus import package
 
     def bad(corpus: Path) -> dict[str, object]:
-        raise ValueError("bad corpus")
+        msg = "bad corpus"
+        raise ValueError(msg)
 
     monkeypatch.setattr(package, "verify_corpus", bad)
 

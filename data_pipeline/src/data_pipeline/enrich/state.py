@@ -71,7 +71,8 @@ class WorkState:
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except (BlockingIOError, ImportError):
             os.close(lock_fd)
-            raise RuntimeError(f"work directory is already in use: {root}")
+            msg = f"work directory is already in use: {root}"
+            raise RuntimeError(msg)
         conn = sqlite3.connect(root / "state.sqlite3", timeout=30)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
@@ -82,10 +83,11 @@ class WorkState:
         same_crawl = crawl_id is not None and obj._meta("crawl_id") == crawl_id
         if old and old != source_fingerprint and not (same_crawl or rebind):
             obj.close()
-            raise ValueError(
+            msg = (
                 "source fingerprint changed; use a new work directory, "
                 "or pass --rebind-source if the source is a refresh of the same crawl"
             )
+            raise ValueError(msg)
         obj._set_meta("source_fingerprint", source_fingerprint)
         if crawl_id is not None:
             obj._set_meta("crawl_id", crawl_id)
@@ -443,5 +445,6 @@ def read_cloud_job_status(work_dir: Path, request_id: str, job_id: str) -> str:
     finally:
         connection.close()
     if row is None or row[0] != job_id:
-        raise ValueError("request/job pair is not present in this work directory")
+        msg = "request/job pair is not present in this work directory"
+        raise ValueError(msg)
     return str(row[1])
