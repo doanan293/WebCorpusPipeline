@@ -4,7 +4,6 @@ import shutil
 import time
 from functools import partial
 from pathlib import Path
-from typing import Literal
 from urllib.parse import urlsplit
 
 from scrapy.crawler import CrawlerProcess
@@ -21,6 +20,7 @@ from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
 from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.output.writer import CrawlWriter
+from data_pipeline.crawl.run.exit_codes import TRUNCATION_REASONS, finish_reason_to_exit
 from data_pipeline.crawl.run.refresh import (
     RefreshSession,
     RefreshSettings,
@@ -58,51 +58,12 @@ from data_pipeline.crawl.state.requeue import (
 from data_pipeline.crawl.state.resume import validate_resume_workflow
 from data_pipeline.crawl.state.store import CrawlState
 
-TRUNCATION_REASONS = frozenset(
-    {
-        "file_size_limit",
-        "storage_budget",
-        "query_variant_limit",
-        "host_url_limit",
-        "total_url_limit",
-    }
-)
-
 
 def _clean_failed_reuse_output(output: Path, state_dir: Path, *, output_existed: bool) -> None:
     if output_existed:
         shutil.rmtree(state_dir, ignore_errors=True)
     else:
         shutil.rmtree(output, ignore_errors=True)
-
-
-def finish_reason_to_exit(
-    finish_reason: str,
-    *,
-    queued: int = 0,
-    failed: int = 0,
-    truncated: int = 0,
-) -> tuple[
-    Literal[
-        "complete",
-        "complete_with_failures",
-        "truncated",
-        "interrupted",
-        "failed",
-    ],
-    int,
-]:
-    if finish_reason in {"shutdown", "signal"}:
-        return "interrupted", 130
-    if queued > 0 and finish_reason != "finished":
-        return "interrupted", 130
-    if truncated > 0:
-        return "truncated", 4
-    if failed > 0:
-        return "complete_with_failures", 3
-    if finish_reason == "finished":
-        return "complete", 0
-    return "failed", 1
 
 
 def run_crawl(

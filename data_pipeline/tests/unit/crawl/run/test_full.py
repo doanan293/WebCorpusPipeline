@@ -11,8 +11,6 @@ from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
 from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.run import full as runner
 from data_pipeline.crawl.run.full import (
-    TRUNCATION_REASONS,
-    finish_reason_to_exit,
     run_crawl,
 )
 from data_pipeline.crawl.runtime.profiles import resolve_runtime_tuning
@@ -20,49 +18,6 @@ from data_pipeline.crawl.spider.reuse import ReusedAssetSpider
 from data_pipeline.crawl.spider.unified import UnifiedSpider
 from data_pipeline.crawl.state.discovery import upsert_host_discovery
 from data_pipeline.crawl.state.store import CrawlState
-
-
-def test_frontier_limits_are_truncation_reasons() -> None:
-    assert {"query_variant_limit", "host_url_limit", "total_url_limit"} <= TRUNCATION_REASONS
-
-
-def test_finished_frontier_limit_returns_truncated() -> None:
-    assert finish_reason_to_exit("finished", queued=0, failed=0, truncated=1) == ("truncated", 4)
-
-
-def test_queued_nonfinished_run_is_interrupted() -> None:
-    assert finish_reason_to_exit("shutdown", queued=2, failed=0, truncated=0) == (
-        "interrupted",
-        130,
-    )
-
-
-def test_shutdown_with_queue_is_interrupted_not_complete() -> None:
-    assert finish_reason_to_exit("shutdown", queued=12, failed=0, truncated=0) == (
-        "interrupted",
-        130,
-    )
-
-
-def test_natural_finish_with_truncation_has_exit_four() -> None:
-    assert finish_reason_to_exit("finished", queued=0, failed=0, truncated=1) == (
-        "truncated",
-        4,
-    )
-
-
-def test_natural_finish_with_failures_has_exit_three() -> None:
-    assert finish_reason_to_exit("finished", queued=0, failed=2, truncated=0) == (
-        "complete_with_failures",
-        3,
-    )
-
-
-def test_clean_finish_has_exit_zero() -> None:
-    assert finish_reason_to_exit("finished", queued=0, failed=0, truncated=0) == (
-        "complete",
-        0,
-    )
 
 
 def capture_runner_dependencies(monkeypatch) -> dict[str, object]:

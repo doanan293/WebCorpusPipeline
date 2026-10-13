@@ -13,7 +13,7 @@ from data_pipeline.crawl.config import CrawlerConfig, semantic_config_snapshot
 from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
 from data_pipeline.crawl.output.discovery_writer import DiscoveryWriter
-from data_pipeline.crawl.run.full import finish_reason_to_exit
+from data_pipeline.crawl.run.exit_codes import finish_reason_to_exit
 from data_pipeline.crawl.runtime.profiles import RuntimeTuning
 from data_pipeline.crawl.runtime.settings import build_settings
 from data_pipeline.crawl.spider.discovery import DiscoverySpider
