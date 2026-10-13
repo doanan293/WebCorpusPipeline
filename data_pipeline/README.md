@@ -85,7 +85,7 @@ uv run pyrefly check                 # kiểm tra kiểu (preset strict)
 uv run pre-commit install            # cài hook (chạy ruff, pyrefly khi commit; pytest khi push)
 ```
 
-Hook `pre-commit` nằm ở thư mục gốc repo và chỉ chạy cho thay đổi trong `data_pipeline/`. Cấu trúc package và
+Hook `pre-commit` nằm ở thư mục gốc repo và bỏ qua `lucene/` cùng `data_pipeline/data/`; ruff, pyrefly, uv-lock và pytest chỉ chạy cho thay đổi trong `data_pipeline/`. Cấu trúc package và
 quy tắc phụ thuộc được kiểm tra tự động (`tests/unit/test_architecture.py`).
 
 ## Tài liệu

@@ -29,7 +29,7 @@ chạy bộ test.
 ### Kiểm tra mã và pre-commit
 
 Cấu hình ruff, pyrefly (strict) và pytest nằm trong `data_pipeline/pyproject.toml`. Hook pre-commit nằm ở thư
-mục gốc repo, chỉ chạy cho thay đổi trong `data_pipeline/`:
+mục gốc repo, bỏ qua `lucene/`; ruff, pyrefly và pytest chỉ chạy cho thay đổi trong `data_pipeline/`:
 
 ```bash
 uv run --directory data_pipeline pre-commit install
