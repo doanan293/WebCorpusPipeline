@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 from urllib.parse import urlparse
@@ -36,6 +37,7 @@ def run_audit(
     workers: int,
     probe,
     browser_probe=None,
+    progress: Callable[[int, int, int], None] | None = None,
 ) -> list[ProbeResult]:
     hostnames = load_candidate_hostnames(all_path)
     results: list[ProbeResult] = []
@@ -53,12 +55,8 @@ def run_audit(
                     error=f"{type(exc).__name__}: {exc}",
                 )
             results.append(result)
-            if completed % 25 == 0 or completed == len(hostnames):
-                active_count = sum(item.active for item in results)
-                print(
-                    f"checked {completed}/{len(hostnames)}; active {active_count}",
-                    flush=True,
-                )
+            if progress is not None and (completed % 25 == 0 or completed == len(hostnames)):
+                progress(completed, len(hostnames), sum(item.active for item in results))
 
     if browser_probe is not None:
         browser_candidates = sorted(
@@ -183,36 +181,47 @@ def _apply_browser_attempts(
     return [replacements.get(result.hostname, result) for result in results]
 
 
+@dataclass(frozen=True, slots=True)
+class AuditOptions:
+    workers: int = 32
+    timeout: float = 8.0
+    retries: int = 2
+    browser: bool = True
+    browser_workers: int = 6
+    browser_timeout: float = 15.0
+
+
 def audit_domains(
     all_domains: Path,
     active_domains: Path,
     report: Path,
-    *,
-    workers: int,
-    timeout: float,
-    retries: int,
-    browser: bool,
-    browser_workers: int,
-    browser_timeout: float,
+    options: AuditOptions | None = None,
+    progress: Callable[[int, int, int], None] | None = None,
 ) -> dict[str, object]:
     """Probe every candidate host, rewrite the active list and report, and summarise."""
+    options = options or AuditOptions()
     results = run_audit(
         all_domains,
         active_domains,
         report,
-        workers=workers,
+        workers=options.workers,
         probe=partial(
             probe_host,
-            timeout=timeout,
-            attempts=retries + 1,
+            timeout=options.timeout,
+            attempts=options.retries + 1,
             resolve=resolve_hostname,
             fetch=fetch_url,
         ),
         browser_probe=(
-            partial(browser_probe_results, timeout=browser_timeout, workers=browser_workers)
-            if browser
+            partial(
+                browser_probe_results,
+                timeout=options.browser_timeout,
+                workers=options.browser_workers,
+            )
+            if options.browser
             else None
         ),
+        progress=progress,
     )
     return {
         "active": sum(result.active for result in results),

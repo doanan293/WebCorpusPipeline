@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from urllib.parse import urlparse
 
 from data_pipeline.core.policies.network import resolve_hostname
@@ -13,10 +14,8 @@ from data_pipeline.domains.probe import (
 
 
 async def _bounded_close(resource, *, timeout: float = 3.0) -> None:
-    try:
+    with contextlib.suppress(TimeoutError):
         await asyncio.wait_for(resource.close(), timeout=timeout)
-    except TimeoutError:
-        pass
 
 
 async def _block_web_socket(web_socket) -> None:

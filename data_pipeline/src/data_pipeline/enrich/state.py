@@ -73,7 +73,7 @@ class WorkState:
         except (BlockingIOError, ImportError):
             os.close(lock_fd)
             msg = f"work directory is already in use: {root}"
-            raise RuntimeError(msg)
+            raise RuntimeError(msg) from None
         conn = sqlite3.connect(root / "state.sqlite3", timeout=30)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")

@@ -619,7 +619,7 @@ def fetch_url(url: str, timeout: float) -> ProbeAttempt:
         HTTPCookieProcessor(CookieJar()),
         SafeRedirectHandler(),
     )
-    request = Request(
+    request = Request(  # noqa: S310 -- URLs are built from audited hostnames with an https scheme
         url,
         headers={
             "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",

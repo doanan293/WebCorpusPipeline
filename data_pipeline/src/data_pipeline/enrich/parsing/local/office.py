@@ -8,8 +8,8 @@ from pathlib import Path
 def convert_office(source: Path, destination_dir: Path, target: str) -> Path:
     destination_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="ir-office-") as profile:
-        subprocess.run(
-            [
+        subprocess.run(  # noqa: S603 -- fixed argv, no shell
+            [  # noqa: S607 -- the system LibreOffice on PATH is intended
                 "libreoffice",
                 "--headless",
                 f"-env:UserInstallation=file://{profile}",

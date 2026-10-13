@@ -11,6 +11,10 @@ from data_pipeline.cli import context, errors
 app = typer.Typer(help="Check which HUST hostnames are alive.", no_args_is_help=True)
 
 
+def _print_progress(checked: int, total: int, active: int) -> None:
+    print(f"checked {checked}/{total}; active {active}", flush=True)
+
+
 @app.command()
 def audit(
     all_domains: Annotated[
@@ -41,12 +45,15 @@ def audit(
         context.pick(all_domains, paths.domains_all),
         context.pick(active_domains, paths.domains_active),
         context.pick(report, paths.domains_status),
-        workers=workers,
-        timeout=timeout,
-        retries=retries,
-        browser=not no_browser,
-        browser_workers=browser_workers,
-        browser_timeout=browser_timeout,
+        domain_audit.AuditOptions(
+            workers=workers,
+            timeout=timeout,
+            retries=retries,
+            browser=not no_browser,
+            browser_workers=browser_workers,
+            browser_timeout=browser_timeout,
+        ),
+        progress=_print_progress,
     )
     print(json.dumps(summary, sort_keys=True))
     return 0

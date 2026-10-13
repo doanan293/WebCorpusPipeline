@@ -23,9 +23,9 @@ def parse_xlsx(file: DownloadedFile):
         values = book_values[name]
         formulas = book_formulas[name]
         rows = []
-        for row_values, row_formulas in zip(values.iter_rows(), formulas.iter_rows()):
+        for row_values, row_formulas in zip(values.iter_rows(), formulas.iter_rows(), strict=False):
             cells = []
-            for value, formula in zip(row_values, row_formulas):
+            for value, formula in zip(row_values, row_formulas, strict=False):
                 cached = _cell(value.value)
                 cells.append(cached if cached else _cell(formula.value))
             line = "\t".join(cells).rstrip("\t")

@@ -252,7 +252,7 @@ def test_resolve_hostname_rejects_private_addresses(monkeypatch) -> None:
         ],
     )
 
-    with pytest.raises(NonPublicAddressError, match="192.168.50.254"):
+    with pytest.raises(NonPublicAddressError, match=r"192\.168\.50\.254"):
         resolve_hostname("internal.hust.edu.vn")
 
 
