@@ -43,7 +43,7 @@ def _https_fallback_url(url: str) -> str:
 
 
 def _reactor_clock():
-    from twisted.internet import reactor
+    from twisted.internet import reactor  # noqa: PLC0415 -- importing the reactor installs the default one before the crawler picks its own
 
     return reactor
 

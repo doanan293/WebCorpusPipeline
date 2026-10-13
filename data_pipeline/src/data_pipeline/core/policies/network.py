@@ -75,7 +75,7 @@ def resolve_hostname(hostname: str, timeout: float = 5.0, port: int = 443) -> No
         try:
             answers = socket.getaddrinfo(hostname, port, 0, socket.SOCK_STREAM)
             outcome.append((answers, None))
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001 -- the resolver thread must always report an outcome to its caller
             outcome.append(([], exc))
         finally:
             completed.set()

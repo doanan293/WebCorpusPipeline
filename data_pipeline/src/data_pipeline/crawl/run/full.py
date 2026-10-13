@@ -353,7 +353,7 @@ def run_crawl(
             public_output=output,
         )
         return 130
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- any crash is recorded as a failed run before exiting
         writer.publish()
         if refresh_session is not None:
             complete_refresh_run(state, refresh_session, output, "failed")

@@ -135,13 +135,13 @@ def run(
 
     try:
         seeds = parse_seed_file(input_path)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- any unreadable seed file or configuration is a usage error
         return errors.fail(f"reading seed file: {exc}")
 
     config_path = context.pick(config, context.current_paths().crawler_config)
     try:
         crawler_config = CrawlerConfig.load(config_path, hostnames=seeds.allowed_hostnames)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- any unreadable seed file or configuration is a usage error
         return errors.fail(f"loading configuration: {exc}")
 
     if reuse_content_from is not None and crawler_config.assets != "all" and assets is None:
@@ -210,7 +210,7 @@ def discover(
     config_path = context.pick(config, context.current_paths().crawler_config)
     try:
         crawler_config = CrawlerConfig.load(config_path, hostnames=seeds.allowed_hostnames)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- any unreadable seed file or configuration is a usage error
         return errors.fail(f"loading configuration: {exc}")
 
     tuning = resolve_runtime_tuning(

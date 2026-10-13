@@ -21,7 +21,7 @@ def extract_documents(state: WorkState, settings, *, api_keys: list[tuple[str, s
     def parse_local_safe(file):
         try:
             return file, parse_local(file), None
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- a parser crash is recorded as that file's failure
             return file, None, exc
 
     with ThreadPoolExecutor(max_workers=settings.local_workers) as workers:

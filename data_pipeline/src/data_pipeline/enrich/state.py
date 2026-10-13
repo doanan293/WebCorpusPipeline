@@ -67,7 +67,7 @@ class WorkState:
         lock_path = root / ".writer.lock"
         lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
         try:
-            import fcntl
+            import fcntl  # noqa: PLC0415 -- fcntl does not exist on Windows; locking is skipped there
 
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except (BlockingIOError, ImportError):
@@ -104,7 +104,7 @@ class WorkState:
             self.conn = None
         if getattr(self, "_lock_fd", None) is not None:
             try:
-                import fcntl
+                import fcntl  # noqa: PLC0415 -- fcntl does not exist on Windows; locking is skipped there
 
                 fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
             finally:

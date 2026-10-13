@@ -32,7 +32,7 @@ def parse_cloud_subset(
     file: Path, local: LocalResult, mapping: dict[int, int], state, settings, pool: KeyPool
 ) -> ParseResult:
     try:
-        from llama_cloud import LlamaCloud
+        from llama_cloud import LlamaCloud  # noqa: PLC0415 -- llama-cloud is an optional 'enrich' extra
     except ImportError as exc:
         msg = "install the producer extra to use LlamaParse"
         raise RuntimeError(msg) from exc
@@ -85,7 +85,7 @@ def parse_cloud_subset(
         return ParseResult(
             local.source_sha256, parts, "extracted", [], {"llamaparse": "fast/latest"}
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- any cloud failure is classified and recorded
         status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
         kind = classify_cloud_error(status, exc)
         if kind == "quota":

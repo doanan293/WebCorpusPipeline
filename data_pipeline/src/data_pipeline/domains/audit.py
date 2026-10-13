@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from functools import partial
@@ -46,7 +45,7 @@ def run_audit(
             hostname = futures[future]
             try:
                 result = future.result()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- one failing probe must not abort the whole audit
                 result = ProbeResult(
                     hostname,
                     active=False,

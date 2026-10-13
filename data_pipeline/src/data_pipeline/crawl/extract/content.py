@@ -143,7 +143,7 @@ class HtmlAnalysis:
 
 def analyze_html(html: bytes | str, url: str, encoding: str | None = None) -> HtmlAnalysis:
     """Build DOM once and produce both article extraction and discoveries."""
-    from data_pipeline.crawl.extract.article import analyze_article
+    from data_pipeline.crawl.extract.article import analyze_article  # noqa: PLC0415 -- article imports content; importing it lazily breaks the cycle
 
     res = analyze_article(html, url, encoding)
     return HtmlAnalysis(article=res.article, discoveries=res.discoveries)

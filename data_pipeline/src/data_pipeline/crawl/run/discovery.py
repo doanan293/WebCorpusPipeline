@@ -138,7 +138,7 @@ def run_discovery(
             public_output=output,
         )
         return 130
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- any crash is recorded as a failed run before exiting
         writer.publish()
         counts = state.counts()
         state.finish(

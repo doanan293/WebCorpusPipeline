@@ -85,6 +85,8 @@ max-statements = 60
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["E501", "S101", "PLR2004", "ARG", "FBT", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR0917"]
+# The fixtures install the Twisted reactor before importing Scrapy code.
+"tests/fixtures/run_*_fixture.py" = ["E402"]
 # Typer passes options by keyword, so boolean flags in command signatures are fine.
 "src/data_pipeline/cli/**" = ["PLC0415", "T20", "FBT001", "FBT002", "PLR0913", "PLR0917"]
 

@@ -195,7 +195,7 @@ class HtmlHandler:
                                 link_kind = cl.kind
                                 family_key = cl.family_key
                                 ordinal = cl.ordinal
-                            except Exception:
+                            except Exception:  # noqa: BLE001 -- a malformed link must not abort the page
                                 link_kind = None
                                 family_key = None
                                 ordinal = None
@@ -380,7 +380,7 @@ class HtmlHandler:
                         resource_kind_hint=d.get("kind"),
                     )
                     classified_discoveries.append(cl)
-                except Exception:
+                except Exception:  # noqa: BLE001 -- a malformed link must not abort the page
                     continue
 
             accepted_content_urls: list[str] = []

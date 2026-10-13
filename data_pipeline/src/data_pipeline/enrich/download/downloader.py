@@ -201,7 +201,7 @@ async def run_downloads(
                     )
                 else:
                     state.record_failure(job.url, "download", str(exc))
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- any download failure is recorded and retried per policy
                 if job.attempts <= settings.retries:
                     state.record_failure(
                         job.url, "download", str(exc), time.time() + 2**job.attempts

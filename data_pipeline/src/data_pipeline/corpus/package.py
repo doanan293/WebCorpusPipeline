@@ -177,7 +177,7 @@ def verify_corpus(path: Path) -> dict:
         return {"valid": False, "errors": ["manifest.json missing"]}
     try:
         value = json.loads(manifest.read_text())
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- any unreadable manifest is reported as invalid, not raised
         return {"valid": False, "errors": [f"invalid manifest: {exc}"]}
     for name, meta in value.get("files", {}).items():
         file = path / name

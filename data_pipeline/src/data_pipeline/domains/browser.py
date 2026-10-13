@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import socket
 from urllib.parse import urlparse
 
 from data_pipeline.core.policies.network import resolve_hostname
@@ -66,8 +65,8 @@ def browser_probe_results(
     workers: int,
 ) -> dict[str, ProbeAttempt]:
     async def render() -> dict[str, ProbeAttempt]:
-        from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-        from playwright.async_api import async_playwright
+        from playwright.async_api import TimeoutError as PlaywrightTimeoutError  # noqa: PLC0415 -- playwright is an optional 'crawl' extra
+        from playwright.async_api import async_playwright  # noqa: PLC0415 -- playwright is an optional 'crawl' extra
 
         attempts: dict[str, ProbeAttempt] = {}
         semaphore = asyncio.Semaphore(workers)
@@ -129,7 +128,7 @@ def browser_probe_results(
                                 body=body,
                                 error=navigation_error,
                             )
-                        except Exception as exc:
+                        except Exception as exc:  # noqa: BLE001 -- a browser failure is recorded as that host's attempt
                             attempts[result.hostname] = ProbeAttempt(
                                 error=f"{type(exc).__name__}: {exc}",
                             )

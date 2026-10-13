@@ -29,7 +29,7 @@ def test_redirect_outside_exact_hosts_raises_ignore_request() -> None:
     )
     try:
         ExactHostRedirectMiddleware().process_response(request, response)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- the helper reports any failure to the caller
         assert "redirect_out_of_scope" in str(exc)
     else:
         msg = "out-of-scope redirect was accepted"
@@ -47,7 +47,7 @@ def test_redirect_cannot_cross_request_host_even_if_other_host_in_crawl() -> Non
     )
     try:
         ExactHostRedirectMiddleware().process_response(request, response)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- the helper reports any failure to the caller
         assert "redirect_out_of_scope:host_out_of_scope" in str(exc)
     else:
         msg = "cross-host redirect between crawl hosts was accepted"

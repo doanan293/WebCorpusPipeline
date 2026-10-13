@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import socket
 from dataclasses import asdict
 from pathlib import Path
 
