@@ -6,6 +6,7 @@ import http.client
 import ipaddress
 import re
 import ssl
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http import HTTPStatus
@@ -118,6 +119,130 @@ def classify_http_status(status: int) -> tuple[bool, str]:
     return False, "client_error"
 
 
+_LOGIN_MARKERS = ("password", "sign in", "log in", "login", "đăng nhập")
+_DENIAL_MARKERS = ("access denied", "forbidden", "unauthorized")
+_HTML_DENIAL_MARKERS = (
+    "<title>access denied</title>",
+    "<title>forbidden</title>",
+    "<h1>access denied</h1>",
+    "<h1>forbidden</h1>",
+)
+_PLACEHOLDER_MARKERS = (
+    "welcome to nginx",
+    "apache2 ubuntu default page",
+    "website under construction",
+    "website is under construction",
+    "domain for sale",
+    "this domain is parked",
+    "http server test page powered by centos-webpanel.com",
+    "<title>account suspended</title>",
+    "openlitespeed is functioning normally",
+    "trang thông tin này chưa kích hoạt",
+    "<title>plesk ",
+    "<title>vinahost plesk",
+    "<title>web server's default page</title>",
+    "<title>404</title>",
+    "powered_by_cpanel.svg",
+    "cpanel, inc.",
+    "/cgi-sys/defaultwebpage.cgi",
+    "website hiện không hoạt động",
+    "webserver is functioning normally",
+    "add anything here or just remove it",
+    "welcome to wordpress. this is your first post.",
+    "<title>apache tomcat",
+)
+_SERVICE_MARKERS = (
+    "<title>cfssl</title>",
+    "esxuiapp",
+    "<title>bkoffice</title>",
+    "email|pass|refresh_token|client_id",
+    "<title>d-office-hust</title>",
+    "<title>bksign | hệ thống ký số</title>",
+    "<title>ediploma</title>",
+    "<title>hustack</title>",
+    "<title>tsa-exam",
+)
+_LOGIN_TITLES = ("<title>login", "<title>log in", "<title>sign in", "<title>đăng nhập")
+_ACCOUNT_FORM_MARKERS = (
+    "dang nhap",
+    "mat khau",
+    "mật khẩu",
+    "password",
+    "sign in",
+    "log in",
+    "đăng nhập",
+)
+_SHELL_TEXTS = frozenset(
+    {
+        "loading",
+        "please enable javascript",
+        "javascript is required",
+        "you need to enable javascript to run this app",
+    }
+)
+_NON_PRODUCTION_RE = re.compile(r"(?:^|[-.])(?:dev|staging|demo|test)(?:[-.]|$)")
+_PASSWORD_INPUT_RE = re.compile(r"<input\b[^>]*\btype\s*=\s*['\"]?password\b")
+_LOGIN_URL_RE = re.compile(
+    r"(?:^|/)(?:account/)?"
+    r"(?:login|log-in|signin|sign-in|dang-nhap|weblogin|changepass)"
+    r"(?:[._/-]|$)"
+)
+_REGISTRATION_URL_RE = re.compile(r"(?:^|/)(?:register|signup|sign-up)(?:[._/-]|$)")
+_HTML_TAG_RE = re.compile(r"<(?:html|head|body|title|main|div|script)\b")
+
+
+def _contains_any(text: str, markers: Iterable[str]) -> bool:
+    return any(marker in text for marker in markers)
+
+
+def _machine_readable_rejection(normalized: str, content_type: str) -> str | None:
+    machine_readable = (
+        "json" in content_type
+        or "xml" in content_type
+        or normalized.lstrip().startswith(("{", "[", "<?xml"))
+    )
+    if not machine_readable:
+        return None
+    return "access_denied" if _contains_any(normalized, _DENIAL_MARKERS) else "service_endpoint"
+
+
+def _marker_rejection(normalized: str) -> str | None:
+    if _contains_any(normalized, _HTML_DENIAL_MARKERS):
+        return "access_denied"
+    if _contains_any(normalized, _PLACEHOLDER_MARKERS):
+        return "placeholder"
+    if _contains_any(normalized, _SERVICE_MARKERS):
+        return "service_endpoint"
+    return None
+
+
+def _is_non_production(final_url: str | None) -> bool:
+    final_hostname = (urlparse(final_url).hostname or "").lower() if final_url else ""
+    return bool(_NON_PRODUCTION_RE.search(final_hostname.removesuffix(".hust.edu.vn")))
+
+
+def _is_login_page(normalized: str, visible_text: str, final_url: str | None) -> bool:
+    login_path = urlparse(final_url).path.lower() if final_url else ""
+    has_form = "<form" in normalized
+    short_account_form = (
+        has_form
+        and len(visible_text) < _THIN_PAGE_CHARS
+        and _contains_any(visible_text, _ACCOUNT_FORM_MARKERS)
+    )
+    return bool(
+        _LOGIN_URL_RE.search(login_path)
+        or (_REGISTRATION_URL_RE.search(login_path) and has_form)
+        or (_PASSWORD_INPUT_RE.search(normalized) and _contains_any(normalized, _LOGIN_TITLES))
+        or short_account_form
+    )
+
+
+def _is_javascript_shell(normalized: str, content_type: str, visible_text: str) -> bool:
+    html_response = "html" in content_type or bool(_HTML_TAG_RE.search(normalized))
+    shell_text = visible_text.strip(" .").casefold()
+    return html_response and (not visible_text or shell_text in _SHELL_TEXTS)
+
+
 def classify_response(
     status: int,
     body: bytes,
@@ -127,135 +252,25 @@ def classify_response(
     active, reason = classify_http_status(status)
     normalized = body.decode("utf-8", errors="ignore").lower()
     normalized_type = (content_type or "").lower()
-    login_markers = ("password", "sign in", "log in", "login", "đăng nhập")
     if status in {401, 403}:
-        if "<html" in normalized and any(marker in normalized for marker in login_markers):
+        if "<html" in normalized and _contains_any(normalized, _LOGIN_MARKERS):
             return False, "login_only"
         return False, "access_denied"
     if not active:
         return active, reason
     if HTTPStatus.OK <= status < HTTPStatus.MULTIPLE_CHOICES and not body.strip():
         return False, "empty_response"
-    machine_readable = (
-        "json" in normalized_type
-        or "xml" in normalized_type
-        or normalized.lstrip().startswith(("{", "[", "<?xml"))
+    rejection = _machine_readable_rejection(normalized, normalized_type) or _marker_rejection(
+        normalized
     )
-    denial_markers = ("access denied", "forbidden", "unauthorized")
-    if machine_readable and any(marker in normalized for marker in denial_markers):
-        return False, "access_denied"
-    if machine_readable:
-        return False, "service_endpoint"
-    html_denial_markers = (
-        "<title>access denied</title>",
-        "<title>forbidden</title>",
-        "<h1>access denied</h1>",
-        "<h1>forbidden</h1>",
-    )
-    if any(marker in normalized for marker in html_denial_markers):
-        return False, "access_denied"
-    placeholder_markers = (
-        "welcome to nginx",
-        "apache2 ubuntu default page",
-        "website under construction",
-        "website is under construction",
-        "domain for sale",
-        "this domain is parked",
-        "http server test page powered by centos-webpanel.com",
-        "<title>account suspended</title>",
-        "openlitespeed is functioning normally",
-        "trang thông tin này chưa kích hoạt",
-        "<title>plesk ",
-        "<title>vinahost plesk",
-        "<title>web server's default page</title>",
-        "<title>404</title>",
-        "powered_by_cpanel.svg",
-        "cpanel, inc.",
-        "/cgi-sys/defaultwebpage.cgi",
-        "website hiện không hoạt động",
-        "webserver is functioning normally",
-        "add anything here or just remove it",
-        "welcome to wordpress. this is your first post.",
-        "<title>apache tomcat",
-    )
-    if any(marker in normalized for marker in placeholder_markers):
-        return False, "placeholder"
-    service_markers = (
-        "<title>cfssl</title>",
-        "esxuiapp",
-        "<title>bkoffice</title>",
-        "email|pass|refresh_token|client_id",
-        "<title>d-office-hust</title>",
-        "<title>bksign | hệ thống ký số</title>",
-        "<title>ediploma</title>",
-        "<title>hustack</title>",
-        "<title>tsa-exam",
-    )
-    if any(marker in normalized for marker in service_markers):
-        return False, "service_endpoint"
-    final_hostname = (urlparse(final_url).hostname or "").lower() if final_url else ""
-    non_production_prefix = final_hostname.removesuffix(".hust.edu.vn")
-    if re.search(
-        r"(?:^|[-.])(?:dev|staging|demo|test)(?:[-.]|$)",
-        non_production_prefix,
-    ):
-        return False, "non_production"
-    login_titles = (
-        "<title>login",
-        "<title>log in",
-        "<title>sign in",
-        "<title>đăng nhập",
-    )
-    password_input = re.search(
-        r"<input\b[^>]*\btype\s*=\s*['\"]?password\b",
-        normalized,
-    )
-    login_path = urlparse(final_url).path.lower() if final_url else ""
-    login_url = re.search(
-        r"(?:^|/)(?:account/)?"
-        r"(?:login|log-in|signin|sign-in|dang-nhap|weblogin|changepass)"
-        r"(?:[._/-]|$)",
-        login_path,
-    )
-    registration_url = re.search(r"(?:^|/)(?:register|signup|sign-up)(?:[._/-]|$)", login_path)
+    if rejection is None and _is_non_production(final_url):
+        rejection = "non_production"
+    if rejection is not None:
+        return False, rejection
     visible_text = _visible_text(body)
-    short_account_form = (
-        "<form" in normalized
-        and len(visible_text) < _THIN_PAGE_CHARS
-        and any(
-            marker in visible_text
-            for marker in (
-                "dang nhap",
-                "mat khau",
-                "mật khẩu",
-                "password",
-                "sign in",
-                "log in",
-                "đăng nhập",
-            )
-        )
-    )
-    if (
-        login_url
-        or (registration_url and "<form" in normalized)
-        or (password_input and any(marker in normalized for marker in login_titles))
-        or short_account_form
-    ):
+    if _is_login_page(normalized, visible_text, final_url):
         return False, "login_only"
-    html_response = "html" in normalized_type or bool(
-        re.search(r"<(?:html|head|body|title|main|div|script)\b", normalized)
-    )
-    shell_text = visible_text.strip(" .").casefold()
-    if html_response and (
-        not visible_text
-        or shell_text
-        in {
-            "loading",
-            "please enable javascript",
-            "javascript is required",
-            "you need to enable javascript to run this app",
-        }
-    ):
+    if _is_javascript_shell(normalized, normalized_type, visible_text):
         return False, "javascript_shell"
     return active, reason
 
@@ -409,6 +424,197 @@ def content_digest(body: bytes, hostname: str | None = None) -> str | None:
     return hashlib.sha256(_visible_text(body, hostname).encode()).hexdigest()
 
 
+_SUBPAGE_RETRY_REASONS = frozenset(
+    {
+        "empty_response",
+        "javascript_shell",
+        "login_only",
+        "not_found",
+        "placeholder",
+        "service_endpoint",
+    }
+)
+_NO_ROOT_LINK_REASONS = frozenset({"javascript_shell", "placeholder", "service_endpoint"})
+_DETERMINISTIC_SHELLS = frozenset({"javascript_shell", "service_endpoint"})
+
+
+class _HostProbe:
+    """Probes one host over https then http, remembering the last responses for the fallback."""
+
+    def __init__(self, hostname: str, *, timeout: float, attempts: int, resolve, fetch) -> None:
+        self.hostname = hostname
+        self.timeout = timeout
+        self.attempts = attempts
+        self.resolve = resolve
+        self.fetch = fetch
+        self.last_attempt: ProbeAttempt | None = None
+        self.last_scheme: str | None = None
+        self.last_response: ProbeAttempt | None = None
+        self.last_response_scheme: str | None = None
+
+    def run(self) -> ProbeResult:
+        dns_failure = self._check_dns()
+        if dns_failure is not None:
+            return dns_failure
+        for scheme in ("https", "http"):
+            url = f"{scheme}://{self.hostname}/"
+            for attempt_number in range(self.attempts):
+                result = self._attempt_once(scheme, url, attempt_number)
+                if result is not None:
+                    return result
+        return self._fallback_result()
+
+    def _inactive(self, reason: str, **fields: object) -> ProbeResult:
+        return ProbeResult(self.hostname, active=False, reason=reason, **fields)
+
+    def _check_dns(self) -> ProbeResult | None:
+        dns_error: OSError | None = None
+        for _ in range(self.attempts):
+            try:
+                self.resolve(self.hostname)
+                dns_error = None
+                break
+            except NonPublicAddressError as exc:
+                return self._inactive("non_public_address", error=str(exc))
+            except OSError as exc:
+                dns_error = exc
+        if dns_error is not None:
+            return self._inactive("dns_error", error=str(dns_error))
+        return None
+
+    def _describe(
+        self,
+        attempt: ProbeAttempt,
+        *,
+        scheme: str | None,
+        active: bool,
+        reason: str,
+        digest_hostname: str | None,
+        error: str | None = None,
+    ) -> ProbeResult:
+        return ProbeResult(
+            hostname=self.hostname,
+            active=active,
+            reason=reason,
+            scheme=scheme,
+            status=attempt.status,
+            final_url=attempt.final_url,
+            content_type=attempt.content_type,
+            title=extract_title(attempt.body),
+            content_digest=content_digest(attempt.body, digest_hostname),
+            error=error,
+        )
+
+    def _attempt_once(self, scheme: str, url: str, attempt_number: int) -> ProbeResult | None:
+        attempt = self.fetch(url, self.timeout)
+        self.last_attempt = attempt
+        self.last_scheme = scheme
+        if attempt.status is None:
+            return None
+        if attempt.error in {"external_redirect", "non_public_address"}:
+            return self._inactive(
+                attempt.error,
+                scheme=scheme,
+                status=attempt.status,
+                final_url=attempt.final_url,
+                error=attempt.error,
+            )
+        client_redirect = _extract_client_redirect(attempt.body, attempt.final_url or url)
+        if client_redirect:
+            outcome = self._follow_client_redirect(scheme, attempt, client_redirect)
+            if not isinstance(outcome, ProbeAttempt):
+                return outcome
+            attempt = outcome
+        self.last_response = attempt
+        self.last_response_scheme = scheme
+        active, reason = classify_response(
+            attempt.status, attempt.body, attempt.content_type, attempt.final_url
+        )
+        digest_hostname = urlparse(attempt.final_url or url).hostname
+        if active:
+            return self._describe(
+                attempt, scheme=scheme, active=True, reason=reason, digest_hostname=digest_hostname
+            )
+        deterministic_shell = reason in _DETERMINISTIC_SHELLS
+        if (
+            attempt_number == self.attempts - 1 or deterministic_shell
+        ) and reason in _SUBPAGE_RETRY_REASONS:
+            public_page = _probe_public_subpage(
+                self.hostname,
+                url,
+                attempt,
+                timeout=self.timeout,
+                fetch=self.fetch,
+                include_root_links=reason not in _NO_ROOT_LINK_REASONS,
+            )
+            if public_page is not None:
+                return self._describe(
+                    public_page,
+                    scheme=scheme,
+                    active=True,
+                    reason="public_response",
+                    digest_hostname=urlparse(public_page.final_url or url).hostname,
+                )
+        if deterministic_shell:
+            return self._describe(
+                attempt,
+                scheme=scheme,
+                active=False,
+                reason=reason,
+                digest_hostname=digest_hostname,
+                error=attempt.error,
+            )
+        return None
+
+    def _follow_client_redirect(
+        self, scheme: str, attempt: ProbeAttempt, redirect_url: str
+    ) -> ProbeResult | ProbeAttempt | None:
+        """Follow a meta/JS redirect: a final ProbeResult, the redirected attempt, or None."""
+        common = {"scheme": scheme, "status": attempt.status, "final_url": redirect_url}
+        if not is_target_web_url(redirect_url):
+            return self._inactive(
+                "external_redirect",
+                content_type=attempt.content_type,
+                title=extract_title(attempt.body),
+                **common,
+            )
+        try:
+            self.resolve(urlparse(redirect_url).hostname)
+        except NonPublicAddressError as exc:
+            return self._inactive("non_public_address", error=str(exc), **common)
+        except OSError as exc:
+            return self._inactive("network_error", error=f"{type(exc).__name__}: {exc}", **common)
+        redirected = self.fetch(redirect_url, self.timeout)
+        self.last_attempt = redirected
+        if redirected.status is None:
+            return None
+        self.last_response = redirected
+        self.last_response_scheme = scheme
+        return redirected
+
+    def _fallback_result(self) -> ProbeResult:
+        if self.last_attempt is None:
+            return ProbeResult(
+                self.hostname, active=False, reason="network_error", error="no attempts"
+            )
+        response = self.last_response
+        if response is None:
+            return self._inactive(
+                "network_error", scheme=self.last_scheme, error=self.last_attempt.error
+            )
+        _, reason = classify_response(
+            response.status, response.body, response.content_type, response.final_url
+        )
+        return self._describe(
+            response,
+            scheme=self.last_response_scheme,
+            active=False,
+            reason=reason,
+            digest_hostname=urlparse(response.final_url or "").hostname or self.hostname,
+            error=response.error,
+        )
+
+
 def probe_host(
     hostname: str,
     *,
@@ -417,196 +623,9 @@ def probe_host(
     resolve,
     fetch,
 ) -> ProbeResult:
-    dns_error: OSError | None = None
-    for _ in range(attempts):
-        try:
-            resolve(hostname)
-            dns_error = None
-            break
-        except NonPublicAddressError as exc:
-            return ProbeResult(
-                hostname,
-                active=False,
-                reason="non_public_address",
-                error=str(exc),
-            )
-        except OSError as exc:
-            dns_error = exc
-    if dns_error is not None:
-        return ProbeResult(hostname, active=False, reason="dns_error", error=str(dns_error))
-
-    last_attempt: ProbeAttempt | None = None
-    last_scheme: str | None = None
-    last_response: ProbeAttempt | None = None
-    last_response_scheme: str | None = None
-    for scheme in ("https", "http"):
-        url = f"{scheme}://{hostname}/"
-        for attempt_number in range(attempts):
-            attempt = fetch(url, timeout)
-            last_attempt = attempt
-            last_scheme = scheme
-            if attempt.status is None:
-                continue
-            if attempt.error in {"external_redirect", "non_public_address"}:
-                return ProbeResult(
-                    hostname=hostname,
-                    active=False,
-                    reason=attempt.error,
-                    scheme=scheme,
-                    status=attempt.status,
-                    final_url=attempt.final_url,
-                    error=attempt.error,
-                )
-            client_redirect = _extract_client_redirect(
-                attempt.body,
-                attempt.final_url or url,
-            )
-            if client_redirect:
-                target_hostname = urlparse(client_redirect).hostname
-                if not is_target_web_url(client_redirect):
-                    return ProbeResult(
-                        hostname=hostname,
-                        active=False,
-                        reason="external_redirect",
-                        scheme=scheme,
-                        status=attempt.status,
-                        final_url=client_redirect,
-                        content_type=attempt.content_type,
-                        title=extract_title(attempt.body),
-                    )
-                try:
-                    resolve(target_hostname)
-                except NonPublicAddressError as exc:
-                    return ProbeResult(
-                        hostname=hostname,
-                        active=False,
-                        reason="non_public_address",
-                        scheme=scheme,
-                        status=attempt.status,
-                        final_url=client_redirect,
-                        error=str(exc),
-                    )
-                except OSError as exc:
-                    return ProbeResult(
-                        hostname=hostname,
-                        active=False,
-                        reason="network_error",
-                        scheme=scheme,
-                        status=attempt.status,
-                        final_url=client_redirect,
-                        error=f"{type(exc).__name__}: {exc}",
-                    )
-                redirected_attempt = fetch(client_redirect, timeout)
-                last_attempt = redirected_attempt
-                if redirected_attempt.status is None:
-                    continue
-                attempt = redirected_attempt
-                last_response = attempt
-                last_response_scheme = scheme
-            last_response = attempt
-            last_response_scheme = scheme
-            active, reason = classify_response(
-                attempt.status,
-                attempt.body,
-                attempt.content_type,
-                attempt.final_url,
-            )
-            if active:
-                return ProbeResult(
-                    hostname=hostname,
-                    active=True,
-                    reason=reason,
-                    scheme=scheme,
-                    status=attempt.status,
-                    final_url=attempt.final_url,
-                    content_type=attempt.content_type,
-                    title=extract_title(attempt.body),
-                    content_digest=content_digest(
-                        attempt.body,
-                        urlparse(attempt.final_url or url).hostname,
-                    ),
-                )
-            deterministic_shell = reason in {"javascript_shell", "service_endpoint"}
-            if (attempt_number == attempts - 1 or deterministic_shell) and reason in {
-                "empty_response",
-                "javascript_shell",
-                "login_only",
-                "not_found",
-                "placeholder",
-                "service_endpoint",
-            }:
-                public_page = _probe_public_subpage(
-                    hostname,
-                    url,
-                    attempt,
-                    timeout=timeout,
-                    fetch=fetch,
-                    include_root_links=reason
-                    not in {"javascript_shell", "placeholder", "service_endpoint"},
-                )
-                if public_page is not None:
-                    return ProbeResult(
-                        hostname=hostname,
-                        active=True,
-                        reason="public_response",
-                        scheme=scheme,
-                        status=public_page.status,
-                        final_url=public_page.final_url,
-                        content_type=public_page.content_type,
-                        title=extract_title(public_page.body),
-                        content_digest=content_digest(
-                            public_page.body,
-                            urlparse(public_page.final_url or url).hostname,
-                        ),
-                    )
-            if deterministic_shell:
-                return ProbeResult(
-                    hostname=hostname,
-                    active=False,
-                    reason=reason,
-                    scheme=scheme,
-                    status=attempt.status,
-                    final_url=attempt.final_url,
-                    content_type=attempt.content_type,
-                    title=extract_title(attempt.body),
-                    content_digest=content_digest(
-                        attempt.body,
-                        urlparse(attempt.final_url or url).hostname,
-                    ),
-                    error=attempt.error,
-                )
-
-    if last_attempt is None:
-        return ProbeResult(hostname, active=False, reason="network_error", error="no attempts")
-    if last_response is not None:
-        _, reason = classify_response(
-            last_response.status,
-            last_response.body,
-            last_response.content_type,
-            last_response.final_url,
-        )
-        return ProbeResult(
-            hostname=hostname,
-            active=False,
-            reason=reason,
-            scheme=last_response_scheme,
-            status=last_response.status,
-            final_url=last_response.final_url,
-            content_type=last_response.content_type,
-            title=extract_title(last_response.body),
-            content_digest=content_digest(
-                last_response.body,
-                urlparse(last_response.final_url or "").hostname or hostname,
-            ),
-            error=last_response.error,
-        )
-    return ProbeResult(
-        hostname,
-        active=False,
-        reason="network_error",
-        scheme=last_scheme,
-        error=last_attempt.error,
-    )
+    return _HostProbe(
+        hostname, timeout=timeout, attempts=attempts, resolve=resolve, fetch=fetch
+    ).run()
 
 
 def fetch_url(url: str, timeout: float) -> ProbeAttempt:
