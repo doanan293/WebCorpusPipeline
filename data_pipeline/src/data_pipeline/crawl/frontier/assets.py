@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 from data_pipeline.crawl.options import CrawlOptions
 
 if TYPE_CHECKING:
-    from data_pipeline.crawl.extract.article import ArticleAsset
+    from data_pipeline.crawl.extract.assets import ArticleAsset
 
 AssetGroup = Literal["image", "media", "document"]
 AssetRole = Literal["inline_image", "media_reference", "document_attachment"]

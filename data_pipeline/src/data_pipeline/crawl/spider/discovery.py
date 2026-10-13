@@ -7,7 +7,7 @@ import scrapy
 
 from data_pipeline.core.policies.url import canonicalize_url
 from data_pipeline.crawl.config import CrawlerConfig
-from data_pipeline.crawl.extract.content import normalize_url
+from data_pipeline.crawl.extract.links import normalize_url
 from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.frontier.sitemaps import (
     SitemapDiscoveryCoordinator,

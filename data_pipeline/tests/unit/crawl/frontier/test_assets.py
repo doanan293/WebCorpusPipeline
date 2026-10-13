@@ -1,6 +1,6 @@
 import pytest
 
-from data_pipeline.crawl.extract.article import ArticleAsset
+from data_pipeline.crawl.extract.assets import ArticleAsset
 from data_pipeline.crawl.frontier.assets import (
     AssetPolicy,
     is_recognizable_binary,

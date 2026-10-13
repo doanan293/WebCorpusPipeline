@@ -8,7 +8,7 @@ from scrapy.exceptions import IgnoreRequest
 from scrapy.http import Response
 
 from data_pipeline.crawl.config import CrawlerConfig
-from data_pipeline.crawl.extract.content import resource_kind
+from data_pipeline.crawl.extract.links import resource_kind
 from data_pipeline.crawl.frontier.assets import (
     AssetPolicy,
     is_recognizable_binary,

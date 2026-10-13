@@ -9,7 +9,7 @@ from scrapy.exceptions import IgnoreRequest
 from scrapy.http import HtmlResponse, Request, Response
 
 from data_pipeline.crawl.config import CrawlerConfig
-from data_pipeline.crawl.extract.article import ArticleAsset
+from data_pipeline.crawl.extract.assets import ArticleAsset
 from data_pipeline.crawl.frontier.assets import AssetPolicy
 from data_pipeline.crawl.frontier.frontier import Candidate, FrontierPolicy
 from data_pipeline.crawl.frontier.seeds import SeedSet

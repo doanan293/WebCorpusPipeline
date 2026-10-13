@@ -1,8 +1,5 @@
-from data_pipeline.crawl.extract.article import (
-    ArticleAnalysis,
-    ArticleAsset,
-    analyze_article,
-)
+from data_pipeline.crawl.extract.article import ArticleAnalysis, analyze_article
+from data_pipeline.crawl.extract.assets import ArticleAsset
 
 
 def test_article_asset_and_analysis_types() -> None:

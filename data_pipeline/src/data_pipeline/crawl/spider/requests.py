@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 
 import scrapy
 
-from data_pipeline.crawl.extract.content import resource_kind
+from data_pipeline.crawl.extract.links import resource_kind
 from data_pipeline.crawl.frontier.assets import (
     AssetPolicy,
     is_recognizable_binary,

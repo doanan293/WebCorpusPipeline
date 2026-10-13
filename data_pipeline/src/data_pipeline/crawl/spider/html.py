@@ -11,7 +11,7 @@ from scrapy.http import Response
 
 from data_pipeline.core.policies.access import classify_page_gate
 from data_pipeline.crawl.extract.article import analyze_article
-from data_pipeline.crawl.extract.content import normalize_url, resource_kind
+from data_pipeline.crawl.extract.links import normalize_url, resource_kind
 from data_pipeline.crawl.frontier.assets import (
     AssetPolicy,
     classify_asset,
