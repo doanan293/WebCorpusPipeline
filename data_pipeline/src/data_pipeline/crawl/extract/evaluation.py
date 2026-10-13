@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from data_pipeline.crawl.extract.article import analyze_article
 
@@ -10,14 +11,14 @@ def _tokens(value: str) -> set[str]:
     return {item for item in value.lower().split() if item}
 
 
-def evaluate(fixtures: Path, output: Path) -> dict:
-    rows = []
+def evaluate(fixtures: Path, output: Path) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
     for expected_path in sorted(fixtures.glob("*.json")):
         expected = json.loads(expected_path.read_text())
         html = (expected_path.with_suffix(".html")).read_bytes()
         actual = analyze_article(html, expected.get("url", "https://fixture.test/")).article
-        gold = _tokens(expected.get("text", ""))
-        pred = _tokens(actual.get("text", ""))
+        gold = _tokens(str(expected.get("text", "")))
+        pred = _tokens(str(actual.get("text", "")))
         inter = len(gold & pred)
         precision = inter / len(pred) if pred else 0
         recall = inter / len(gold) if gold else 0

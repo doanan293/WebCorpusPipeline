@@ -74,8 +74,8 @@ def _positive(name: str, value: Any, *, integer: bool = True) -> int | float:
 
 def load_settings(paths: ProjectPaths, overrides: Mapping[str, Any] | None = None) -> Settings:
     config_path = paths.pipeline_config
-    config = yaml.safe_load(config_path.read_text()) if config_path.exists() else {}
-    config = config or {}
+    loaded = yaml.safe_load(config_path.read_text()) if config_path.exists() else None
+    config: dict[str, Any] = loaded or {}
     d = {**config.get("download", {}), **config.get("parser", {})}
     db = config.get("database", {})
     values: dict[str, Any] = {

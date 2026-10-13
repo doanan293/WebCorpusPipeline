@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
 from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.frontier.seeds import SeedSet
@@ -49,7 +49,7 @@ def crawl_options_from_config(config: CrawlerConfig, **overrides: object) -> Cra
         "max_urls_per_host",
         "max_total_urls",
     )
-    values = {
+    values: dict[str, Any] = {
         name: overrides[name] if overrides.get(name) is not None else getattr(config, name)
         for name in names
     }

@@ -25,9 +25,14 @@ ACCESS_POLICY_SEMANTIC_KEYS = frozenset(
 )
 
 
+def _revision(snapshot: Mapping[str, object]) -> int:
+    value = snapshot.get("access_policy_revision", 1)
+    return int(value) if isinstance(value, (int, float, str)) else 1
+
+
 def validate_policy_migration(saved: Mapping[str, object], effective: Mapping[str, object]) -> None:
-    saved_revision = int(saved.get("access_policy_revision", 1))
-    effective_revision = int(effective.get("access_policy_revision", 1))
+    saved_revision = _revision(saved)
+    effective_revision = _revision(effective)
     if (
         saved_revision != _LEGACY_ACCESS_POLICY_REVISION
         or effective_revision != _CURRENT_ACCESS_POLICY_REVISION
@@ -117,8 +122,8 @@ def _resumed_manifest(
     *,
     phase: str,
     input_sha256: str,
-    semantic_config: dict[str, object],
-    runtime_config: dict[str, object],
+    semantic_config: Mapping[str, object],
+    runtime_config: Mapping[str, object],
     allow_policy_migration: bool,
 ) -> dict[str, Any]:
     if manifest.get("state_version") != STATE_VERSION:
@@ -151,10 +156,10 @@ def _resumed_manifest(
                 }
             )
         manifest["policy_migrations"] = migrations
-        manifest["semantic_config"] = semantic_config
+        manifest["semantic_config"] = dict(semantic_config)
     history = manifest.get("runtime_history", [])
     if not history or history[-1] != runtime_config:
-        history.append(runtime_config)
+        history.append(dict(runtime_config))
         manifest["runtime_history"] = history
     manifest["resumed_from_status"] = manifest.get("status")
     manifest["status"] = "running"
@@ -167,8 +172,8 @@ def manifest_for_open(
     resume: bool,
     phase: str,
     input_sha256: str,
-    semantic_config: dict[str, object],
-    runtime_config: dict[str, object],
+    semantic_config: Mapping[str, object],
+    runtime_config: Mapping[str, object],
     allow_policy_migration: bool,
 ) -> dict[str, Any]:
     """Return the manifest for a new crawl state or the validated one being resumed."""
@@ -192,8 +197,8 @@ def manifest_for_open(
         "state_version": STATE_VERSION,
         "phase": phase,
         "input_sha256": input_sha256,
-        "semantic_config": semantic_config,
-        "runtime_history": [runtime_config],
+        "semantic_config": dict(semantic_config),
+        "runtime_history": [dict(runtime_config)],
         "status": "running",
         "started_at": time.time(),
     }

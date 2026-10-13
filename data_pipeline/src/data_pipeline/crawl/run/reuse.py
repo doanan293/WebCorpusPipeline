@@ -8,6 +8,7 @@ import sqlite3
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 from data_pipeline.core.policies.network import validate_public_web_url
 from data_pipeline.crawl.frontier.assets import AssetRole, classify_asset
@@ -127,7 +128,7 @@ def prepare_reused_asset_targets(state: CrawlState) -> None:
                 if not decision.accepted or decision.canonical_url is None:
                     continue
                 url = decision.canonical_url
-                role: AssetRole = role_value
+                role = cast(AssetRole, role_value)
                 group = classify_asset(url=url, asset_role=role)
                 state.connection.execute(
                     """

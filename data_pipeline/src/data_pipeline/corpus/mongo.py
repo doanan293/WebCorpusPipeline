@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path
+from typing import Any
 
 from pymongo import ASCENDING, MongoClient, ReplaceOne
+from pymongo.collection import Collection
 
+from data_pipeline.core.settings import Settings
 from data_pipeline.corpus.package import verify_corpus
 
 MAX_BATCH_OPERATIONS = 100
@@ -15,7 +18,7 @@ COLLECTIONS = ("datasets", "pages", "documents", "images", "links")
 MAX_BATCH_BYTES = 4 * 1024 * 1024
 
 
-def _record_id(value: dict, kind: str) -> str:
+def _record_id(value: dict[str, Any], kind: str) -> str:
     identity = [
         kind,
         value.get("url") or value.get("source_url"),
@@ -38,7 +41,7 @@ def _record_id(value: dict, kind: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def _page_value(value: dict) -> dict:
+def _page_value(value: dict[str, Any]) -> dict[str, Any]:
     """Keep Mongo page records focused on searchable metadata and plain text."""
     fields = (
         "url",
@@ -60,7 +63,7 @@ def _page_value(value: dict) -> dict:
     return {key: value[key] for key in fields if key in value}
 
 
-def _snapshot_values(file: Path, collection: str, snapshot_id: str) -> Iterator[dict]:
+def _snapshot_values(file: Path, collection: str, snapshot_id: str) -> Iterator[dict[str, Any]]:
     with file.open(encoding="utf-8") as stream:
         for line in stream:
             value = json.loads(line)
@@ -71,8 +74,8 @@ def _snapshot_values(file: Path, collection: str, snapshot_id: str) -> Iterator[
             yield value
 
 
-def _replace_batches(collection, values) -> None:
-    operations = []
+def _replace_batches(collection: Collection[Any], values: Iterable[dict[str, Any]]) -> None:
+    operations: list[ReplaceOne[dict[str, Any]]] = []
     batch_bytes = 0
     for value in values:
         operation_value = dict(value)
@@ -89,7 +92,7 @@ def _replace_batches(collection, values) -> None:
         collection.bulk_write(operations, ordered=False)
 
 
-def import_corpus(path: Path, settings) -> dict:
+def import_corpus(path: Path, settings: Settings) -> dict[str, Any]:
     report = verify_corpus(path)
     if not report["valid"]:
         raise ValueError("invalid corpus: " + "; ".join(report["errors"]))

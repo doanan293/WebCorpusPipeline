@@ -5,9 +5,10 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TextIO
+from typing import Any, TextIO
 
 from scrapy import signals
+from scrapy.crawler import Crawler
 from twisted.internet.task import LoopingCall
 
 _SECONDS_PER_MINUTE = 60
@@ -68,7 +69,7 @@ class EtaEstimator:
 class CrawlProgressReporter:
     def __init__(
         self,
-        crawler,
+        crawler: Crawler,
         *,
         output: TextIO = sys.stderr,
         clock: Callable[[], float] = time.monotonic,
@@ -80,26 +81,30 @@ class CrawlProgressReporter:
         self.eta_estimator = EtaEstimator(stable_samples=3)
         self._peak_queue: int = 0
         self._recent_rate: float = 0.0
+        self._loop: LoopingCall | None = None
 
     @classmethod
-    def from_crawler(cls, crawler):
+    def from_crawler(cls, crawler: Crawler) -> CrawlProgressReporter:
         reporter = cls(crawler)
-        crawler.progress_reporter = reporter
+        # Scrapy crawlers accept ad-hoc attributes; run/full.py reads this one back.
+        crawler.progress_reporter = reporter  # pyrefly: ignore[missing-attribute]
         tuning = crawler.settings.get("HUST_TUNING")
         interval = float(getattr(tuning, "progress_interval_seconds", 0.0) or 0.0)
         if interval > 0:
-            reporter._loop = LoopingCall(reporter.report)
-            reporter._loop.start(interval, now=False)
+            loop = LoopingCall(reporter.report)
+            reporter._loop = loop
+            loop.start(interval, now=False)
             crawler.signals.connect(reporter.close, signal=signals.spider_closed)
         return reporter
 
-    def close(self, *args) -> None:  # noqa: ARG002 -- signal handler arguments are ignored
-        loop = getattr(self, "_loop", None)
-        if loop is not None and loop.running:
-            loop.stop()
+    def close(self, *args: object) -> None:  # noqa: ARG002 -- signal handler arguments are ignored
+        if self._loop is not None and self._loop.running:
+            self._loop.stop()
 
-    def _get(self, key: str, default=0):
+    def _get(self, key: str, default: Any = 0) -> Any:
         stats = self.crawler.stats
+        if stats is None:
+            return default
         getter = getattr(stats, "get_value", None)
         return getter(key, default) if getter else stats.get(key, default)
 

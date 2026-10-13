@@ -149,11 +149,11 @@ def analyze_html(html: bytes | str, url: str, encoding: str | None = None) -> Ht
     return HtmlAnalysis(article=res.article, discoveries=res.discoveries)
 
 
-def extract_html(html: bytes | str, url: str, encoding: str | None = None) -> dict:
+def extract_html(html: bytes | str, url: str, encoding: str | None = None) -> dict[str, Any]:
     """Extract the primary readable text and every valid HTTP anchor from HTML."""
     return analyze_html(html, url, encoding).article
 
 
-def discover_html(html: bytes | str, url: str, encoding: str | None = None) -> list[dict]:
+def discover_html(html: bytes | str, url: str, encoding: str | None = None) -> list[HtmlDiscovery]:
     """Discover linked pages and media without applying hostname scope."""
     return analyze_html(html, url, encoding).discoveries

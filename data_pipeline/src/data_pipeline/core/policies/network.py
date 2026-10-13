@@ -5,6 +5,7 @@ import ipaddress
 import socket
 import threading
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlsplit
 
 from data_pipeline.core.policies.url import canonicalize_url
@@ -68,7 +69,7 @@ def validate_public_web_url(url: str) -> NetworkDecision:
 
 
 def resolve_hostname(hostname: str, timeout: float = 5.0, port: int = 443) -> None:
-    outcome: list[tuple[list[tuple], BaseException | None]] = []
+    outcome: list[tuple[list[tuple[Any, ...]], BaseException | None]] = []
     completed = threading.Event()
 
     def resolve() -> None:

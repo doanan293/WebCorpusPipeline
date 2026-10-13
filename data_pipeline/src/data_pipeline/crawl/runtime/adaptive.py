@@ -4,13 +4,15 @@ from collections import deque
 from dataclasses import dataclass
 from http import HTTPStatus
 from time import monotonic
+from typing import Any
 from urllib.parse import urlsplit
 
-from scrapy import signals
+from scrapy import Spider, signals
+from scrapy.crawler import Crawler
 from scrapy.http import Request, Response
 
 from data_pipeline.core.policies.access import classify_access
-from data_pipeline.crawl.runtime.resources import ResourceSampler
+from data_pipeline.crawl.runtime.resources import ResourceSample, ResourceSampler
 
 _FORBIDDEN_STREAK_LIMIT = 3
 
@@ -115,7 +117,7 @@ class AdaptiveConcurrencyMiddleware:
 
     def __init__(
         self,
-        crawler,
+        crawler: Crawler,
         *,
         max_per_host: int,
         max_concurrency: int,
@@ -128,14 +130,14 @@ class AdaptiveConcurrencyMiddleware:
         self._resource_limit_percent = resource_limit_percent
         self._resource_sampler = resource_sampler or ResourceSampler()
         self._resource_pressure = False
-        self._last_resource_sample = None
+        self._last_resource_sample: ResourceSample | None = None
         self._hosts: dict[str, HostHealth] = {}
         self._started: dict[int, float] = {}
         self._slot_delays: dict[str, float] = {}
         self._signal_observed_responses: set[int] = set()
 
     @classmethod
-    def from_crawler(cls, crawler):
+    def from_crawler(cls, crawler: Crawler) -> AdaptiveConcurrencyMiddleware:
         tuning = crawler.settings.get("HUST_TUNING")
         if tuning is None:
             msg = "HUST_TUNING is required for adaptive middleware"
@@ -156,13 +158,17 @@ class AdaptiveConcurrencyMiddleware:
     def _host(request: Request) -> str:
         return (urlsplit(request.url).hostname or "").lower().rstrip(".")
 
+    def _downloader_slots(self) -> dict[str, Any]:
+        engine = self._crawler.engine
+        return engine.downloader.slots if engine is not None else {}
+
     def _health(self, host: str, request: Request | None = None) -> HostHealth:
         health = self._hosts.get(host)
         if health is None:
             slot = None
             if request is not None:
                 slot_key = request.meta.get("download_slot", host)
-                slot = self._crawler.engine.downloader.slots.get(slot_key)
+                slot = self._downloader_slots().get(slot_key)
             start = int(getattr(slot, "concurrency", 1) or 1)
             health = self._hosts[host] = HostHealth(
                 start_concurrency=min(start, self._max_per_host),
@@ -171,7 +177,9 @@ class AdaptiveConcurrencyMiddleware:
             )
         return health
 
-    def process_request(self, request: Request, spider=None):  # noqa: ARG002 -- Scrapy middleware interface
+    def process_request(  # noqa: ARG002 -- Scrapy middleware interface
+        self, request: Request, spider: Spider | None = None
+    ) -> None:
         self._started[id(request)] = monotonic()
 
     def _observe_response(self, request: Request, response: Response) -> None:
@@ -184,7 +192,7 @@ class AdaptiveConcurrencyMiddleware:
             except ValueError:
                 retry_after = None
         error = None
-        content_type = response.headers.get(b"Content-Type", b"").decode("latin1").lower()
+        content_type = (response.headers.get(b"Content-Type") or b"").decode("latin1").lower()
         if "html" in content_type and hasattr(response, "text"):
             access = classify_access(
                 status=response.status,
@@ -208,12 +216,12 @@ class AdaptiveConcurrencyMiddleware:
         self,
         request: Request,
         response: Response,
-        spider=None,  # noqa: ARG002 -- Scrapy signal handler interface
+        spider: Spider | None = None,  # noqa: ARG002 -- Scrapy signal handler interface
     ) -> None:
         self._observe_response(request, response)
         self._signal_observed_responses.add(id(response))
 
-    def process_response(self, request: Request, response: Response):
+    def process_response(self, request: Request, response: Response) -> Response:
         response_id = id(response)
         if response_id in self._signal_observed_responses:
             self._signal_observed_responses.remove(response_id)
@@ -221,7 +229,7 @@ class AdaptiveConcurrencyMiddleware:
             self._observe_response(request, response)
         return response
 
-    def process_exception(self, request: Request, exception):
+    def process_exception(self, request: Request, exception: Exception) -> None:
         started = self._started.pop(id(request), monotonic())
         error = "timeout" if "timeout" in exception.__class__.__name__.lower() else "transport"
         self.observe(request, None, max(0.0, monotonic() - started), error)
@@ -265,7 +273,7 @@ class AdaptiveConcurrencyMiddleware:
         if self._resource_pressure:
             decision = HostDecision(1, decision.cooldown_until)
 
-        slots = self._crawler.engine.downloader.slots
+        slots = self._downloader_slots()
         slot_keys = {host, f"playwright:{host}"}
         if request is not None:
             slot_keys.add(str(request.meta.get("download_slot", host)))

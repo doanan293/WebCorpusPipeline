@@ -6,6 +6,7 @@ import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from data_pipeline.corpus.graph import build_graph
 
@@ -86,7 +87,10 @@ def package_corpus(source: Path, enrichment: Path, output: Path) -> Path:
                     parsed = conn.execute(
                         "select result_json from parse_results where url=?", (row["url"],)
                     ).fetchone()
-                    result = json.loads(parsed[0]) if parsed and parsed[0] else None
+                    result: dict[str, Any] = json.loads(parsed[0]) if parsed and parsed[0] else {}
+                    parts: list[Any] = result.get("parts", [])
+                    warnings: list[Any] = result.get("warnings", [])
+                    versions: dict[str, Any] = result.get("parser_versions", {})
                     refs = [
                         dict(x)
                         for x in conn.execute(
@@ -99,12 +103,10 @@ def package_corpus(source: Path, enrichment: Path, output: Path) -> Path:
                         "sha256": row["sha256"],
                         "mime_type": row["mime_type"],
                         "size": row["size"],
-                        "extraction_status": result.get("status", "pending")
-                        if result
-                        else "pending",
-                        "parts": result.get("parts", []) if result else [],
-                        "warnings": result.get("warnings", []) if result else [],
-                        "parser_versions": result.get("parser_versions", {}) if result else {},
+                        "extraction_status": result.get("status", "pending"),
+                        "parts": parts,
+                        "warnings": warnings,
+                        "parser_versions": versions,
                         "referrers": refs,
                     }
                     doc.write(json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n")
@@ -152,7 +154,7 @@ def package_corpus(source: Path, enrichment: Path, output: Path) -> Path:
         digest = hashlib.sha256(
             json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
-        manifest = {
+        manifest: dict[str, Any] = {
             "schema_version": "1.0",
             "snapshot_id": digest,
             "files": files,
@@ -170,8 +172,8 @@ def package_corpus(source: Path, enrichment: Path, output: Path) -> Path:
     return output
 
 
-def verify_corpus(path: Path) -> dict:
-    errors = []
+def verify_corpus(path: Path) -> dict[str, Any]:
+    errors: list[str] = []
     manifest = path / "manifest.json"
     if not manifest.exists():
         return {"valid": False, "errors": ["manifest.json missing"]}

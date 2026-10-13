@@ -4,7 +4,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import yaml
 
@@ -24,6 +24,61 @@ def validate_network_contact(contact: str) -> None:
     if not normalized or ".invalid" in normalized:
         msg = "a non-placeholder operator contact is required"
         raise ValueError(msg)
+
+
+_REQUIRED_SETTINGS = (
+    "user_agent_name",
+    "user_agent_version",
+    "concurrent_requests",
+    "access_policy_revision",
+    "browser_user_agent",
+    "concurrent_per_host",
+    "download_delay_seconds",
+    "download_timeout_seconds",
+    "max_response_bytes",
+    "robots_txt_obey",
+    "cookies_enabled",
+    "redirect_max_times",
+    "autothrottle_enabled",
+    "autothrottle_target_concurrency",
+    "throttle_start_seconds",
+    "throttle_max_seconds",
+    "retry_times",
+    "retry_statuses",
+    "retry_backoff_base_seconds",
+    "retry_max_delay_seconds",
+    "playwright_max_pages",
+    "resource_limit_percent",
+    "assets",
+    "max_file_bytes",
+    "max_total_file_bytes",
+    "max_query_variants_per_path",
+    "pagination_empty_pages",
+    "max_urls_per_host",
+    "max_total_urls",
+    "journal_batch_size",
+    "journal_flush_seconds",
+    "progress_interval_seconds",
+    "refresh_pagination_empty_pages",
+    "refresh_recent_days",
+    "refresh_recent_runs",
+    "refresh_recheck_limit",
+)
+_NON_POSITIVE_SETTINGS = frozenset(
+    {
+        "user_agent_name",
+        "user_agent_version",
+        "browser_user_agent",
+        "robots_txt_obey",
+        "cookies_enabled",
+        "autothrottle_enabled",
+        "assets",
+        "retry_statuses",
+    }
+)
+_POSITIVE_SETTINGS = tuple(
+    name for name in _REQUIRED_SETTINGS if name not in _NON_POSITIVE_SETTINGS
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,45 +147,7 @@ class CrawlerConfig:
             msg = "contact is required"
             raise ValueError(msg)
         validate_network_contact(contact)
-        required = (
-            "user_agent_name",
-            "user_agent_version",
-            "concurrent_requests",
-            "access_policy_revision",
-            "browser_user_agent",
-            "concurrent_per_host",
-            "download_delay_seconds",
-            "download_timeout_seconds",
-            "max_response_bytes",
-            "robots_txt_obey",
-            "cookies_enabled",
-            "redirect_max_times",
-            "autothrottle_enabled",
-            "autothrottle_target_concurrency",
-            "throttle_start_seconds",
-            "throttle_max_seconds",
-            "retry_times",
-            "retry_statuses",
-            "retry_backoff_base_seconds",
-            "retry_max_delay_seconds",
-            "playwright_max_pages",
-            "resource_limit_percent",
-            "assets",
-            "max_file_bytes",
-            "max_total_file_bytes",
-            "max_query_variants_per_path",
-            "pagination_empty_pages",
-            "max_urls_per_host",
-            "max_total_urls",
-            "journal_batch_size",
-            "journal_flush_seconds",
-            "progress_interval_seconds",
-            "refresh_pagination_empty_pages",
-            "refresh_recent_days",
-            "refresh_recent_runs",
-            "refresh_recheck_limit",
-        )
-        missing = sorted(name for name in required if name not in raw)
+        missing = sorted(name for name in _REQUIRED_SETTINGS if name not in raw)
         if "contact" not in raw and not environment.get("CRAWLER_CONTACT", "").strip():
             missing.insert(0, "contact")
         if missing:
@@ -144,91 +161,78 @@ class CrawlerConfig:
                 raise ValueError(msg)  # noqa: TRY004 -- invalid configuration is a ValueError
             return value
 
-        values = {
-            "hostnames": hostnames,
-            "contact": contact,
-            "user_agent_name": str(raw["user_agent_name"]),
-            "user_agent_version": str(raw["user_agent_version"]),
-            "access_policy_revision": int(raw["access_policy_revision"]),
-            "browser_user_agent": str(raw["browser_user_agent"]),
-            "concurrent_requests": int(raw["concurrent_requests"]),
-            "concurrent_per_host": int(raw["concurrent_per_host"]),
-            "playwright_max_pages": int(raw["playwright_max_pages"]),
-            "download_delay_seconds": float(raw["download_delay_seconds"]),
-            "throttle_start_seconds": float(raw["throttle_start_seconds"]),
-            "throttle_max_seconds": float(raw["throttle_max_seconds"]),
-            "retry_times": int(raw["retry_times"]),
-            "retry_statuses": tuple(int(status) for status in raw["retry_statuses"]),
-            "retry_backoff_base_seconds": float(raw["retry_backoff_base_seconds"]),
-            "retry_max_delay_seconds": float(raw["retry_max_delay_seconds"]),
-            "download_timeout_seconds": float(raw["download_timeout_seconds"]),
-            "max_response_bytes": int(raw["max_response_bytes"]),
-            "robots_txt_obey": required_bool("robots_txt_obey"),
-            "cookies_enabled": required_bool("cookies_enabled"),
-            "redirect_max_times": int(raw["redirect_max_times"]),
-            "autothrottle_enabled": required_bool("autothrottle_enabled"),
-            "autothrottle_target_concurrency": float(raw["autothrottle_target_concurrency"]),
-            "resource_limit_percent": int(raw["resource_limit_percent"]),
-            "assets": raw["assets"],
-            "max_file_bytes": int(raw["max_file_bytes"]),
-            "max_total_file_bytes": int(raw["max_total_file_bytes"]),
-            "max_query_variants_per_path": int(raw["max_query_variants_per_path"]),
-            "pagination_empty_pages": int(raw["pagination_empty_pages"]),
-            "max_urls_per_host": int(raw["max_urls_per_host"]),
-            "max_total_urls": int(raw["max_total_urls"]),
-            "journal_batch_size": int(raw["journal_batch_size"]),
-            "journal_flush_seconds": float(raw["journal_flush_seconds"]),
-            "progress_interval_seconds": float(raw["progress_interval_seconds"]),
-            "refresh_pagination_empty_pages": int(raw["refresh_pagination_empty_pages"]),
-            "refresh_recent_days": int(raw["refresh_recent_days"]),
-            "refresh_recent_runs": int(raw["refresh_recent_runs"]),
-            "refresh_recheck_limit": int(raw["refresh_recheck_limit"]),
-        }
-        positive = tuple(
-            name
-            for name in required
-            if name
-            not in {
-                "user_agent_name",
-                "user_agent_version",
-                "browser_user_agent",
-                "robots_txt_obey",
-                "cookies_enabled",
-                "autothrottle_enabled",
-                "assets",
-                "retry_statuses",
-            }
+        config = cls(
+            hostnames=hostnames,
+            contact=contact,
+            user_agent_name=str(raw["user_agent_name"]),
+            user_agent_version=str(raw["user_agent_version"]),
+            access_policy_revision=int(raw["access_policy_revision"]),
+            browser_user_agent=str(raw["browser_user_agent"]),
+            concurrent_requests=int(raw["concurrent_requests"]),
+            concurrent_per_host=int(raw["concurrent_per_host"]),
+            playwright_max_pages=int(raw["playwright_max_pages"]),
+            download_delay_seconds=float(raw["download_delay_seconds"]),
+            throttle_start_seconds=float(raw["throttle_start_seconds"]),
+            throttle_max_seconds=float(raw["throttle_max_seconds"]),
+            retry_times=int(raw["retry_times"]),
+            retry_statuses=tuple(int(status) for status in raw["retry_statuses"]),
+            retry_backoff_base_seconds=float(raw["retry_backoff_base_seconds"]),
+            retry_max_delay_seconds=float(raw["retry_max_delay_seconds"]),
+            download_timeout_seconds=float(raw["download_timeout_seconds"]),
+            max_response_bytes=int(raw["max_response_bytes"]),
+            robots_txt_obey=required_bool("robots_txt_obey"),
+            cookies_enabled=required_bool("cookies_enabled"),
+            redirect_max_times=int(raw["redirect_max_times"]),
+            autothrottle_enabled=required_bool("autothrottle_enabled"),
+            autothrottle_target_concurrency=float(raw["autothrottle_target_concurrency"]),
+            resource_limit_percent=int(raw["resource_limit_percent"]),
+            assets=raw["assets"],
+            max_file_bytes=int(raw["max_file_bytes"]),
+            max_total_file_bytes=int(raw["max_total_file_bytes"]),
+            max_query_variants_per_path=int(raw["max_query_variants_per_path"]),
+            pagination_empty_pages=int(raw["pagination_empty_pages"]),
+            max_urls_per_host=int(raw["max_urls_per_host"]),
+            max_total_urls=int(raw["max_total_urls"]),
+            journal_batch_size=int(raw["journal_batch_size"]),
+            journal_flush_seconds=float(raw["journal_flush_seconds"]),
+            progress_interval_seconds=float(raw["progress_interval_seconds"]),
+            refresh_pagination_empty_pages=int(raw["refresh_pagination_empty_pages"]),
+            refresh_recent_days=int(raw["refresh_recent_days"]),
+            refresh_recent_runs=int(raw["refresh_recent_runs"]),
+            refresh_recheck_limit=int(raw["refresh_recheck_limit"]),
         )
-        for name in positive:
-            if values[name] <= 0:
+        config._validate()
+        return config
+
+    def _validate(self) -> None:
+        for name in _POSITIVE_SETTINGS:
+            if getattr(self, name) <= 0:
                 msg = f"{name} must be positive"
                 raise ValueError(msg)
-        if not values["retry_statuses"] or any(
-            status < MIN_HTTP_STATUS or status > MAX_HTTP_STATUS
-            for status in values["retry_statuses"]
+        if not self.retry_statuses or any(
+            status < MIN_HTTP_STATUS or status > MAX_HTTP_STATUS for status in self.retry_statuses
         ):
             msg = "retry_statuses must contain HTTP status codes"
             raise ValueError(msg)
-        if values["download_delay_seconds"] <= 0:
+        if self.download_delay_seconds <= 0:
             msg = "download_delay_seconds must be positive"
             raise ValueError(msg)
         if (
-            values["throttle_start_seconds"] <= 0
-            or values["throttle_max_seconds"] <= 0
-            or values["throttle_start_seconds"] > values["throttle_max_seconds"]
+            self.throttle_start_seconds <= 0
+            or self.throttle_max_seconds <= 0
+            or self.throttle_start_seconds > self.throttle_max_seconds
         ):
             msg = "throttle delays must be positive and ordered"
             raise ValueError(msg)
-        if values["autothrottle_target_concurrency"] > values["concurrent_per_host"]:
+        if self.autothrottle_target_concurrency > self.concurrent_per_host:
             msg = "autothrottle_target_concurrency must not exceed concurrent_per_host"
             raise ValueError(msg)
-        if not 1 <= values["resource_limit_percent"] <= MAX_PERCENT:
+        if not 1 <= self.resource_limit_percent <= MAX_PERCENT:
             msg = "resource_limit_percent must be between 1 and 100"
             raise ValueError(msg)
-        if values["assets"] not in {"content-only", "all"}:
+        if self.assets not in {"content-only", "all"}:
             msg = "assets must be content-only or all"
             raise ValueError(msg)
-        return cls(**values)
 
 
 _RUNTIME_CONFIG_KEYS = {
@@ -260,7 +264,8 @@ def _normalized_snapshot(values: dict[str, object]) -> dict[str, object]:
         if isinstance(value, Path):
             return str(value)
         if isinstance(value, (set, frozenset)):
-            return sorted(normalize(item) for item in value)
+            items: list[Any] = [normalize(item) for item in value]
+            return sorted(items)
         if isinstance(value, tuple):
             return [normalize(item) for item in value]
         if isinstance(value, dict):

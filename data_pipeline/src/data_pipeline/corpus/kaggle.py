@@ -7,17 +7,18 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from data_pipeline.corpus.package import verify_corpus
 
 
-def _run(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
+def _run(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # noqa: S603 -- fixed argv, no shell
         args, cwd=cwd, check=True, capture_output=True, text=True, env=None
     )
 
 
-def _metadata(config: dict, folder: Path) -> Path:
+def _metadata(config: dict[str, Any], folder: Path) -> Path:
     required = ("owner", "slug", "title", "subtitle", "description", "license_name")
     missing = [key for key in required if not str(config.get(key, ".")).strip()]
     if missing:
@@ -55,7 +56,7 @@ def _dataset_files(dataset: str) -> list[str]:
 
 def publish_corpus(
     corpus: Path, config_path: Path, *, update: bool = False, message: str | None = None
-) -> dict:
+) -> dict[str, Any]:
     valid = verify_corpus(corpus)
     if not valid["valid"]:
         raise ValueError("invalid corpus: " + "; ".join(valid["errors"]))

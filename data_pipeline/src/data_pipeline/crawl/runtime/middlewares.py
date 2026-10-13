@@ -2,23 +2,27 @@ from __future__ import annotations
 
 import logging
 import random
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import ClassVar
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-from scrapy import signals
+from scrapy import Spider, signals
+from scrapy.crawler import Crawler
 from scrapy.exceptions import IgnoreRequest, StopDownload
-from scrapy.http import Request, Response
+from scrapy.http import Headers, Request, Response
 from scrapy.settings.default_settings import RETRY_EXCEPTIONS
+from scrapy.statscollectors import StatsCollector
 from scrapy.utils.defer import maybe_deferred_to_future
 from scrapy.utils.misc import load_object
 from scrapy.utils.response import response_status_message
 from scrapy_playwright.page import PageMethod
 from twisted.internet import task
+from twisted.internet.interfaces import IReactorTime
 
 from data_pipeline.core.policies.access import classify_access
 from data_pipeline.core.policies.network import resolve_public_hostname, validate_public_web_url
@@ -49,7 +53,7 @@ def _reactor_clock():
     return reactor
 
 
-async def _wait_for_stable_body(page) -> None:
+async def _wait_for_stable_body(page: Page) -> None:
     document_id = None
     stable_samples = 0
     for _ in range(120):
@@ -88,7 +92,7 @@ class SafeRedirectMiddleware:
         self.max_redirects = max_redirects
 
     @classmethod
-    def from_crawler(cls, crawler):
+    def from_crawler(cls, crawler: Crawler):
         return cls(max_redirects=crawler.settings.getint("REDIRECT_MAX_TIMES", 20))
 
     def process_response(self, request: Request, response: Response):
@@ -132,14 +136,14 @@ ExactHostRedirectMiddleware = SafeRedirectMiddleware
 
 
 class PublicAssetAddressMiddleware:
-    def __init__(self, resolver=resolve_public_hostname) -> None:
+    def __init__(self, resolver: Callable[..., Awaitable[None]] = resolve_public_hostname) -> None:
         self.resolver = resolver
 
     @classmethod
-    def from_crawler(cls, crawler):
+    def from_crawler(cls, crawler: Crawler):
         return cls(resolver=crawler.settings.get("HUST_PUBLIC_RESOLVER", resolve_public_hostname))
 
-    async def process_request(self, request: Request, spider=None) -> None:
+    async def process_request(self, request: Request, spider: Spider | None = None) -> None:
         if request.meta.get("request_scope") != "asset":
             return
         decision = validate_public_web_url(request.url)
@@ -155,7 +159,7 @@ class PoliteRetryMiddleware:
     def __init__(
         self,
         *,
-        clock=None,
+        clock: IReactorTime | None = None,
         max_retries: int = 3,
         retry_statuses: set[int] | None = None,
         base_delay: float = 2.0,
@@ -163,7 +167,7 @@ class PoliteRetryMiddleware:
         jitter: Callable[[float], float] | None = None,
     ) -> None:
         self.clock = clock
-        self.stats = None
+        self.stats: StatsCollector | None = None
         self.max_retries = max_retries
         self.retry_statuses = retry_statuses or {408, 425, 429, 500, 502, 503, 504}
         self.base_delay = base_delay
@@ -173,7 +177,7 @@ class PoliteRetryMiddleware:
         )
 
     @classmethod
-    def from_crawler(cls, crawler):
+    def from_crawler(cls, crawler: Crawler):
         config = crawler.settings.get("HUST_CONFIG")
         middleware = cls(
             max_retries=config.retry_times,
@@ -237,7 +241,7 @@ class PoliteRetryMiddleware:
             return response
         return await self._retry(request, response)
 
-    async def process_exception(self, request: Request, exception):
+    async def process_exception(self, request: Request, exception: Exception):
         if not isinstance(exception, _RETRYABLE_EXCEPTIONS):
             return None
         if urlsplit(request.url).scheme == "http" and not request.meta.get("https_fallback"):
@@ -262,11 +266,11 @@ class PoliteRetryMiddleware:
 
 class PlaywrightFallbackMiddleware:
     @classmethod
-    def from_crawler(cls, crawler):  # noqa: ARG003 -- Scrapy component interface
+    def from_crawler(cls, crawler: Crawler):  # noqa: ARG003 -- Scrapy component interface
         return cls()
 
     def process_response(self, request: Request, response: Response):
-        content_type = response.headers.get(b"Content-Type", b"").decode("latin1").lower()
+        content_type = (response.headers.get(b"Content-Type") or b"").decode("latin1").lower()
         if "html" not in content_type:
             return response
         rendered = bool(request.meta.get("rendered") or request.meta.get("playwright"))
@@ -310,17 +314,17 @@ class PlaywrightFallbackMiddleware:
 
 class ContentOnlyHeadersGuard:
     @classmethod
-    def from_crawler(cls, crawler):
+    def from_crawler(cls, crawler: Crawler):
         instance = cls()
         crawler.signals.connect(instance.headers_received, signal=signals.headers_received)
         return instance
 
     def headers_received(
         self,
-        headers,
+        headers: Headers,
         body_length: int,  # noqa: ARG002 -- Scrapy passes every signal argument
         request: Request,
-        spider,  # noqa: ARG002 -- Scrapy passes every signal argument
+        spider: Spider,  # noqa: ARG002 -- Scrapy passes every signal argument
     ) -> None:
         if request.meta.get("asset_mode") != "content-only":
             return

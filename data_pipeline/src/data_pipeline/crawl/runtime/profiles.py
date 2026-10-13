@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 
 from data_pipeline.crawl.config import MAX_PERCENT, CrawlerConfig
@@ -54,5 +55,5 @@ def resolve_runtime_tuning(
     return tuning
 
 
-def tuning_snapshot(tuning: RuntimeTuning) -> dict[str, object]:
+def tuning_snapshot(tuning: RuntimeTuning) -> Mapping[str, object]:
     return asdict(tuning)

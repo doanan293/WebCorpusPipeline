@@ -3,16 +3,17 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from typing import Any
 from urllib.parse import urldefrag
 
 EDGE_BATCH_SIZE = 5000
 
 
-def _url(value):
+def _url(value: object) -> str:
     return urldefrag(str(value or "").strip())[0]
 
 
-def build_graph(source: Path, output: Path) -> dict:
+def build_graph(source: Path, output: Path) -> dict[str, Any]:
     articles = source / "articles.jsonl" if source.is_dir() else source
     output.mkdir(parents=True, exist_ok=True)
     # A crawl can contain millions of references.  Keep the deduplication index
