@@ -430,11 +430,8 @@ def test_public_asset_address_middleware_process_request_success() -> None:
     mw = PublicAssetAddressMiddleware(resolver=mock_resolver)
     request = Request("https://cdn.test/image.png", meta={"request_scope": "asset"})
 
-    class MockSpider:
-        class config:
-            download_timeout_seconds = 12.0
-
-    asyncio.run(mw.process_request(request, MockSpider()))
+    spider = SimpleNamespace(config=SimpleNamespace(download_timeout_seconds=12.0))
+    asyncio.run(mw.process_request(request, spider))
     assert called == [("cdn.test", 443, 12.0)]
 
 

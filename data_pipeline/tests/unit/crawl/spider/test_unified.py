@@ -396,7 +396,7 @@ def test_extensionless_embedded_resource_outside_article_is_not_scheduled_as_pag
 
 
 def test_https_homepage_failure_yields_one_http_fallback_and_second_yields_none() -> None:
-    spider, writer = make_spider(recursive_hostnames=frozenset({"a.test"}))
+    spider, _writer = make_spider(recursive_hostnames=frozenset({"a.test"}))
     start_reqs = list(spider.start_requests())
     home_req = next(r for r in start_reqs if r.url == "https://a.test/")
 
@@ -423,7 +423,7 @@ def test_https_homepage_failure_yields_one_http_fallback_and_second_yields_none(
 
 
 def test_https_transport_failure_yields_one_http_fallback_and_second_yields_none() -> None:
-    spider, writer = make_spider(recursive_hostnames=frozenset({"a.test"}))
+    spider, _writer = make_spider(recursive_hostnames=frozenset({"a.test"}))
     start_reqs = list(spider.start_requests())
     home_req = next(r for r in start_reqs if r.url == "https://a.test/")
 
@@ -452,7 +452,6 @@ def test_https_transport_failure_yields_one_http_fallback_and_second_yields_none
 
 
 def test_asset_policy_schedules_in_all_and_records_in_content_only() -> None:
-    page = "https://a.test/article"
     light_policy = AssetPolicy(CrawlOptions(assets="content-only"))
     assert (
         light_policy.consider(
@@ -615,7 +614,7 @@ def test_login_required_target_is_recorded_as_skipped() -> None:
 
 
 def test_recursive_html_schedules_only_the_exact_seed_hostname() -> None:
-    spider, writer = make_spider(recursive_hostnames=frozenset({"lms.hust.edu.vn"}))
+    spider, _writer = make_spider(recursive_hostnames=frozenset({"lms.hust.edu.vn"}))
     request = page_request("https://lms.hust.edu.vn/", discovery_source="seed")
     response = html_response(
         request,
@@ -629,7 +628,7 @@ def test_recursive_html_schedules_only_the_exact_seed_hostname() -> None:
 
 
 def test_overlapping_exact_and_recursive_schedules_once_with_recursive_mode() -> None:
-    spider, writer = make_spider(
+    spider, _writer = make_spider(
         recursive_hostnames=frozenset({"a.test"}),
         exact_urls=("https://a.test/page",),
     )

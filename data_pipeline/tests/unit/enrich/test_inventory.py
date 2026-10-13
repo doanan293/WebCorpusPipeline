@@ -47,17 +47,21 @@ def test_work_dir_accepts_refreshed_source_of_same_crawl(tmp_path: Path) -> None
 
     with WorkState.open(tmp_path / "work", fingerprint_source(source), crawl_id="c1"):
         pass
-    with pytest.raises(ValueError, match="--rebind-source"):
-        with WorkState.open(tmp_path / "work", "other", crawl_id="c2"):
-            pass
+    with (
+        pytest.raises(ValueError, match="--rebind-source"),
+        WorkState.open(tmp_path / "work", "other", crawl_id="c2"),
+    ):
+        pass
 
 
 def test_rebind_adopts_legacy_work_dir(tmp_path: Path) -> None:
     with WorkState.open(tmp_path / "work", "old-fingerprint"):
         pass
-    with pytest.raises(ValueError, match="source fingerprint changed"):
-        with WorkState.open(tmp_path / "work", "new-fingerprint", crawl_id="c1"):
-            pass
+    with (
+        pytest.raises(ValueError, match="source fingerprint changed"),
+        WorkState.open(tmp_path / "work", "new-fingerprint", crawl_id="c1"),
+    ):
+        pass
 
     with WorkState.open(tmp_path / "work", "new-fingerprint", crawl_id="c1", rebind=True):
         pass

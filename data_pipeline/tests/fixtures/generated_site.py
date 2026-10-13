@@ -155,13 +155,12 @@ def run_generated_site(
     sitemap_xml = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{sitemap_locs}</urlset>'
 
     # Build cross product of list links
-    list_links: list[str] = []
-    for f in range(filters):
-        for s in range(sorts):
-            for l_idx in range(languages):
-                list_links.append(
-                    f'<a href="/list?filter={f}&amp;sort={s}&amp;lang={l_idx}">Link</a>'
-                )
+    list_links = [
+        f'<a href="/list?filter={f}&amp;sort={s}&amp;lang={l_idx}">Link</a>'
+        for f in range(filters)
+        for s in range(sorts)
+        for l_idx in range(languages)
+    ]
     list_links_html = "".join(list_links)
 
     queue: deque[Request] = deque(spider.start_requests())
@@ -175,7 +174,7 @@ def run_generated_site(
         req = queue.popleft()
         url = req.url
         logical_fetches[url] += 1
-        with open(request_log_path, "a", encoding="utf-8") as f:
+        with Path(request_log_path).open("a", encoding="utf-8") as f:
             f.write(f"{url}\n")
 
         parsed = urlsplit(url)

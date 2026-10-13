@@ -74,9 +74,11 @@ def test_layer_dependencies() -> None:
         for importer, banned in FORBIDDEN.items():
             if not under(module, importer):
                 continue
-            for imported in sorted(imported_modules(path)):
-                if any(under(imported, prefix) for prefix in banned):
-                    violations.append(f"{module} -> {imported}")
+            violations.extend(
+                f"{module} -> {imported}"
+                for imported in sorted(imported_modules(path))
+                if any(under(imported, prefix) for prefix in banned)
+            )
     assert violations == []
 
 

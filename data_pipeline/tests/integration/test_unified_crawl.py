@@ -14,10 +14,11 @@ def run_fixture(
     assets: str = "content-only",
 ) -> subprocess.CompletedProcess[str]:
     fixture_script = Path(__file__).parents[1] / "fixtures" / "run_unified_fixture.py"
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603 -- runs the repo's own fixture script
         [sys.executable, str(fixture_script), str(tmp_path), mode, assets],
         capture_output=True,
         text=True,
+        check=False,
     )
 
 

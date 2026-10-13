@@ -52,7 +52,9 @@ def export_crawl(state: CrawlState, output: Path) -> None:
 
     def _export_table(table: str, target: Path) -> None:
         tmp = target.with_suffix(".tmp")
-        cursor = state.connection.execute(f"SELECT payload FROM {table} ORDER BY url;")
+        cursor = state.connection.execute(
+            f"SELECT payload FROM {table} ORDER BY url;"  # noqa: S608 -- table is a fixed literal
+        )
         with tmp.open("w", encoding="utf-8") as file:
             for row in cursor:
                 file.write(f"{row[0]}\n")
@@ -91,30 +93,37 @@ def iter_final_articles(
         rows = selected()
     owner_text: dict[str, str] = {}
     for url, payload in rows:
-        if '"duplicate_of"' in payload:
-            article = json.loads(payload)
-            owner_url = article.get("duplicate_of")
-            if owner_url:
-                owner_status = state.connection.execute(
-                    "SELECT status FROM url_records WHERE url = ?", (owner_url,)
-                ).fetchone()
-                if owner_status is None or owner_status[0] != "extracted":
-                    if owner_url not in owner_text:
-                        owner_row = state.connection.execute(
-                            "SELECT payload FROM articles WHERE url = ?", (owner_url,)
-                        ).fetchone()
-                        if owner_row is None:
-                            msg = f"missing duplicate owner article: {owner_url}"
-                            raise ValueError(msg)
-                        text = json.loads(owner_row[0]).get("text")
-                        if text is None:
-                            msg = f"duplicate owner has no text: {owner_url}"
-                            raise ValueError(msg)
-                        owner_text[owner_url] = str(text)
-                    article["text"] = owner_text[owner_url]
-                    article.pop("duplicate_of", None)
-                    payload = json.dumps(article, ensure_ascii=False)
-        yield url, payload
+        yield url, _inline_owner_text(state, payload, owner_text)
+
+
+def _inline_owner_text(state: CrawlState, payload: str, owner_text: dict[str, str]) -> str:
+    """Replace a duplicate's text with its owner's when the owner is excluded from export."""
+    if '"duplicate_of"' not in payload:
+        return payload
+    article = json.loads(payload)
+    owner_url = article.get("duplicate_of")
+    if not owner_url:
+        return payload
+    owner_status = state.connection.execute(
+        "SELECT status FROM url_records WHERE url = ?", (owner_url,)
+    ).fetchone()
+    if owner_status is not None and owner_status[0] == "extracted":
+        return payload
+    if owner_url not in owner_text:
+        owner_row = state.connection.execute(
+            "SELECT payload FROM articles WHERE url = ?", (owner_url,)
+        ).fetchone()
+        if owner_row is None:
+            msg = f"missing duplicate owner article: {owner_url}"
+            raise ValueError(msg)
+        text = json.loads(owner_row[0]).get("text")
+        if text is None:
+            msg = f"duplicate owner has no text: {owner_url}"
+            raise ValueError(msg)
+        owner_text[owner_url] = str(text)
+    article["text"] = owner_text[owner_url]
+    article.pop("duplicate_of", None)
+    return json.dumps(article, ensure_ascii=False)
 
 
 def export_final(state: CrawlState, output: Path) -> None:

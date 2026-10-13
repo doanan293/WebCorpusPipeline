@@ -1,4 +1,5 @@
 import gzip
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from scrapy.http import Request, Response, TextResponse
@@ -35,7 +36,7 @@ class StaticDownloadHandler:
     async def download_request(self, request: Request):
         self.attempts[request.url] = self.attempts.get(request.url, 0) + 1
         if self.request_log:
-            with open(self.request_log, "a", encoding="utf-8") as f:
+            with Path(self.request_log).open("a", encoding="utf-8") as f:
                 f.write(f"{request.url}\n")
         url = request.url
 

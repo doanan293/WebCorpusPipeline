@@ -92,7 +92,7 @@ class RefreshStore:
             SELECT run_id FROM refresh_runs
             WHERE status IN ({",".join("?" for _ in FINISHED_RUN_STATUSES)})
             ORDER BY run_id DESC LIMIT ?;
-            """,
+            """,  # noqa: S608 -- only fixed table names and "?" placeholders are interpolated
             (*FINISHED_RUN_STATUSES, limit),
         )
         return [str(row[0]) for row in rows]
@@ -169,7 +169,7 @@ class RefreshStore:
             SELECT count(*) FROM refresh_targets
             WHERE run_id = ? AND done = 1
               AND outcome NOT IN ({",".join("?" for _ in successes)});
-            """,
+            """,  # noqa: S608 -- only fixed table names and "?" placeholders are interpolated
             (run_id, *successes),
         ).fetchone()[0]
         failed_new = self.connection.execute(
@@ -187,7 +187,7 @@ class RefreshStore:
                 SELECT count(*) FROM url_records
                 WHERE json_extract(payload, '$.first_seen_run') = ?
                   AND json_extract(payload, '$.reason') IN ({",".join("?" for _ in reasons)});
-                """,
+                """,  # noqa: S608 -- only fixed table names and "?" placeholders are interpolated
                 (run_id, *reasons),
             ).fetchone()[0]
         return int(failed_targets) + int(failed_new), int(truncated)

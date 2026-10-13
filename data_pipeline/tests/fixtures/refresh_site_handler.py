@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import time
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from scrapy.http import HtmlResponse, Request, Response
@@ -86,7 +87,7 @@ class RefreshSiteHandler:
 
     async def download_request(self, request: Request):
         if self.request_log:
-            with open(self.request_log, "a", encoding="utf-8") as log:
+            with Path(self.request_log).open("a", encoding="utf-8") as log:
                 log.write(f"{request.url}\n")
         parts = urlsplit(request.url)
         key = parts.path + (f"?{parts.query}" if parts.query else "")

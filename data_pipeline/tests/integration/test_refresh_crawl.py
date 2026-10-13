@@ -13,10 +13,11 @@ def run(
     root: Path, step: str, version: int, fail_paths: str = ""
 ) -> subprocess.CompletedProcess[str]:
     script = Path(__file__).parents[1] / "fixtures" / "run_refresh_fixture.py"
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603 -- runs the repo's own fixture script
         [sys.executable, str(script), str(root), step, str(version), fail_paths],
         capture_output=True,
         text=True,
+        check=False,
     )
 
 

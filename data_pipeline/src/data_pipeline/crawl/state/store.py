@@ -260,7 +260,7 @@ class CrawlState:
             f"""
             INSERT INTO {table} (url, payload) VALUES (?, ?)
             ON CONFLICT(url) DO UPDATE SET payload = excluded.payload;
-            """,
+            """,  # noqa: S608 -- only fixed table names and "?" placeholders are interpolated
             (url, payload),
         )
 
@@ -521,9 +521,7 @@ class CrawlState:
             "counts": counts,
             "metrics": metrics,
             "truncation": truncation,
-            "truncation_reasons": sorted(list(truncation.keys()))
-            if isinstance(truncation, dict)
-            else [],
+            "truncation_reasons": sorted(truncation) if isinstance(truncation, dict) else [],
             "finished_at": time.time(),
         }
         if discovery is not None or self.manifest.get("phase") == "discover":
