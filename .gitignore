@@ -1,11 +1,7 @@
 /.env
 /.env.*
 !.env.example
-/.venv/
 /.superpowers/
-/.pytest_cache/
-/.ruff_cache/
-/data/crawl/
 /docs/superpowers/
 __pycache__/
 *.py[cod]
