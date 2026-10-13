@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+from http import HTTPStatus
 from time import monotonic
 from urllib.parse import urlsplit
 
@@ -10,6 +11,8 @@ from scrapy.http import Request, Response
 
 from data_pipeline.core.policies.access import classify_access
 from data_pipeline.crawl.runtime.resources import ResourceSampler
+
+_FORBIDDEN_STREAK_LIMIT = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +56,7 @@ class HostHealth:
 
     def observe(self, observation: Observation) -> None:
         self._observations.append(observation)
-        if observation.status == 429:
+        if observation.status == HTTPStatus.TOO_MANY_REQUESTS:
             self.current = 1
             self._rate_limit_streak += 1
             retry_after = observation.retry_after_seconds
@@ -69,10 +72,10 @@ class HostHealth:
             self._forbidden_streak = 0
             self._cooldown_until = observation.at + 300.0
             self._last_change = observation.at
-        elif observation.status == 403:
+        elif observation.status == HTTPStatus.FORBIDDEN:
             self._rate_limit_streak = 0
             self._forbidden_streak += 1
-            if self._forbidden_streak >= 3:
+            if self._forbidden_streak >= _FORBIDDEN_STREAK_LIMIT:
                 self.current = 1
                 self._cooldown_until = observation.at + 300.0
                 self._last_change = observation.at
@@ -93,7 +96,7 @@ class HostHealth:
         healthy = len(self._observations) >= self.window_size and all(
             observation.error is None
             and observation.status is not None
-            and 200 <= observation.status < 400
+            and HTTPStatus.OK <= observation.status < HTTPStatus.BAD_REQUEST
             for observation in self._observations
         )
         if healthy and now - self._last_change >= self.change_interval:
@@ -241,7 +244,7 @@ class AdaptiveConcurrencyMiddleware:
         )
         stats = getattr(self._crawler, "stats", None)
         if stats is not None and hasattr(stats, "inc_value"):
-            if status == 429:
+            if status == HTTPStatus.TOO_MANY_REQUESTS:
                 stats.inc_value(f"hust/host/{host}/429")
             elif status in {503, 504}:
                 stats.inc_value(f"hust/host/{host}/5xx")

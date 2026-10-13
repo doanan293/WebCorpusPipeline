@@ -4,11 +4,17 @@ import asyncio
 import hashlib
 import os
 import time
+from http import HTTPStatus
 from urllib.parse import urlsplit
 
 from data_pipeline.enrich.download.artifacts import extension_for, looks_like_document, sha256_file
 from data_pipeline.enrich.download.transport import PublicTransport
 from data_pipeline.enrich.models import DownloadedFile, DownloadJob
+
+_RETRYABLE_STATUSES = frozenset(
+    {HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_EARLY, HTTPStatus.TOO_MANY_REQUESTS}
+)
+_SERVER_ERRORS = range(HTTPStatus.INTERNAL_SERVER_ERROR, 600)
 
 
 class RetryableDownloadError(RuntimeError):
@@ -51,7 +57,7 @@ async def download_one(
             pass
     response = await transport.get(job.url, headers)
     try:
-        if response.status in (408, 425, 429) or 500 <= response.status < 600:
+        if response.status in _RETRYABLE_STATUSES or response.status in _SERVER_ERRORS:
             msg = f"HTTP {response.status}"
             retry_after = float(response.headers.get("Retry-After", "0") or 0) or None
             raise RetryableDownloadError(msg, retry_after)
@@ -62,7 +68,7 @@ async def download_one(
             msg = f"HTTP {response.status}"
             raise PermanentDownloadError(msg)
         etag = response.headers.get("ETag")
-        if offset and response.status != 206:
+        if offset and response.status != HTTPStatus.PARTIAL_CONTENT:
             offset = 0
             with job.part_path.open("wb"):
                 pass
@@ -76,7 +82,7 @@ async def download_one(
                 pass
             await response.close()
             response = await transport.get(job.url)
-            if response.status != 200:
+            if response.status != HTTPStatus.OK:
                 msg = "validator changed while resuming"
                 raise RetryableDownloadError(msg)
             etag = response.headers.get("ETag")

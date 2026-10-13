@@ -7,6 +7,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TextIO
 
+_SECONDS_PER_MINUTE = 60
+_SECONDS_PER_HOUR = 3600
+
 
 @dataclass(slots=True)
 class EtaSample:
@@ -48,14 +51,14 @@ class EtaEstimator:
         remaining_seconds = latest.queued / recent_rate
         if remaining_seconds <= 0:
             return "0s"
-        if remaining_seconds < 60:
+        if remaining_seconds < _SECONDS_PER_MINUTE:
             return f"{int(remaining_seconds)}s"
-        if remaining_seconds < 3600:
-            minutes = int(remaining_seconds // 60)
-            seconds = int(remaining_seconds % 60)
+        if remaining_seconds < _SECONDS_PER_HOUR:
+            minutes = int(remaining_seconds // _SECONDS_PER_MINUTE)
+            seconds = int(remaining_seconds % _SECONDS_PER_MINUTE)
             return f"{minutes}m {seconds}s"
-        hours = int(remaining_seconds // 3600)
-        minutes = int((remaining_seconds % 3600) // 60)
+        hours = int(remaining_seconds // _SECONDS_PER_HOUR)
+        minutes = int((remaining_seconds % _SECONDS_PER_HOUR) // _SECONDS_PER_MINUTE)
         return f"{hours}h {minutes}m"
 
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from http import HTTPStatus
+
 from scrapy.http import Response
 
 from data_pipeline.crawl.frontier.assets import AssetPolicy, recognizable_asset
@@ -51,7 +53,7 @@ class AssetResponseHandler:
 
         # 2. Terminal asset response
         if request_scope == "asset":
-            if response.status >= 400:
+            if response.status >= HTTPStatus.BAD_REQUEST:
                 self.writer.write_error(
                     {
                         "url": input_url,

@@ -5,6 +5,8 @@ import sqlite3
 from pathlib import Path
 from urllib.parse import urldefrag
 
+EDGE_BATCH_SIZE = 5000
+
 
 def _url(value):
     return urldefrag(str(value or "").strip())[0]
@@ -113,7 +115,7 @@ def build_graph(source: Path, enrichment: Path, output: Path) -> dict:
                     )
                     if relation == "image":
                         image_batch.append((target,))
-                if len(edge_batch) >= 5000:
+                if len(edge_batch) >= EDGE_BATCH_SIZE:
                     flush()
         flush()
         with (output / "links.jsonl").open("w", encoding="utf-8") as out:

@@ -11,6 +11,10 @@ import yaml
 from data_pipeline.core.hostnames import load_hostnames
 from data_pipeline.core.paths import project_paths
 
+MIN_HTTP_STATUS = 100
+MAX_HTTP_STATUS = 599
+MAX_PERCENT = 100
+
 if TYPE_CHECKING:
     from data_pipeline.crawl.runtime.profiles import RuntimeTuning
 
@@ -200,7 +204,8 @@ class CrawlerConfig:
                 msg = f"{name} must be positive"
                 raise ValueError(msg)
         if not values["retry_statuses"] or any(
-            status < 100 or status > 599 for status in values["retry_statuses"]
+            status < MIN_HTTP_STATUS or status > MAX_HTTP_STATUS
+            for status in values["retry_statuses"]
         ):
             msg = "retry_statuses must contain HTTP status codes"
             raise ValueError(msg)
@@ -217,7 +222,7 @@ class CrawlerConfig:
         if values["autothrottle_target_concurrency"] > values["concurrent_per_host"]:
             msg = "autothrottle_target_concurrency must not exceed concurrent_per_host"
             raise ValueError(msg)
-        if not 1 <= values["resource_limit_percent"] <= 100:
+        if not 1 <= values["resource_limit_percent"] <= MAX_PERCENT:
             msg = "resource_limit_percent must be between 1 and 100"
             raise ValueError(msg)
         if values["assets"] not in {"content-only", "all"}:

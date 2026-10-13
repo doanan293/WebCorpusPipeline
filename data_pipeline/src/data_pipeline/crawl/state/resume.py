@@ -4,6 +4,9 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
+_LEGACY_ACCESS_POLICY_REVISION = 1
+_CURRENT_ACCESS_POLICY_REVISION = 2
+
 POLICY_RETRY_REASONS = frozenset(
     {"robots_disallowed", "login_required", "captcha_blocked", "access_denied"}
 )
@@ -23,7 +26,10 @@ ACCESS_POLICY_SEMANTIC_KEYS = frozenset(
 def validate_policy_migration(saved: Mapping[str, object], effective: Mapping[str, object]) -> None:
     saved_revision = int(saved.get("access_policy_revision", 1))
     effective_revision = int(effective.get("access_policy_revision", 1))
-    if saved_revision != 1 or effective_revision != 2:
+    if (
+        saved_revision != _LEGACY_ACCESS_POLICY_REVISION
+        or effective_revision != _CURRENT_ACCESS_POLICY_REVISION
+    ):
         msg = (
             "unsupported access policy revision migration: "
             f"{saved_revision} -> {effective_revision}"

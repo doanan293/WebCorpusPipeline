@@ -11,8 +11,9 @@ from pathlib import Path
 
 from data_pipeline.core.policies.network import validate_public_web_url
 from data_pipeline.crawl.frontier.assets import AssetRole, classify_asset
+from data_pipeline.crawl.options import ASSET_POLICY_VERSION
 from data_pipeline.crawl.spider.reuse import ReusedAssetTarget
-from data_pipeline.crawl.state.store import CrawlState
+from data_pipeline.crawl.state.store import STATE_VERSION, CrawlState
 
 _REUSABLE_STATUSES = frozenset({"complete", "complete_with_failures", "truncated"})
 _ASSET_ROLES = frozenset({"inline_image", "media_reference", "document_attachment"})
@@ -43,12 +44,12 @@ def validate_reuse_source(source_output: Path, input_path: Path) -> tuple[Path, 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     semantic = manifest.get("semantic_config", {})
     if (
-        manifest.get("state_version") != 4
+        manifest.get("state_version") != STATE_VERSION
         or manifest.get("phase") != "crawl"
         or not isinstance(semantic, dict)
         or semantic.get("crawl_strategy") != "hybrid-unified"
         or semantic.get("assets") != "content-only"
-        or semantic.get("asset_policy_version") != 2
+        or semantic.get("asset_policy_version") != ASSET_POLICY_VERSION
     ):
         msg = "source is not a compatible content-only crawl"
         raise ValueError(msg)

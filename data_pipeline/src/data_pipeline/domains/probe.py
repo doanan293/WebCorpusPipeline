@@ -9,6 +9,7 @@ import socket  # noqa: F401
 import ssl
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from http import HTTPStatus
 from http.cookiejar import CookieJar
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
@@ -22,6 +23,8 @@ from urllib.request import (
 )
 
 from data_pipeline.core.policies.network import NonPublicAddressError, resolve_hostname
+
+_THIN_PAGE_CHARS = 500
 
 
 def _utc_now() -> str:
@@ -99,19 +102,19 @@ def _visible_text(body: bytes, hostname: str | None = None) -> str:
 
 
 def classify_http_status(status: int) -> tuple[bool, str]:
-    if 200 <= status < 300:
+    if HTTPStatus.OK <= status < HTTPStatus.MULTIPLE_CHOICES:
         return True, "public_response"
-    if 300 <= status < 400:
+    if HTTPStatus.MULTIPLE_CHOICES <= status < HTTPStatus.BAD_REQUEST:
         return False, "redirect_error"
     if status in {401, 403}:
         return False, "access_denied"
-    if status == 429:
+    if status == HTTPStatus.TOO_MANY_REQUESTS:
         return False, "rate_limited"
-    if status == 404:
+    if status == HTTPStatus.NOT_FOUND:
         return False, "not_found"
-    if status == 410:
+    if status == HTTPStatus.GONE:
         return False, "gone"
-    if status >= 500:
+    if status >= HTTPStatus.INTERNAL_SERVER_ERROR:
         return False, "server_error"
     return False, "client_error"
 
@@ -132,7 +135,7 @@ def classify_response(
         return False, "access_denied"
     if not active:
         return active, reason
-    if 200 <= status < 300 and not body.strip():
+    if HTTPStatus.OK <= status < HTTPStatus.MULTIPLE_CHOICES and not body.strip():
         return False, "empty_response"
     machine_readable = (
         "json" in normalized_type
@@ -219,7 +222,7 @@ def classify_response(
     visible_text = _visible_text(body)
     short_account_form = (
         "<form" in normalized
-        and len(visible_text) < 500
+        and len(visible_text) < _THIN_PAGE_CHARS
         and any(
             marker in visible_text
             for marker in (
@@ -369,7 +372,7 @@ def _probe_public_subpage(
     )
     sitemap_url = urljoin(root_url, "/sitemap.xml")
     sitemap = fetch(sitemap_url, timeout)
-    if sitemap.status is not None and 200 <= sitemap.status < 300:
+    if sitemap.status is not None and HTTPStatus.OK <= sitemap.status < HTTPStatus.MULTIPLE_CHOICES:
         sitemap_candidates = _same_host_public_urls(
             hostname,
             sitemap.final_url or sitemap_url,

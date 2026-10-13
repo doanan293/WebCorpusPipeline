@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from http import HTTPStatus
 from typing import Literal
 
 import lxml.html as lxml_html
+
+_MIN_VISIBLE_CHARS = 40
+_ERROR_PAGE_MAX_CHARS = 1000
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +84,7 @@ def _is_embedded_in_public_form(
         )
         if str(value).strip()
     )
-    return len(" ".join(public_text.split())) >= 40
+    return len(" ".join(public_text.split())) >= _MIN_VISIBLE_CHARS
 
 
 def _visible_body_text(html: str) -> str:
@@ -117,7 +121,9 @@ def _has_page_level_captcha(html: str, *, rate_limited: bool = False) -> bool:
 
 def classify_access(*, status: int, url: str, html: str, rendered: bool) -> AccessDecision:
     lowered = html.lower()
-    has_captcha_widget = _has_page_level_captcha(html, rate_limited=status == 429)
+    has_captcha_widget = _has_page_level_captcha(
+        html, rate_limited=status == HTTPStatus.TOO_MANY_REQUESTS
+    )
     if has_captcha_widget:
         return AccessDecision("captcha_blocked", use_playwright=False, reason="interactive_captcha")
     has_password = bool(re.search(r"type\s*=\s*['\"]password['\"]", lowered))
@@ -137,7 +143,7 @@ def classify_access(*, status: int, url: str, html: str, rendered: bool) -> Acce
     if has_login_gate:
         return AccessDecision("login_required", use_playwright=False, reason="access_gate")
     text = _visible_body_text(html)
-    shell = len(text) < 40 and "<script" in lowered
+    shell = len(text) < _MIN_VISIBLE_CHARS and "<script" in lowered
     if shell and not rendered:
         return AccessDecision("public", use_playwright=True, reason="html_shell")
     return AccessDecision("public", use_playwright=False, reason=None)
@@ -171,7 +177,7 @@ def classify_page_gate(
     heading_is_error = heading in {"404", "not found", "page not found"} or heading.startswith(
         "404 -"
     )
-    phrase_is_error = len(text.strip()) < 1000 and any(
+    phrase_is_error = len(text.strip()) < _ERROR_PAGE_MAX_CHARS and any(
         marker in visible for marker in soft_markers[1:]
     )
     if heading_is_error or phrase_is_error:

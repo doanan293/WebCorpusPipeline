@@ -4,6 +4,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+_CPU_IDLE_FIELD = 3
+_CPU_IOWAIT_FIELD = 4
+
 
 @dataclass(frozen=True, slots=True)
 class ResourceSample:
@@ -32,7 +35,9 @@ class ResourceSampler:
             fields = self._read_text(Path("/proc/stat")).splitlines()[0].split()
             values = [int(value) for value in fields[1:]]
             total = sum(values)
-            idle = values[3] + (values[4] if len(values) > 4 else 0)
+            idle = values[_CPU_IDLE_FIELD] + (
+                values[_CPU_IOWAIT_FIELD] if len(values) > _CPU_IOWAIT_FIELD else 0
+            )
         except (OSError, IndexError, ValueError):
             return None
         previous = self._previous_cpu

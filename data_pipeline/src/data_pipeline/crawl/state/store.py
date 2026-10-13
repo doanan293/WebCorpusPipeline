@@ -15,6 +15,8 @@ from data_pipeline.crawl.state.resume import (
     validate_policy_migration,
 )
 
+STATE_VERSION = 4
+
 if TYPE_CHECKING:
     from data_pipeline.crawl.frontier.assets import AssetRole
 
@@ -76,7 +78,7 @@ class CrawlState:
                 if not resume:
                     msg = f"crawl state already exists: {root}"
                     raise FileExistsError(msg)
-                if manifest.get("state_version") != 4:
+                if manifest.get("state_version") != STATE_VERSION:
                     msg = "resume state version does not match saved crawl"
                     raise ValueError(msg)
                 if manifest.get("phase") != phase:
@@ -121,7 +123,7 @@ class CrawlState:
                     msg = f"cannot resume non-existent crawl state: {root}"
                     raise ValueError(msg)
                 manifest = {
-                    "state_version": 4,
+                    "state_version": STATE_VERSION,
                     "phase": phase,
                     "input_sha256": input_sha256,
                     "semantic_config": semantic_config,

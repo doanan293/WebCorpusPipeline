@@ -13,6 +13,8 @@ from data_pipeline.crawl.frontier.seeds import SeedMode, SeedSet
 from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.state.discovery import FamilyObservation, RouteFamilyState
 
+_MIN_PAGINATION_SEGMENTS = 2
+
 DiscoverySource = Literal["seed", "sitemap", "html_link"]
 Purpose = Literal["robots", "sitemap", "page", "asset"]
 
@@ -136,7 +138,7 @@ class FrontierPolicy:
         has_page_query = any(query_key_kind(k) == "pagination" for k, _ in pairs)
         segments = [s for s in parsed.path.split("/") if s]
         has_page_path = (
-            len(segments) >= 2
+            len(segments) >= _MIN_PAGINATION_SEGMENTS
             and segments[-2].lower() in {"page", "p", "pages"}
             and segments[-1].isdigit()
         )
@@ -194,7 +196,11 @@ class FrontierPolicy:
         if not path:
             return "content"
         segments = [s.lower() for s in path.split("/") if s]
-        if len(segments) >= 2 and segments[-2] in {"page", "p", "pages"} and segments[-1].isdigit():
+        if (
+            len(segments) >= _MIN_PAGINATION_SEGMENTS
+            and segments[-2] in {"page", "p", "pages"}
+            and segments[-1].isdigit()
+        ):
             return "navigation"
         return "content"
 

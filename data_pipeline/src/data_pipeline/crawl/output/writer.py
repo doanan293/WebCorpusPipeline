@@ -13,6 +13,8 @@ from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.state.export import export_crawl
 from data_pipeline.crawl.state.store import CrawlState
 
+_MAX_EXTENSION_LENGTH = 5
+
 _MIME_TO_EXT = {
     "application/pdf": ".pdf",
     "application/msword": ".doc",
@@ -189,7 +191,7 @@ class CrawlWriter:
         mime = content_type.partition(";")[0].strip().lower()
         path = urlsplit(final_url or url).path
         suffix = PurePosixPath(path).suffix.lower()
-        if suffix and len(suffix) <= 5:
+        if suffix and len(suffix) <= _MAX_EXTENSION_LENGTH:
             return suffix
         if mime in _MIME_TO_EXT:
             return _MIME_TO_EXT[mime]

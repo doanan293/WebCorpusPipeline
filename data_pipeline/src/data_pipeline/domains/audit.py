@@ -26,6 +26,8 @@ from data_pipeline.domains.report import (
     render_report,
 )
 
+_MIN_DUPLICATE_GROUP = 2
+
 
 def run_audit(
     all_path: Path,
@@ -132,7 +134,7 @@ def _deduplicate_content(results: list[ProbeResult]) -> list[ProbeResult]:
 
     replacements: dict[str, ProbeResult] = {}
     for matches in by_digest.values():
-        if len(matches) < 2:
+        if len(matches) < _MIN_DUPLICATE_GROUP:
             continue
         canonical = min(matches, key=lambda item: (len(item.hostname), item.hostname))
         for result in matches:

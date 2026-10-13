@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from data_pipeline.crawl.config import CrawlerConfig
+from data_pipeline.crawl.config import MAX_PERCENT, CrawlerConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,7 +48,7 @@ def resolve_runtime_tuning(
     if tuning.max_concurrency <= 0 or tuning.max_per_host <= 0:
         msg = "concurrency limits must be positive"
         raise ValueError(msg)
-    if not 1 <= tuning.resource_limit_percent <= 100:
+    if not 1 <= tuning.resource_limit_percent <= MAX_PERCENT:
         msg = "resource limit percent must be between 1 and 100"
         raise ValueError(msg)
     return tuning

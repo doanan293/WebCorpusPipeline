@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from http import HTTPStatus
 from typing import Literal, cast
 
 from data_pipeline.crawl.extract.links import resource_kind
@@ -31,7 +32,7 @@ def route_response(
     *, url: str, status: int, content_type: str, purpose: ResponsePurpose
 ) -> ResponseRoute:
     normalized_type = content_type.partition(";")[0].strip().lower()
-    if status >= 400:
+    if status >= HTTPStatus.BAD_REQUEST:
         if purpose in {"robots", "sitemap"} and status in {404, 410}:
             return ResponseRoute("optional_absent", purpose, status, normalized_type)
         return ResponseRoute("http_error", purpose, status, normalized_type, f"http_{status}")

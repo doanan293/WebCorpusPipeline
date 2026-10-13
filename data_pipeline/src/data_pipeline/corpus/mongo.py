@@ -8,6 +8,8 @@ from pymongo import ASCENDING, MongoClient, ReplaceOne
 
 from data_pipeline.corpus.package import verify_corpus
 
+MAX_BATCH_OPERATIONS = 100
+
 COLLECTIONS = ("datasets", "pages", "documents", "images", "links")
 MAX_BATCH_BYTES = 4 * 1024 * 1024
 
@@ -63,7 +65,9 @@ def _replace_batches(collection, values) -> None:
     for value in values:
         operation_value = dict(value)
         approx = len(json.dumps(operation_value, ensure_ascii=False).encode()) + 1024
-        if operations and (len(operations) >= 100 or batch_bytes + approx > MAX_BATCH_BYTES):
+        if operations and (
+            len(operations) >= MAX_BATCH_OPERATIONS or batch_bytes + approx > MAX_BATCH_BYTES
+        ):
             collection.bulk_write(operations, ordered=False)
             operations = []
             batch_bytes = 0

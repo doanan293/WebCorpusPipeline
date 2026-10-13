@@ -5,6 +5,10 @@ from datetime import date
 from posixpath import normpath
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+_REPEATED_SEGMENT_RUN = 4
+_MAX_QUERY_PAIRS = 50
+_YEAR_LENGTH = 4
+
 
 @dataclass(frozen=True, slots=True)
 class UrlDecision:
@@ -48,10 +52,14 @@ def canonicalize_url(
     if check_traps and lowered_path.rstrip("/").split("/")[-1] in {"logout", "signout", "log-out"}:
         return None, hostname, "logout_path"
     segments = [segment for segment in path.split("/") if segment]
-    if check_traps and len(segments) >= 4 and len(set(segments[-4:])) == 1:
+    if (
+        check_traps
+        and len(segments) >= _REPEATED_SEGMENT_RUN
+        and len(set(segments[-_REPEATED_SEGMENT_RUN:])) == 1
+    ):
         return None, hostname, "repeated_path_trap"
     pairs = parse_qsl(parts.query, keep_blank_values=True)
-    if len(pairs) > 50:
+    if len(pairs) > _MAX_QUERY_PAIRS:
         return None, hostname, "too_many_query_pairs"
     trap_keys = {key.lower() for key in trap_query_keys}
     cleaned: list[tuple[str, str]] = []
@@ -72,7 +80,11 @@ def canonicalize_url(
         cleaned.append((key, value))
     if check_traps and "calendar" in lowered_path:
         for segment in segments:
-            if segment.isdigit() and len(segment) == 4 and int(segment) > date.today().year + 2:
+            if (
+                segment.isdigit()
+                and len(segment) == _YEAR_LENGTH
+                and int(segment) > date.today().year + 2
+            ):
                 return None, hostname, "calendar_trap"
     canonical = urlunsplit((scheme, netloc, path, urlencode(sorted(cleaned)), ""))
     return canonical, hostname, None

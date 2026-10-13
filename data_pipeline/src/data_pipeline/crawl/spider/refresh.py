@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
@@ -175,10 +176,10 @@ class RefreshHandler:
     def handle(self, response: Response) -> Iterator[scrapy.Request]:
         assert self.session is not None
         url = str(response.meta.get("input_url", response.url))
-        if response.status == 304:
+        if response.status == HTTPStatus.NOT_MODIFIED:
             self.session.finish_target(url, "not_modified")
             return
-        if response.status >= 300:
+        if response.status >= HTTPStatus.MULTIPLE_CHOICES:
             self.session.finish_target(url, f"http_{response.status}")
             return
         if response.meta.get("response_purpose") in {"robots", "sitemap"}:

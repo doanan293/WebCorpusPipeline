@@ -23,6 +23,10 @@ from data_pipeline.core.policies.access import classify_access
 from data_pipeline.core.policies.network import resolve_public_hostname, validate_public_web_url
 from data_pipeline.core.policies.url import UrlPolicy
 
+_HTTP_PORT = 80
+_MIN_RENDERED_TEXT = 40
+_STABLE_SAMPLES_REQUIRED = 8
+
 _RETRYABLE_EXCEPTIONS = tuple(
     load_object(value) if isinstance(value, str) else value for value in RETRY_EXCEPTIONS
 )
@@ -31,7 +35,7 @@ _RETRYABLE_EXCEPTIONS = tuple(
 def _https_fallback_url(url: str) -> str:
     parsed = urlsplit(url)
     netloc = parsed.netloc
-    if parsed.port == 80:
+    if parsed.port == _HTTP_PORT:
         userinfo, separator, host_and_port = netloc.rpartition("@")
         host_and_port = host_and_port.removesuffix(":80")
         netloc = f"{userinfo}@{host_and_port}" if separator else host_and_port
@@ -60,13 +64,13 @@ async def _wait_for_stable_body(page) -> None:
             stable_samples = 0
         else:
             current_id = snapshot.get("document_id")
-            if snapshot.get("text_length", 0) >= 40:
+            if snapshot.get("text_length", 0) >= _MIN_RENDERED_TEXT:
                 if current_id == document_id:
                     stable_samples += 1
                 else:
                     document_id = current_id
                     stable_samples = 1
-                if stable_samples >= 8:
+                if stable_samples >= _STABLE_SAMPLES_REQUIRED:
                     return
             else:
                 document_id = current_id
