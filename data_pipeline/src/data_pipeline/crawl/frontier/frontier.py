@@ -204,6 +204,64 @@ class FrontierPolicy:
             return "navigation"
         return "content"
 
+    def _scope_rejection(self, candidate: Candidate, hostname: str) -> str | None:
+        seeds = self.seeds
+        if candidate.explicit:
+            return None if hostname in seeds.allowed_hostnames else "host_out_of_scope"
+        if candidate.purpose == "asset":
+            if candidate.discovered_from:
+                _, parent_host, _ = canonicalize_url(candidate.discovered_from)
+                in_scope = parent_host is not None and parent_host in seeds.allowed_hostnames
+            else:
+                in_scope = hostname in seeds.allowed_hostnames
+            return None if in_scope else "host_out_of_scope"
+        if candidate.source_mode != "recursive":
+            return "exact_seed_no_expansion"
+        if candidate.discovered_from:
+            parent_host = (urlsplit(candidate.discovered_from).hostname or "").lower().rstrip(".")
+            in_scope = parent_host in seeds.recursive_hostnames and hostname == parent_host
+        else:
+            in_scope = hostname in seeds.recursive_hostnames
+        return None if in_scope else "host_out_of_scope"
+
+    def _count_rejection(self, reason: str, hostname: str, *, per_host: bool = True) -> None:
+        self.stats[f"frontier/reject/{reason}"] += 1
+        if per_host:
+            self.stats[f"frontier/host/{hostname}/reject/{reason}"] += 1
+
+    def _policy_rejection(
+        self, candidate: Candidate, canonical: str, hostname: str, role: str
+    ) -> str | None:
+        """Return the first budget or trap rejection reason, recording its statistics."""
+        if candidate.discovery_source == "html_link":
+            trap = classify_frontier_trap(canonical)
+            if trap and trap not in self.trap_exceptions.get(hostname, set()):
+                self._count_rejection(trap, hostname)
+                return trap
+        if candidate.purpose != "asset" and role == "navigation":
+            branch = self._pagination_branch(canonical)
+            if branch and branch in self._closed_branches:
+                self._count_rejection("pagination_closed", hostname)
+                return "pagination_closed"
+        if self._total_scheduled >= self.options.max_total_urls:
+            self._count_rejection("total_url_limit", hostname, per_host=False)
+            return "total_url_limit"
+        if self._host_scheduled[hostname] >= self.options.max_urls_per_host:
+            self._count_rejection("host_url_limit", hostname)
+            return "host_url_limit"
+        return None
+
+    @staticmethod
+    def _priority(candidate: Candidate, role: str) -> int:
+        # explicit/robots=1000, sitemap=800, content=500, navigation=100
+        if candidate.explicit or candidate.source_mode == "exact" or candidate.purpose == "robots":
+            return 1000
+        if candidate.purpose == "sitemap" or candidate.discovery_source == "sitemap":
+            return 800
+        if candidate.purpose == "asset" or role == "content":
+            return 500
+        return 100
+
     def consider(self, candidate: Candidate) -> FrontierDecision:
         canonical, hostname, reason = canonicalize_url(
             candidate.url,
@@ -211,92 +269,43 @@ class FrontierPolicy:
         )
         if not canonical:
             return FrontierDecision("reject", None, reason or "malformed_url", 0)
-        assert hostname is not None
+        if hostname is None:
+            msg = "canonicalize_url returned a URL without a hostname"
+            raise RuntimeError(msg)
 
-        # Reject malformed/out-of-scope
-        if candidate.explicit:
-            if hostname not in self.seeds.allowed_hostnames:
-                return FrontierDecision("reject", canonical, "host_out_of_scope", 0)
-        elif candidate.purpose == "asset":
-            if candidate.discovered_from:
-                _, parent_host, _ = canonicalize_url(candidate.discovered_from)
-                if parent_host is None or parent_host not in self.seeds.allowed_hostnames:
-                    return FrontierDecision("reject", canonical, "host_out_of_scope", 0)
-            elif hostname not in self.seeds.allowed_hostnames:
-                return FrontierDecision("reject", canonical, "host_out_of_scope", 0)
-        else:
-            if candidate.source_mode != "recursive":
-                return FrontierDecision("reject", canonical, "exact_seed_no_expansion", 0)
-            if candidate.discovered_from:
-                parent_host = (
-                    (urlsplit(candidate.discovered_from).hostname or "").lower().rstrip(".")
-                )
-                if parent_host not in self.seeds.recursive_hostnames or hostname != parent_host:
-                    return FrontierDecision("reject", canonical, "host_out_of_scope", 0)
-            elif hostname not in self.seeds.recursive_hostnames:
-                return FrontierDecision("reject", canonical, "host_out_of_scope", 0)
+        out_of_scope = self._scope_rejection(candidate, hostname)
+        if out_of_scope is not None:
+            return FrontierDecision("reject", canonical, out_of_scope, 0)
 
         # Return record_only for canonical URLs already in _scheduled_urls
         if canonical in self._scheduled_urls:
             return FrontierDecision("record_only", canonical, "already_scheduled", 0)
 
-        # Reject classify_frontier_trap(canonical) for html_link candidates
-        if candidate.discovery_source == "html_link":
-            trap = classify_frontier_trap(canonical)
-            if trap:
-                exceptions = self.trap_exceptions.get(hostname, set())
-                if trap not in exceptions:
-                    self.stats[f"frontier/reject/{trap}"] += 1
-                    self.stats[f"frontier/host/{hostname}/reject/{trap}"] += 1
-                    return FrontierDecision("reject", canonical, trap, 0)
-
         role = self.page_role(canonical, candidate.link_kind)
+        rejection = self._policy_rejection(candidate, canonical, hostname, role)
+        if rejection is not None:
+            return FrontierDecision("reject", canonical, rejection, 0)
 
-        # Reject a closed pagination branch
-        if candidate.purpose != "asset" and role == "navigation":
-            branch = self._pagination_branch(canonical)
-            if branch and branch in self._closed_branches:
-                self.stats["frontier/reject/pagination_closed"] += 1
-                self.stats[f"frontier/host/{hostname}/reject/pagination_closed"] += 1
-                return FrontierDecision("reject", canonical, "pagination_closed", 0)
-
-        # Reject total_url_limit or host_url_limit for every source
-        if self._total_scheduled >= self.options.max_total_urls:
-            self.stats["frontier/reject/total_url_limit"] += 1
-            return FrontierDecision("reject", canonical, "total_url_limit", 0)
-
-        if self._host_scheduled[hostname] >= self.options.max_urls_per_host:
-            self.stats["frontier/reject/host_url_limit"] += 1
-            self.stats[f"frontier/host/{hostname}/reject/host_url_limit"] += 1
-            return FrontierDecision("reject", canonical, "host_url_limit", 0)
-
-        # Enforce query variants only when source is html_link, page role is navigation,
-        # and parsed.query is non-empty
+        # Query variants are budgeted only for navigation pages found through html links.
         parsed = urlsplit(canonical)
-        charges_query_variant_budget = (
+        charges_query_variant_budget = bool(
             candidate.purpose != "asset"
             and candidate.discovery_source == "html_link"
             and candidate.link_kind != "pagination"
             and role == "navigation"
             and parsed.query
         )
+        variants: set[str] | None = None
         if charges_query_variant_budget:
-            path_key = (hostname, parsed.path)
-            if parsed.query not in self._query_variants[path_key]:
-                if len(self._query_variants[path_key]) >= self.options.max_query_variants_per_path:
-                    self.stats["frontier/reject/query_variant_limit"] += 1
-                    self.stats[f"frontier/host/{hostname}/reject/query_variant_limit"] += 1
-                    return FrontierDecision("reject", canonical, "query_variant_limit", 0)
+            variants = self._query_variants[(hostname, parsed.path)]
+            if (
+                parsed.query not in variants
+                and len(variants) >= self.options.max_query_variants_per_path
+            ):
+                self._count_rejection("query_variant_limit", hostname)
+                return FrontierDecision("reject", canonical, "query_variant_limit", 0)
 
-        # Assign priority: explicit/robots=1000, sitemap=800, content=500, navigation=100
-        if candidate.explicit or candidate.source_mode == "exact" or candidate.purpose == "robots":
-            priority = 1000
-        elif candidate.purpose == "sitemap" or candidate.discovery_source == "sitemap":
-            priority = 800
-        elif candidate.purpose == "asset" or role == "content":
-            priority = 500
-        else:
-            priority = 100
+        priority = self._priority(candidate, role)
 
         # Atomically add the canonical URL to all counters, query sets, and stats
         self._scheduled_urls.add(canonical)
@@ -304,10 +313,8 @@ class FrontierPolicy:
         self._host_scheduled[hostname] += 1
         self.stats["frontier/scheduled"] += 1
         self.stats[f"frontier/host/{hostname}/scheduled"] += 1
-
-        if charges_query_variant_budget:
-            path_key = (hostname, parsed.path)
-            self._query_variants[path_key].add(parsed.query)
+        if variants is not None:
+            variants.add(parsed.query)
 
         return FrontierDecision("schedule", canonical, None, priority)
 

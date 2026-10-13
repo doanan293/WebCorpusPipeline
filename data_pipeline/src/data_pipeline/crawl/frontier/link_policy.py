@@ -167,6 +167,33 @@ def is_navigation_path(path: str) -> bool:
     return bool(segments & NAVIGATION_PATH_SEGMENTS)
 
 
+def _query_pagination(
+    query_pairs: list[tuple[str, str]], text: str, rel_tokens: set[str]
+) -> tuple[LinkKind, int | None] | None:
+    for raw_key, val in query_pairs:
+        key = raw_key.casefold()
+        if query_key_kind(key) != "pagination":
+            continue
+        if key == "p":
+            if "shortlink" in rel_tokens:
+                return "content", None
+            label = " ".join(text.split())
+            if not ({"next", "prev"} & rel_tokens or label == val or label in PAGINATION_LABELS):
+                continue
+        return "pagination", int(val) if val.isdigit() else None
+    return None
+
+
+def _static_pagination(path: str, rel_tokens: set[str]) -> tuple[LinkKind, int | None] | None:
+    # /page/123, /p/123 style paths, then rel="next".
+    path_match = _PATH_PAGINATION_RE.search(path)
+    if path_match:
+        return "pagination", int(path_match.group(1))
+    if "next" in rel_tokens:
+        return "pagination", None
+    return None
+
+
 def _classify_navigation(
     normalized: str, text: str, rel: tuple[str, ...]
 ) -> tuple[LinkKind, int | None]:
@@ -178,9 +205,9 @@ def _classify_navigation(
     rel_tokens = {r.lower() for r in rel}
 
     # 1. Action / Auth check (path and text tokens)
-    if any(token in ACTION_AUTH_PATH_TOKENS for token in segments):
-        return "action_auth", None
-    if any(token in text for token in ACTION_AUTH_TEXT_TOKENS):
+    if any(token in ACTION_AUTH_PATH_TOKENS for token in segments) or any(
+        token in text for token in ACTION_AUTH_TEXT_TOKENS
+    ):
         return "action_auth", None
 
     # 2. Calendar / Archive check (date pattern under archive context)
@@ -196,37 +223,15 @@ def _classify_navigation(
         return "search_filter", None
 
     # 3. Pagination check
-    # Check query keys
-    for raw_key, val in query_pairs:
-        key = raw_key.casefold()
-        if query_key_kind(key) == "pagination":
-            if key == "p":
-                if "shortlink" in rel_tokens:
-                    return "content", None
-                label = " ".join(text.split())
-                if not (
-                    {"next", "prev"} & rel_tokens or label == val or label in PAGINATION_LABELS
-                ):
-                    continue
-            ordinal = int(val) if val.isdigit() else None
-            return "pagination", ordinal
+    pagination = _query_pagination(query_pairs, text, rel_tokens) or _static_pagination(
+        path, rel_tokens
+    )
+    if pagination is not None:
+        return pagination
 
-    # Check path pagination (/page/123, /p/123)
-    path_match = _PATH_PAGINATION_RE.search(path)
-    if path_match:
-        return "pagination", int(path_match.group(1))
-
-    # Check rel="next"
-    if "next" in rel_tokens:
-        return "pagination", None
-
-    # 4. Search / Filter check
-    if any(query_key_kind(k) == "filter" for k in query_dict):
-        return "search_filter", None
-
-    # Generic collection/listing routes are navigation even when their
-    # site-specific selector uses an otherwise opaque key such as `value`.
-    if is_navigation_path(path):
+    # 4. Search / Filter check. Generic collection/listing routes are navigation even
+    # when their site-specific selector uses an otherwise opaque key such as `value`.
+    if any(query_key_kind(k) == "filter" for k in query_dict) or is_navigation_path(path):
         return "search_filter", None
 
     # Default to content
