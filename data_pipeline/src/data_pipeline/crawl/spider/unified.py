@@ -37,7 +37,7 @@ class UnifiedSpider(scrapy.Spider):
     refresh_handler: RefreshHandler | None = None
     refresh_targets: tuple[tuple[str, str], ...] = ()
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- the spider is wired from its collaborators
         self,
         *,
         seeds: SeedSet,

@@ -13,7 +13,8 @@ from data_pipeline.core.policies.network import validate_public_web_url
 from data_pipeline.crawl.frontier.assets import AssetRole, classify_asset
 from data_pipeline.crawl.options import ASSET_POLICY_VERSION
 from data_pipeline.crawl.spider.reuse import ReusedAssetTarget
-from data_pipeline.crawl.state.store import STATE_VERSION, CrawlState
+from data_pipeline.crawl.state.resume import STATE_VERSION
+from data_pipeline.crawl.state.store import CrawlState
 
 _REUSABLE_STATUSES = frozenset({"complete", "complete_with_failures", "truncated"})
 _ASSET_ROLES = frozenset({"inline_image", "media_reference", "document_attachment"})

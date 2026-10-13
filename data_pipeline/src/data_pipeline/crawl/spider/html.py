@@ -12,7 +12,7 @@ from scrapy.http import Response
 
 from data_pipeline.core.policies.access import classify_page_gate
 from data_pipeline.crawl.extract.article import analyze_article
-from data_pipeline.crawl.extract.links import normalize_url, resource_kind
+from data_pipeline.crawl.extract.links import resource_kind
 from data_pipeline.crawl.frontier.assets import (
     AssetPolicy,
     classify_asset,
@@ -28,6 +28,7 @@ from data_pipeline.crawl.frontier.link_policy import (
 from data_pipeline.crawl.frontier.sitemaps import (
     SitemapDiscoveryCoordinator,
     SitemapParseError,
+    declared_sitemap_url,
     parse_sitemap,
 )
 from data_pipeline.crawl.options import CrawlOptions
@@ -82,17 +83,6 @@ def _classified_discoveries(discoveries: Iterable[Any], source_url: str) -> list
 
 def _host(url: str) -> str:
     return (urlsplit(url).hostname or "").lower().rstrip(".")
-
-
-def _robots_sitemap_url(line: str, base_url: str, hostname: str) -> str | None:
-    """Return the same-host sitemap URL declared by a robots.txt line, if any."""
-    key, separator, value = line.partition(":")
-    if not separator or key.strip().lower() != "sitemap":
-        return None
-    normalized = normalize_url(value.strip(), base_url)
-    if normalized is None or _host(normalized) != hostname:
-        return None
-    return normalized
 
 
 class HtmlHandler:
@@ -183,7 +173,7 @@ class HtmlHandler:
         if page.seed_mode == "recursive":
             encoding = getattr(response, "encoding", None) or "utf-8"
             for line in response.body.decode(encoding, errors="replace").splitlines():
-                sitemap_url = _robots_sitemap_url(line, response.url, hostname)
+                sitemap_url = declared_sitemap_url(line, response.url, hostname)
                 if sitemap_url is None:
                     continue
                 if self.coordinator.register_sitemap(hostname, sitemap_url, required=True):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterable, Iterator
+from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
@@ -8,15 +9,32 @@ import scrapy
 
 from data_pipeline.core.policies.url import canonicalize_url
 from data_pipeline.crawl.config import CrawlerConfig
-from data_pipeline.crawl.extract.links import normalize_url
 from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.frontier.sitemaps import (
     SitemapDiscoveryCoordinator,
     SitemapParseError,
+    declared_sitemap_url,
     parse_sitemap,
 )
 from data_pipeline.crawl.output.discovery_writer import DiscoveryWriter
-from data_pipeline.crawl.spider.routing import route_response
+from data_pipeline.crawl.spider.routing import ResponseRoute, route_response
+
+
+@dataclass(frozen=True, slots=True)
+class _Probe:
+    """A robots.txt or sitemap response together with its request metadata."""
+
+    response: scrapy.http.Response
+    input_url: str
+    logical_url: str
+    purpose: str
+    hostname: str
+    content_type: str
+    route: ResponseRoute
+
+
+def _host(url: str) -> str:
+    return (urlsplit(url).hostname or "").lower().rstrip(".")
 
 
 class DiscoverySpider(scrapy.Spider):
@@ -37,6 +55,14 @@ class DiscoverySpider(scrapy.Spider):
         self.coordinator = coordinator
         self.writer = writer
         self._scheduled_urls: set[str] = set()
+        self._route_handlers: dict[str, Callable[[_Probe], Iterator[scrapy.Request]]] = {
+            "robots": self._robots,
+            "sitemap": self._sitemap,
+            "optional_absent": self._absent,
+            "http_error": self._http_error,
+            "transient": self._unsupported,
+            "unknown": self._unsupported,
+        }
 
     async def start(self) -> AsyncIterator[scrapy.Request]:
         for req in self.start_requests():
@@ -120,130 +146,127 @@ class DiscoverySpider(scrapy.Spider):
 
     def parse_response(self, response: scrapy.Response) -> Iterator[scrapy.Request]:
         input_url = response.meta.get("input_url", response.url)
-        logical_url = response.meta.get("logical_url", input_url)
         purpose = response.meta.get(
             "response_purpose",
             "robots" if response.url.endswith("/robots.txt") else "sitemap",
         )
         content_type = response.headers.get("Content-Type", b"").decode("latin1", errors="replace")
-        route = route_response(
-            url=response.url, status=response.status, content_type=content_type, purpose=purpose
+        probe = _Probe(
+            response=response,
+            input_url=input_url,
+            logical_url=response.meta.get("logical_url", input_url),
+            purpose=purpose,
+            hostname=_host(response.url),
+            content_type=content_type,
+            route=route_response(
+                url=response.url,
+                status=response.status,
+                content_type=content_type,
+                purpose=purpose,
+            ),
         )
-        hostname = (urlsplit(response.url).hostname or "").lower().rstrip(".")
+        handler = self._route_handlers.get(probe.route.action)
+        if handler is not None:
+            yield from handler(probe)
 
-        if route.action == "robots":
-            encoding = getattr(response, "encoding", None) or "utf-8"
-            for line in response.body.decode(encoding, errors="replace").splitlines():
-                key, sep, val = line.partition(":")
-                if sep and key.strip().lower() == "sitemap":
-                    sitemap_url = normalize_url(val.strip(), response.url)
-                    if sitemap_url:
-                        shost = (urlsplit(sitemap_url).hostname or "").lower().rstrip(".")
-                        if shost == hostname:
-                            is_new = self.coordinator.register_sitemap(
-                                hostname, sitemap_url, required=True
-                            )
-                            if is_new:
-                                req = self._probe_request(
-                                    sitemap_url, purpose="sitemap", discovered_from=response.url
-                                )
-                                if req is not None:
-                                    yield req
-            self.coordinator.complete_robots(hostname)
-            self.writer.record_probe(
-                {
-                    "url": input_url,
-                    "final_url": response.url,
-                    "status": "complete",
-                    "http_status": response.status,
-                }
-            )
-            self.writer.checkpoint(input_url)
+    def _record_probe(self, probe: _Probe, status: str) -> None:
+        self.writer.record_probe(
+            {
+                "url": probe.input_url,
+                "final_url": probe.response.url,
+                "status": status,
+                "http_status": probe.response.status,
+            }
+        )
+        self.writer.checkpoint(probe.input_url)
 
-        elif route.action == "sitemap":
-            try:
-                parsed = parse_sitemap(response.body, response.url, content_type)
-            except SitemapParseError as exc:
-                self.writer.write_error(
-                    {
-                        "url": input_url,
-                        "final_url": response.url,
-                        "error": "invalid_sitemap",
-                        "message": str(exc),
-                    }
+    def _robots(self, probe: _Probe) -> Iterator[scrapy.Request]:
+        response = probe.response
+        encoding = getattr(response, "encoding", None) or "utf-8"
+        for line in response.body.decode(encoding, errors="replace").splitlines():
+            sitemap_url = declared_sitemap_url(line, response.url, probe.hostname)
+            if sitemap_url and self.coordinator.register_sitemap(
+                probe.hostname, sitemap_url, required=True
+            ):
+                request = self._probe_request(
+                    sitemap_url, purpose="sitemap", discovered_from=response.url
                 )
-                self.coordinator.complete_sitemap(hostname, logical_url, result="failed")
-                return
+                if request is not None:
+                    yield request
+        self.coordinator.complete_robots(probe.hostname)
+        self._record_probe(probe, "complete")
 
-            if parsed.kind == "index":
-                for loc in parsed.locations:
-                    shost = (urlsplit(loc).hostname or "").lower().rstrip(".")
-                    if shost == hostname:
-                        is_new = self.coordinator.register_sitemap(hostname, loc, required=True)
-                        if is_new:
-                            req = self._probe_request(
-                                loc, purpose="sitemap", discovered_from=response.url
-                            )
-                            if req is not None:
-                                yield req
-                self.coordinator.complete_sitemap(hostname, logical_url, result="success")
-            else:
-                valid_targets = 0
-                for loc in parsed.locations:
-                    shost = (urlsplit(loc).hostname or "").lower().rstrip(".")
-                    if shost == hostname:
-                        canonical, _, _ = canonicalize_url(loc, check_traps=False)
-                        if canonical:
-                            self.coordinator.record_sitemap_target(hostname, canonical)
-                            self.writer.record_target(
-                                {"url": canonical, "discovered_from": response.url}
-                            )
-                            valid_targets += 1
-                self.coordinator.complete_sitemap(hostname, logical_url, result="success")
-            self.writer.record_probe(
-                {
-                    "url": input_url,
-                    "final_url": response.url,
-                    "status": "complete",
-                    "http_status": response.status,
-                }
-            )
-            self.writer.checkpoint(input_url)
-
-        elif route.action == "optional_absent":
-            if purpose == "robots":
-                self.coordinator.complete_robots(hostname)
-            elif purpose == "sitemap":
-                self.coordinator.complete_sitemap(hostname, logical_url, result="absent")
-            self.writer.record_probe(
-                {
-                    "url": input_url,
-                    "final_url": response.url,
-                    "status": "absent",
-                    "http_status": response.status,
-                }
-            )
-            self.writer.checkpoint(input_url)
-
-        elif route.action == "http_error":
-            retry = self._http_retry(response.request) if response.request else None
-            if retry is not None:
-                yield retry
-                return
-            if purpose == "robots":
-                self.coordinator.complete_robots(hostname)
-            elif purpose == "sitemap":
-                self.coordinator.complete_sitemap(hostname, logical_url, result="failed")
+    def _sitemap(self, probe: _Probe) -> Iterator[scrapy.Request]:
+        response = probe.response
+        try:
+            parsed = parse_sitemap(response.body, response.url, probe.content_type)
+        except SitemapParseError as exc:
             self.writer.write_error(
                 {
-                    "url": input_url,
+                    "url": probe.input_url,
                     "final_url": response.url,
-                    "error": route.error or f"http_{response.status}",
+                    "error": "invalid_sitemap",
+                    "message": str(exc),
                 }
             )
+            self.coordinator.complete_sitemap(probe.hostname, probe.logical_url, result="failed")
+            return
+        if parsed.kind == "index":
+            yield from self._child_sitemaps(probe, parsed.locations)
+        else:
+            self._record_targets(probe, parsed.locations)
+        self.coordinator.complete_sitemap(probe.hostname, probe.logical_url, result="success")
+        self._record_probe(probe, "complete")
 
-        elif route.action in {"transient", "unknown"}:
-            self.writer.write_error({"url": input_url, "error": "unsupported_content_type"})
+    def _child_sitemaps(self, probe: _Probe, locations: Iterable[str]) -> Iterator[scrapy.Request]:
+        for loc in locations:
+            if _host(loc) != probe.hostname:
+                continue
+            if self.coordinator.register_sitemap(probe.hostname, loc, required=True):
+                request = self._probe_request(
+                    loc, purpose="sitemap", discovered_from=probe.response.url
+                )
+                if request is not None:
+                    yield request
+
+    def _record_targets(self, probe: _Probe, locations: Iterable[str]) -> None:
+        for loc in locations:
+            if _host(loc) != probe.hostname:
+                continue
+            canonical, _, _ = canonicalize_url(loc, check_traps=False)
+            if canonical:
+                self.coordinator.record_sitemap_target(probe.hostname, canonical)
+                self.writer.record_target({"url": canonical, "discovered_from": probe.response.url})
+
+    def _absent(self, probe: _Probe) -> Iterator[scrapy.Request]:
+        if probe.purpose == "robots":
+            self.coordinator.complete_robots(probe.hostname)
+        elif probe.purpose == "sitemap":
+            self.coordinator.complete_sitemap(probe.hostname, probe.logical_url, result="absent")
+        self._record_probe(probe, "absent")
+        return iter(())
+
+    def _http_error(self, probe: _Probe) -> Iterator[scrapy.Request]:
+        response = probe.response
+        retry = self._http_retry(response.request) if response.request else None
+        if retry is not None:
+            yield retry
+            return
+        if probe.purpose == "robots":
+            self.coordinator.complete_robots(probe.hostname)
+        elif probe.purpose == "sitemap":
+            self.coordinator.complete_sitemap(probe.hostname, probe.logical_url, result="failed")
+        self.writer.write_error(
+            {
+                "url": probe.input_url,
+                "final_url": response.url,
+                "error": probe.route.error or f"http_{response.status}",
+            }
+        )
+
+    def _unsupported(self, probe: _Probe) -> Iterator[scrapy.Request]:
+        self.writer.write_error({"url": probe.input_url, "error": "unsupported_content_type"})
+        return iter(())
 
     def on_request_error(self, failure: Any) -> Iterator[scrapy.Request] | None:
         request = failure.request

@@ -10,15 +10,32 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from data_pipeline.crawl.state.export import asset_metrics, export_final, skipped_reasons
-from data_pipeline.crawl.state.resume import (
-    normalize_legacy_semantic_config,
-    validate_policy_migration,
-)
-
-STATE_VERSION = 4
+from data_pipeline.crawl.state.resume import manifest_for_open
 
 if TYPE_CHECKING:
     from data_pipeline.crawl.frontier.assets import AssetRole
+
+
+def _acquire_lock(root: Path) -> Path:
+    """Create ``run.lock`` holding this PID; refuse when another live crawl owns the state."""
+    lock_path = root / "run.lock"
+    if lock_path.exists():
+        try:
+            pid = int(lock_path.read_text(encoding="utf-8").strip())
+            os.kill(pid, 0)
+        except (OSError, ValueError):
+            lock_path.unlink(missing_ok=True)
+        else:
+            msg = f"crawl is already running with PID {pid}"
+            raise RuntimeError(msg)
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError as exc:
+        msg = f"crawl state is locked: {root}"
+        raise RuntimeError(msg) from exc
+    os.write(fd, f"{os.getpid()}\n".encode())
+    os.close(fd)
+    return lock_path
 
 
 class CrawlState:
@@ -50,101 +67,28 @@ class CrawlState:
     ) -> CrawlState:
         root.mkdir(parents=True, exist_ok=True)
         input_sha256 = hashlib.sha256(input_path.read_bytes()).hexdigest()
-        manifest_path = root / "manifest.json"
-        lock_path = root / "run.lock"
-
-        # Lock acquisition
-        if lock_path.exists():
-            try:
-                pid = int(lock_path.read_text(encoding="utf-8").strip())
-                os.kill(pid, 0)
-            except (OSError, ValueError):
-                lock_path.unlink(missing_ok=True)
-            else:
-                msg = f"crawl is already running with PID {pid}"
-                raise RuntimeError(msg)
-
+        lock_path = _acquire_lock(root)
         try:
-            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError as exc:
-            msg = f"crawl state is locked: {root}"
-            raise RuntimeError(msg) from exc
-        os.write(fd, f"{os.getpid()}\n".encode())
-        os.close(fd)
-
-        try:
-            if manifest_path.exists():
-                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                if not resume:
-                    msg = f"crawl state already exists: {root}"
-                    raise FileExistsError(msg)
-                if manifest.get("state_version") != STATE_VERSION:
-                    msg = "resume state version does not match saved crawl"
-                    raise ValueError(msg)
-                if manifest.get("phase") != phase:
-                    msg = "resume phase does not match saved run"
-                    raise ValueError(msg)
-                if manifest.get("input_sha256") != input_sha256:
-                    msg = "resume input does not match saved crawl"
-                    raise ValueError(msg)
-                saved_semantic = normalize_legacy_semantic_config(
-                    manifest.get("semantic_config", {})
-                )
-                effective_semantic = normalize_legacy_semantic_config(semantic_config)
-                if saved_semantic != effective_semantic:
-                    if not allow_policy_migration:
-                        msg = "resume semantic configuration does not match saved crawl"
-                        raise ValueError(msg)
-                    validate_policy_migration(saved_semantic, effective_semantic)
-                    migrations = list(manifest.get("policy_migrations", []))
-                    if not any(
-                        entry.get("to_revision") == effective_semantic.get("access_policy_revision")
-                        for entry in migrations
-                        if isinstance(entry, dict)
-                    ):
-                        migrations.append(
-                            {
-                                "from_revision": saved_semantic.get("access_policy_revision", 1),
-                                "to_revision": effective_semantic["access_policy_revision"],
-                                "timestamp": time.time(),
-                            }
-                        )
-                    manifest["policy_migrations"] = migrations
-                    manifest["semantic_config"] = semantic_config
-                history = manifest.get("runtime_history", [])
-                if not history or history[-1] != runtime_config:
-                    history.append(runtime_config)
-                    manifest["runtime_history"] = history
-                manifest["resumed_from_status"] = manifest.get("status")
-                manifest["status"] = "running"
-
-            else:
-                if resume:
-                    msg = f"cannot resume non-existent crawl state: {root}"
-                    raise ValueError(msg)
-                manifest = {
-                    "state_version": STATE_VERSION,
-                    "phase": phase,
-                    "input_sha256": input_sha256,
-                    "semantic_config": semantic_config,
-                    "runtime_history": [runtime_config],
-                    "status": "running",
-                    "started_at": time.time(),
-                }
-
-            # Initialize SQLite
-            db_path = root / "index.sqlite3"
-            connection = sqlite3.connect(str(db_path), autocommit=True)
+            manifest = manifest_for_open(
+                root,
+                resume=resume,
+                phase=phase,
+                input_sha256=input_sha256,
+                semantic_config=semantic_config,
+                runtime_config=runtime_config,
+                allow_policy_migration=allow_policy_migration,
+            )
+            connection = sqlite3.connect(str(root / "index.sqlite3"), autocommit=True)
             connection.execute("PRAGMA journal_mode=WAL;")
             connection.execute("PRAGMA synchronous=NORMAL;")
             cls._init_db(connection)
-
             instance = cls(root, manifest, connection)
             instance.write_manifest(manifest)
-            return instance
         except Exception:
             lock_path.unlink(missing_ok=True)
             raise
+        else:
+            return instance
 
     @staticmethod
     def _init_db(connection: sqlite3.Connection) -> None:
@@ -502,7 +446,7 @@ class CrawlState:
             if record.get("frontier_action") == "scheduled":
                 yield record
 
-    def finish(
+    def finish(  # noqa: PLR0913 -- one keyword per manifest field recorded at the end of a run
         self,
         status: str,
         exit_code: int,

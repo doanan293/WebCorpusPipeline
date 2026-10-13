@@ -249,3 +249,15 @@ def parse_sitemap(body: bytes, base_url: str, content_type: str = "") -> Sitemap
     child_name = "sitemap" if local_name == "sitemapindex" else "url"
     locations = _ordered_unique_locations(root, child_name, base_url)
     return SitemapParseResult("index" if local_name == "sitemapindex" else "urlset", locations)
+
+
+def declared_sitemap_url(line: str, base_url: str, hostname: str) -> str | None:
+    """Return the same-host sitemap URL declared by a robots.txt line, if any."""
+    key, separator, value = line.partition(":")
+    if not separator or key.strip().lower() != "sitemap":
+        return None
+    normalized = normalize_url(value.strip(), base_url)
+    if normalized is None:
+        return None
+    declared_host = (urlsplit(normalized).hostname or "").lower().rstrip(".")
+    return normalized if declared_host == hostname else None
