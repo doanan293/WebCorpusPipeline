@@ -144,6 +144,9 @@ class CrawlProgressReporter:
             line += f" | cpu={float(cpu):.0f}%"
         if ram is not None:
             line += f" | ram={float(ram):.0f}%"
+        pressure = int(self._get("hust/resources/pressure", 0))
+        if pressure:
+            line += f" | pressure_events={pressure}"
         line += f" | eta={eta}"
 
         print(line, file=self.output, flush=True)

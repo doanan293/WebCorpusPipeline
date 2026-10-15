@@ -4,6 +4,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from twisted.internet.task import LoopingCall
+
 _CPU_IDLE_FIELD = 3
 _CPU_IOWAIT_FIELD = 4
 
@@ -61,3 +63,57 @@ class ResourceSampler:
             return round(max(0.0, min(100.0, 100.0 * (total - available) / total)), 1)
         except (OSError, KeyError, ValueError, IndexError):
             return None
+
+
+class ResourceMonitor:
+    """Sample CPU and RAM on a timer; report pressure only when it lasts.
+
+    Each sample averages CPU over the interval since the previous one, so a single busy
+    moment cannot throttle the whole crawl.
+    """
+
+    def __init__(
+        self,
+        *,
+        interval_seconds: float = 5.0,
+        threshold_percent: float = 90.0,
+        sustained_samples: int = 2,
+        sampler: ResourceSampler | None = None,
+        on_pressure: Callable[[], None] | None = None,
+        on_sample: Callable[[ResourceSample], None] | None = None,
+    ) -> None:
+        self.interval_seconds = interval_seconds
+        self.threshold_percent = threshold_percent
+        self.sustained_samples = sustained_samples
+        self._sampler = sampler or ResourceSampler()
+        self._on_pressure = on_pressure
+        self._on_sample = on_sample
+        self._high_streak = 0
+        self._pressure = False
+        self._loop: LoopingCall | None = None
+
+    def sample(self) -> None:
+        reading = self._sampler.sample()
+        if self._on_sample is not None:
+            self._on_sample(reading)
+        high = any(
+            value is not None and value >= self.threshold_percent
+            for value in (reading.cpu_percent, reading.ram_percent)
+        )
+        self._high_streak = self._high_streak + 1 if high else 0
+        was_under_pressure = self._pressure
+        self._pressure = self._high_streak >= self.sustained_samples
+        if self._pressure and not was_under_pressure and self._on_pressure is not None:
+            self._on_pressure()
+
+    def under_pressure(self) -> bool:
+        return self._pressure
+
+    def start(self) -> None:
+        self._sampler.sample()  # prime the CPU counters so the first timed sample is an average
+        self._loop = LoopingCall(self.sample)
+        self._loop.start(self.interval_seconds, now=False)
+
+    def stop(self) -> None:
+        if self._loop is not None and self._loop.running:
+            self._loop.stop()

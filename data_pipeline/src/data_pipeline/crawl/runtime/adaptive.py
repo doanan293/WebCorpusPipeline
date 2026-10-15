@@ -12,7 +12,7 @@ from scrapy.crawler import Crawler
 from scrapy.http import Request, Response
 
 from data_pipeline.core.policies.access import classify_access
-from data_pipeline.crawl.runtime.resources import ResourceSample, ResourceSampler
+from data_pipeline.crawl.runtime.resources import ResourceMonitor, ResourceSample
 
 _FORBIDDEN_STREAK_LIMIT = 3
 
@@ -20,7 +20,6 @@ _FORBIDDEN_STREAK_LIMIT = 3
 @dataclass(frozen=True, slots=True)
 class Observation:
     at: float
-    latency: float | None
     status: int | None
     error: str | None
     retry_after_seconds: float | None = None
@@ -37,7 +36,6 @@ class HostHealth:
         self,
         *,
         start_concurrency: int,
-        normal_ceiling: int,
         hard_ceiling: int,
         window_size: int = 20,
         change_interval: float = 30.0,
@@ -46,7 +44,6 @@ class HostHealth:
             msg = "start concurrency must be within hard ceiling"
             raise ValueError(msg)
         self.current = start_concurrency
-        self.normal_ceiling = min(normal_ceiling, hard_ceiling)
         self.hard_ceiling = hard_ceiling
         self.window_size = window_size
         self.change_interval = change_interval
@@ -120,19 +117,16 @@ class AdaptiveConcurrencyMiddleware:
         crawler: Crawler,
         *,
         max_per_host: int,
-        max_concurrency: int,
-        resource_limit_percent: int = 80,
-        resource_sampler: ResourceSampler | None = None,
+        resource_limit_percent: int = 90,
     ) -> None:
         self._crawler = crawler
         self._max_per_host = max_per_host
-        self._max_concurrency = max_concurrency
-        self._resource_limit_percent = resource_limit_percent
-        self._resource_sampler = resource_sampler or ResourceSampler()
-        self._resource_pressure = False
-        self._last_resource_sample: ResourceSample | None = None
+        self._monitor = ResourceMonitor(
+            threshold_percent=resource_limit_percent,
+            on_pressure=self._count_pressure,
+            on_sample=self._record_sample,
+        )
         self._hosts: dict[str, HostHealth] = {}
-        self._started: dict[int, float] = {}
         self._slot_delays: dict[str, float] = {}
         self._signal_observed_responses: set[int] = set()
 
@@ -145,14 +139,37 @@ class AdaptiveConcurrencyMiddleware:
         middleware = cls(
             crawler,
             max_per_host=int(tuning.max_per_host),
-            max_concurrency=int(tuning.max_concurrency),
             resource_limit_percent=int(tuning.resource_limit_percent),
         )
         crawler.signals.connect(
             middleware._response_downloaded,
             signal=signals.response_downloaded,
         )
+        crawler.signals.connect(middleware._spider_opened, signal=signals.spider_opened)
+        crawler.signals.connect(middleware._spider_closed, signal=signals.spider_closed)
         return middleware
+
+    def _spider_opened(self, *args: object) -> None:  # noqa: ARG002 -- signal arguments are ignored
+        self._monitor.start()
+
+    def _spider_closed(self, *args: object) -> None:  # noqa: ARG002 -- signal arguments are ignored
+        self._monitor.stop()
+
+    def _record_sample(self, sample: ResourceSample) -> None:
+        stats = getattr(self._crawler, "stats", None)
+        if stats is None:
+            return
+        for key, value in (
+            ("cpu_percent", sample.cpu_percent),
+            ("ram_percent", sample.ram_percent),
+        ):
+            if value is not None:
+                stats.set_value(f"hust/resources/{key}", value)
+
+    def _count_pressure(self) -> None:
+        stats = getattr(self._crawler, "stats", None)
+        if stats is not None:
+            stats.inc_value("hust/resources/pressure")
 
     @staticmethod
     def _host(request: Request) -> str:
@@ -172,20 +189,11 @@ class AdaptiveConcurrencyMiddleware:
             start = int(getattr(slot, "concurrency", 1) or 1)
             health = self._hosts[host] = HostHealth(
                 start_concurrency=min(start, self._max_per_host),
-                normal_ceiling=min(2, self._max_per_host),
                 hard_ceiling=self._max_per_host,
             )
         return health
 
-    def process_request(
-        self,
-        request: Request,
-        spider: Spider | None = None,  # noqa: ARG002 -- Scrapy middleware interface
-    ) -> None:
-        self._started[id(request)] = monotonic()
-
     def _observe_response(self, request: Request, response: Response) -> None:
-        started = self._started.pop(id(request), monotonic())
         retry_after = None
         raw_retry_after = response.headers.get(b"Retry-After")
         if raw_retry_after:
@@ -204,14 +212,7 @@ class AdaptiveConcurrencyMiddleware:
             )
             if access.outcome == "captcha_blocked":
                 error = "captcha"
-        self.observe(
-            request,
-            response.status,
-            max(0.0, monotonic() - started),
-            error,
-            retry_after,
-        )
-        self._update_resource_pressure()
+        self.observe(request, response.status, error, retry_after)
         self.reconcile_host(self._host(request), request)
 
     def _response_downloaded(
@@ -232,17 +233,14 @@ class AdaptiveConcurrencyMiddleware:
         return response
 
     def process_exception(self, request: Request, exception: Exception) -> None:
-        started = self._started.pop(id(request), monotonic())
         error = "timeout" if "timeout" in exception.__class__.__name__.lower() else "transport"
-        self.observe(request, None, max(0.0, monotonic() - started), error)
-        self._update_resource_pressure()
+        self.observe(request, None, error)
         self.reconcile_host(self._host(request), request)
 
     def observe(
         self,
         request: Request,
         status: int | None,
-        latency: float | None,
         error: str | None,
         retry_after_seconds: float | None = None,
     ) -> None:
@@ -251,7 +249,6 @@ class AdaptiveConcurrencyMiddleware:
         health.observe(
             Observation(
                 at=monotonic(),
-                latency=latency,
                 status=status,
                 error=error,
                 retry_after_seconds=retry_after_seconds,
@@ -272,7 +269,7 @@ class AdaptiveConcurrencyMiddleware:
         health = self._health(host, request)
         current_time = monotonic() if now is None else now
         decision = health.recommend(current_time)
-        if self._resource_pressure:
+        if self._monitor.under_pressure():
             decision = HostDecision(1, decision.cooldown_until)
 
         slots = self._downloader_slots()
@@ -295,16 +292,3 @@ class AdaptiveConcurrencyMiddleware:
                 slot.delay = max(baseline, remaining)
             elif slot_key in self._slot_delays:
                 slot.delay = self._slot_delays.pop(slot_key)
-
-    def reconcile(self, *, now: float | None = None) -> None:
-        self._update_resource_pressure()
-        for host in list(self._hosts):
-            self.reconcile_host(host, now=now)
-
-    def _update_resource_pressure(self) -> None:
-        self._last_resource_sample = self._resource_sampler.sample()
-        sample = self._last_resource_sample
-        self._resource_pressure = any(
-            value is not None and value >= self._resource_limit_percent
-            for value in (sample.cpu_percent, sample.ram_percent)
-        )

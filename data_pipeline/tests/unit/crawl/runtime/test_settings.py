@@ -13,9 +13,9 @@ def config() -> CrawlerConfig:
 def test_settings_enable_async_concurrency_and_bounded_browser() -> None:
     values = build_settings(config())
     assert values["CONCURRENT_REQUESTS"] == 64
-    assert values["CONCURRENT_REQUESTS_PER_DOMAIN"] == 2
+    assert values["CONCURRENT_REQUESTS_PER_DOMAIN"] == 4
     assert values["AUTOTHROTTLE_ENABLED"] is True
-    assert values["AUTOTHROTTLE_TARGET_CONCURRENCY"] == 2.0
+    assert values["AUTOTHROTTLE_TARGET_CONCURRENCY"] == 4.0
     assert values["RETRY_ENABLED"] is False
     assert values["PLAYWRIGHT_MAX_PAGES_PER_CONTEXT"] == 8
     assert (

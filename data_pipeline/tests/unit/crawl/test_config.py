@@ -70,12 +70,13 @@ def test_config_enforces_safety_defaults(tmp_path: Path) -> None:
         environ={"CRAWLER_CONTACT": "ops@example.org"},
     )
 
-    assert config.concurrent_per_host == 2
+    assert config.concurrent_per_host == 4
     assert config.concurrent_requests == 64
     assert config.playwright_max_pages == 8
-    assert config.download_delay_seconds == 0.25
+    assert config.download_delay_seconds == 0
     assert config.throttle_start_seconds == 0.25
-    assert config.autothrottle_target_concurrency == 2.0
+    assert config.autothrottle_target_concurrency == 4.0
+    assert config.resource_limit_percent == 90
     assert config.max_response_bytes == 100 * 1024 * 1024
 
 

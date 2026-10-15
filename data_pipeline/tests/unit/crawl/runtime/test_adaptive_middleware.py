@@ -6,7 +6,7 @@ from scrapy.http import HtmlResponse, Request
 from scrapy.signalmanager import SignalManager
 
 from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware, Observation
-from data_pipeline.crawl.runtime.resources import ResourceSampler
+from data_pipeline.crawl.runtime.resources import ResourceMonitor, ResourceSampler
 
 
 def _ignore(*args: Any, **kwargs: Any) -> None:
@@ -19,6 +19,78 @@ def _calm_sample() -> SimpleNamespace:
 
 def _slots(middleware: AdaptiveConcurrencyMiddleware) -> dict[str, Any]:
     return cast(Any, middleware._crawler).engine.downloader.slots
+
+
+class _Sampler:
+    """Return queued CPU readings and count how often the middleware samples."""
+
+    def __init__(self, *cpu: float) -> None:
+        self.cpu = list(cpu)
+        self.calls = 0
+
+    def sample(self) -> SimpleNamespace:
+        self.calls += 1
+        return SimpleNamespace(cpu_percent=self.cpu.pop(0) if self.cpu else 0.0, ram_percent=0.0)
+
+
+def test_single_cpu_spike_does_not_throttle() -> None:
+    middleware, _ = _middleware()
+    _slots(middleware)["a.test"].concurrency = 4
+    middleware._monitor = ResourceMonitor(sampler=cast(ResourceSampler, _Sampler(99.0, 20.0)))
+    request = Request("https://a.test/")
+
+    middleware._monitor.sample()
+    middleware.process_response(request, HtmlResponse(request.url, status=200, request=request))
+
+    assert not middleware._monitor.under_pressure()
+    assert _slots(middleware)["a.test"].concurrency == 4
+
+
+def test_sustained_pressure_throttles_and_counts_event() -> None:
+    counted: list[str] = []
+    middleware, crawler = _middleware()
+
+    def count(key: str, *args: object, **kwargs: object) -> None:
+        counted.append(key)
+
+    crawler.stats = SimpleNamespace(inc_value=count, set_value=_ignore)
+    _slots(middleware)["a.test"].concurrency = 4
+    middleware._monitor = ResourceMonitor(
+        sampler=cast(ResourceSampler, _Sampler(95.0, 96.0, 97.0)),
+        on_pressure=middleware._count_pressure,
+    )
+    request = Request("https://a.test/")
+
+    for _ in range(3):
+        middleware._monitor.sample()
+    middleware.process_response(request, HtmlResponse(request.url, status=200, request=request))
+
+    assert middleware._monitor.under_pressure()
+    assert counted.count("hust/resources/pressure") == 1
+    assert _slots(middleware)["a.test"].concurrency == 1
+
+
+def test_resource_sampler_not_called_per_response() -> None:
+    middleware, _ = _middleware()
+    sampler = _Sampler()
+    middleware._monitor = ResourceMonitor(sampler=cast(ResourceSampler, sampler))
+    request = Request("https://a.test/")
+
+    for _ in range(10):
+        middleware.process_response(request, HtmlResponse(request.url, status=200, request=request))
+
+    assert sampler.calls == 0
+
+
+def test_429_still_cools_down_host() -> None:
+    middleware, _ = _middleware()
+    _slots(middleware)["a.test"].concurrency = 4
+    request = Request("https://a.test/")
+
+    middleware.process_response(request, HtmlResponse(request.url, status=429, request=request))
+
+    assert _slots(middleware)["a.test"].concurrency == 1
+    assert _slots(middleware)["a.test"].delay >= 29.9
 
 
 def _middleware() -> tuple[AdaptiveConcurrencyMiddleware, Any]:
@@ -37,10 +109,7 @@ def _middleware() -> tuple[AdaptiveConcurrencyMiddleware, Any]:
     )
     crawler.signals = SignalManager(crawler)
     middleware = AdaptiveConcurrencyMiddleware.from_crawler(crawler)
-    middleware._resource_sampler = cast(
-        ResourceSampler,
-        SimpleNamespace(sample=_calm_sample),
-    )
+    middleware._monitor = ResourceMonitor(sampler=cast(ResourceSampler, _Sampler()))
     return middleware, crawler
 
 
@@ -49,7 +118,7 @@ def test_healthy_window_increases_matching_scrapy_slot() -> None:
     request = Request("https://a.test/")
     for _ in range(20):
         middleware.process_response(request, HtmlResponse(request.url, status=200, request=request))
-    middleware.reconcile(now=31.0)
+    middleware.reconcile_host("a.test", request, now=31.0)
     assert _slots(middleware)["a.test"].concurrency == 2
 
 
@@ -103,7 +172,7 @@ def test_healthy_response_after_cooldown_restores_original_slot_delay() -> None:
     assert health._cooldown_until is not None
     recovered_at = health._cooldown_until + 0.1
 
-    health.observe(Observation(at=recovered_at, latency=0.2, status=200, error=None))
+    health.observe(Observation(at=recovered_at, status=200, error=None))
     middleware.reconcile_host("a.test", request, now=recovered_at)
 
     assert _slots(middleware)["a.test"].delay == 0.25

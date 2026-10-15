@@ -1,12 +1,12 @@
 browser_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 concurrent_requests: 64
-concurrent_per_host: 2
+concurrent_per_host: 4
 playwright_max_pages: 8
-download_delay_seconds: 0.25
+download_delay_seconds: 0
 throttle_start_seconds: 0.25
 throttle_max_seconds: 5
 autothrottle_enabled: true
-autothrottle_target_concurrency: 2.0
+autothrottle_target_concurrency: 4.0
 cookies_enabled: false
 redirect_max_times: 20
 retry_times: 3
@@ -15,7 +15,7 @@ retry_backoff_base_seconds: 2
 retry_max_delay_seconds: 3600
 download_timeout_seconds: 60
 max_response_bytes: 104857600
-resource_limit_percent: 80
+resource_limit_percent: 90
 assets: content-only
 max_file_bytes: 104857600
 max_total_file_bytes: 107374182400

@@ -33,6 +33,7 @@ def test_progress_reporter_line_contains_all_metrics() -> None:
         "hust/adaptive/browser_active": 1,
         "hust/resources/cpu_percent": 25.0,
         "hust/resources/ram_percent": 45.0,
+        "hust/resources/pressure": 2,
     }
 
     def stat(k: str, d: float = 0) -> float:
@@ -55,6 +56,7 @@ def test_progress_reporter_line_contains_all_metrics() -> None:
     assert "rate=" in line
     assert "cpu=25%" in line
     assert "ram=45%" in line
+    assert "pressure_events=2" in line
     assert "eta=" in line
 
 

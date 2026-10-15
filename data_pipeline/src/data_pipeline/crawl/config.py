@@ -64,10 +64,15 @@ _NON_POSITIVE_SETTINGS = frozenset(
         "autothrottle_enabled",
         "assets",
         "retry_statuses",
+        "store_html",
     }
 )
+# Zero is a valid delay: per-host concurrency and AutoThrottle pace requests instead.
+_NON_NEGATIVE_SETTINGS = frozenset({"download_delay_seconds"})
 _POSITIVE_SETTINGS = tuple(
-    name for name in _REQUIRED_SETTINGS if name not in _NON_POSITIVE_SETTINGS
+    name
+    for name in _REQUIRED_SETTINGS
+    if name not in _NON_POSITIVE_SETTINGS and name not in _NON_NEGATIVE_SETTINGS
 )
 
 
@@ -76,9 +81,9 @@ class CrawlerConfig:
     hostnames: frozenset[str]
     contact: str
     concurrent_requests: int = 64
-    concurrent_per_host: int = 2
+    concurrent_per_host: int = 4
     playwright_max_pages: int = 8
-    download_delay_seconds: float = 0.25
+    download_delay_seconds: float = 0.0
     throttle_start_seconds: float = 0.25
     throttle_max_seconds: float = 5.0
     retry_times: int = 3
@@ -94,8 +99,8 @@ class CrawlerConfig:
     cookies_enabled: bool = False
     redirect_max_times: int = 20
     autothrottle_enabled: bool = True
-    autothrottle_target_concurrency: float = 2.0
-    resource_limit_percent: int = 80
+    autothrottle_target_concurrency: float = 4.0
+    resource_limit_percent: int = 90
     assets: Literal["content-only", "all"] = "content-only"
     max_file_bytes: int = 100 * 1024 * 1024
     max_total_file_bytes: int = 100 * 1024**3
@@ -178,6 +183,10 @@ class CrawlerConfig:
         return config
 
     def _validate(self) -> None:
+        for name in _NON_NEGATIVE_SETTINGS:
+            if getattr(self, name) < 0:
+                msg = f"{name} must not be negative"
+                raise ValueError(msg)
         for name in _POSITIVE_SETTINGS:
             if getattr(self, name) <= 0:
                 msg = f"{name} must be positive"
