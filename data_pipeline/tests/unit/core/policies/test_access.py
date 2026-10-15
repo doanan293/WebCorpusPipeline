@@ -199,3 +199,12 @@ def test_page_gate_blocks_noncontent_shells(html: str, reason: str) -> None:
     assert (
         classify_page_gate(status=200, url="https://a.test/p", html=html, text="").reason == reason
     )
+
+
+def test_expansion_gate_uses_visible_body_text() -> None:
+    body = " ".join(["Thông báo tuyển sinh năm học mới"] * 10)
+    html = f'<body><div class="tin"><a href="/tin/1">{body}</a></div></body>'
+
+    gate = classify_page_gate(status=200, url="https://a.test/", html=html, text="")
+
+    assert (gate.expandable, gate.reason) == (True, None)

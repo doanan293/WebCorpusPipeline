@@ -138,3 +138,27 @@ def test_iter_final_articles_limits_to_requested_urls(tmp_path: Path) -> None:
     assert [url for url, _ in rows] == ["https://a.test/b"]
     assert json.loads(rows[0][1])["text"] == "B"
     state.close()
+
+
+def test_final_export_inlines_owner_text_for_stub(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    writer = CrawlWriter(tmp_path / "output", state, CrawlOptions())
+    full = {
+        "title": "T",
+        "text": "Same text",
+        "content_html": "<p>Same text</p>",
+        "content_blocks": [{"type": "paragraph", "text": "Same text"}],
+        "headings": ["T"],
+    }
+    writer.write_article({"url": "https://a.test/owner", **full})
+    writer.write_article({"url": "https://a.test/stub", **full})
+    state.connection.execute(
+        "UPDATE url_records SET status = 'skipped' WHERE url = 'https://a.test/owner';"
+    )
+
+    articles = dict(iter_final_articles(state))
+
+    article = json.loads(articles["https://a.test/stub"])
+    assert "duplicate_of" not in article
+    assert {key: article[key] for key in full} == full
+    writer.close()

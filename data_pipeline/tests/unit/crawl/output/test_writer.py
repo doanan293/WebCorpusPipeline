@@ -3,7 +3,12 @@ from pathlib import Path
 import pytest
 
 from data_pipeline.crawl.options import CrawlOptions
-from data_pipeline.crawl.output.writer import CrawlWriter, StorageLimitError, content_id_for
+from data_pipeline.crawl.output.writer import (
+    DUPLICATE_DROPPED_FIELDS,
+    CrawlWriter,
+    StorageLimitError,
+    content_id_for,
+)
 from data_pipeline.crawl.state.store import CrawlState
 
 
@@ -196,4 +201,42 @@ def test_content_id_for_matches_written_article(tmp_path: Path) -> None:
     )
 
     assert stored["content_id"] == content_id_for("  Body \n") == content_id_for("Body")
+    writer.close()
+
+
+def test_empty_text_never_becomes_duplicate(tmp_path: Path) -> None:
+    writer = make_writer(tmp_path)
+    first = writer.write_article({"url": "https://a.test/1", "title": "One", "text": ""})
+    second = writer.write_article({"url": "https://a.test/2", "title": "Two", "text": ""})
+
+    assert "duplicate_of" not in first
+    assert "duplicate_of" not in second
+    writer.close()
+
+
+def test_duplicate_is_stored_as_stub(tmp_path: Path) -> None:
+    writer = make_writer(tmp_path)
+    full = {
+        "title": "T",
+        "text": "Same text",
+        "content_html": "<p>Same text</p>",
+        "content_blocks": [{"type": "paragraph", "text": "Same text"}],
+        "headings": ["T"],
+        "observed_refs": [{"url": "https://a.test/x"}],
+        "links": [{"url": "https://a.test/x"}],
+    }
+    writer.write_article({"url": "https://a.test/1", **full})
+
+    stub = writer.write_article({"url": "https://a.test/2", **full})
+
+    assert set(DUPLICATE_DROPPED_FIELDS) == {
+        "content_html",
+        "content_blocks",
+        "headings",
+        "observed_refs",
+    }
+    assert not set(DUPLICATE_DROPPED_FIELDS) & set(stub)
+    assert stub["links"] == full["links"]
+    assert stub["duplicate_of"] == "https://a.test/1"
+    assert stub["content_id"] == content_id_for("Same text")
     writer.close()

@@ -66,6 +66,10 @@ def export_crawl(state: CrawlState, output: Path) -> None:
     _export_table("errors", output / "errors.jsonl")
 
 
+# Fields a duplicate article does not store; its owner holds the same content.
+DUPLICATE_DROPPED_FIELDS = ("content_html", "content_blocks", "headings", "observed_refs")
+
+
 def iter_final_articles(
     state: CrawlState, urls: Iterable[str] | None = None
 ) -> Iterator[tuple[str, str]]:
@@ -87,13 +91,15 @@ def iter_final_articles(
                     yield row
 
         rows = selected()
-    owner_text: dict[str, str] = {}
+    owner_content: dict[str, dict[str, object]] = {}
     for url, payload in rows:
-        yield url, _inline_owner_text(state, payload, owner_text)
+        yield url, _inline_owner_text(state, payload, owner_content)
 
 
-def _inline_owner_text(state: CrawlState, payload: str, owner_text: dict[str, str]) -> str:
-    """Replace a duplicate's text with its owner's when the owner is excluded from export."""
+def _inline_owner_text(
+    state: CrawlState, payload: str, owner_content: dict[str, dict[str, object]]
+) -> str:
+    """Fill a duplicate stub with its owner's content when the owner is excluded from export."""
     if '"duplicate_of"' not in payload:
         return payload
     article = json.loads(payload)
@@ -105,19 +111,21 @@ def _inline_owner_text(state: CrawlState, payload: str, owner_text: dict[str, st
     ).fetchone()
     if owner_status is not None and owner_status[0] == "extracted":
         return payload
-    if owner_url not in owner_text:
+    if owner_url not in owner_content:
         owner_row = state.connection.execute(
             "SELECT payload FROM articles WHERE url = ?", (owner_url,)
         ).fetchone()
         if owner_row is None:
             msg = f"missing duplicate owner article: {owner_url}"
             raise ValueError(msg)
-        text = json.loads(owner_row[0]).get("text")
-        if text is None:
+        owner = json.loads(owner_row[0])
+        if owner.get("text") is None:
             msg = f"duplicate owner has no text: {owner_url}"
             raise ValueError(msg)
-        owner_text[owner_url] = str(text)
-    article["text"] = owner_text[owner_url]
+        owner_content[owner_url] = {
+            field: owner[field] for field in ("text", *DUPLICATE_DROPPED_FIELDS) if field in owner
+        }
+    article.update(owner_content[owner_url])
     article.pop("duplicate_of", None)
     return json.dumps(article, ensure_ascii=False)
 

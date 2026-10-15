@@ -146,9 +146,10 @@ Thứ tự cố định như bảng:
 #### Bài trùng
 
 Khi crawl, URL đầu tiên có một `content_id` được ghi trong bảng `content_owner` và giữ `text`. URL đến sau với cùng
-văn bản được ghi `duplicate_of` và **không có key `text`**; mọi field khác, kể cả `content_html` và `content_blocks`,
-vẫn giữ. Muốn lấy văn bản của bài trùng thì tra `duplicate_of` (hoặc `content_id`) trong cùng file. Bài trùng không
-được mở rộng liên kết tiếp.
+văn bản được lưu dạng rút gọn: có `duplicate_of`, **không có** `text`, `content_html`, `content_blocks`, `headings` và
+`observed_refs`; các field khác (kể cả `links`, `content_id`) vẫn giữ. Muốn lấy nội dung của bài trùng thì tra
+`duplicate_of` (hoặc `content_id`) trong cùng file. Trang có văn bản rỗng không bao giờ là bài gốc hay bài trùng: nó
+không có `duplicate_of`. Bài trùng không được mở rộng liên kết tiếp.
 
 ### `url_records.jsonl`
 
@@ -290,7 +291,7 @@ Tạo lại mỗi khi crawl kết thúc; đây là đầu vào của enrich và 
 
 | File | Nội dung |
 |---|---|
-| `articles.jsonl` | bài có trạng thái `extracted`, sắp theo URL. Bài trùng giữ nguyên dạng (không `text`, có `duplicate_of`) khi bài gốc cũng `extracted`; nếu bài gốc không có trong file thì văn bản của nó được chèn vào và `duplicate_of` bị bỏ |
+| `articles.jsonl` | bài có trạng thái `extracted`, sắp theo URL. Bài trùng giữ nguyên dạng (không `text`, có `duplicate_of`) khi bài gốc cũng `extracted`; nếu bài gốc không có trong file thì `text`, `content_html`, `content_blocks`, `headings`, `observed_refs` của nó được chèn vào và `duplicate_of` bị bỏ |
 | `urls.txt` | URL của các bài trên, cùng thứ tự |
 | `README.json` | `description`, `crawl_id` (16 ký tự hex đầu của SHA-256 `input_sha256:started_at`), `source_crawl_finished_at_utc` (ISO 8601, `Z`), `article_count`, `url_count`, `files`, `crawl_failed_url_count`, `note`, `last_refresh_run_id` (nếu có). Bản crawl cũ không có `crawl_id` |
 

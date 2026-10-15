@@ -178,6 +178,6 @@ def classify_page_gate(*, status: int, url: str, html: str, text: str) -> PageGa
     )
     if heading_is_error or phrase_is_error:
         return PageGateDecision(expandable=False, reason="soft_404")
-    if not text.strip():
+    if not _visible_body_text(html):
         return PageGateDecision(expandable=False, reason="empty")
     return PageGateDecision(expandable=True, reason=None)

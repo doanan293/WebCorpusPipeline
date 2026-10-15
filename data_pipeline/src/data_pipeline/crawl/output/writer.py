@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 from data_pipeline.crawl.frontier.assets import AssetGroup, AssetRole
 from data_pipeline.crawl.options import CrawlOptions
-from data_pipeline.crawl.state.export import export_crawl
+from data_pipeline.crawl.state.export import DUPLICATE_DROPPED_FIELDS, export_crawl
 from data_pipeline.crawl.state.store import CrawlState
 
 _MAX_EXTENSION_LENGTH = 5
@@ -98,15 +98,18 @@ class CrawlWriter:
         self.state.complete_url(record)
 
     def write_article(self, record: dict[str, object]) -> dict[str, object]:
-        content_id = content_id_for(str(record.get("text") or ""))
+        text = str(record.get("text") or "")
+        content_id = content_id_for(text)
         url = str(record["url"])
         record_copy = dict(record)
         record_copy["content_id"] = content_id
 
-        owner_url = self.state.claim_content(content_id, url)
+        # An empty page has no content to own, so it never makes another page a duplicate.
+        owner_url = self.state.claim_content(content_id, url) if text.strip() else url
         if owner_url != url:
             record_copy["duplicate_of"] = owner_url
-            record_copy.pop("text", None)
+            for field in ("text", *DUPLICATE_DROPPED_FIELDS):
+                record_copy.pop(field, None)
 
         disposition = {
             "url": url,

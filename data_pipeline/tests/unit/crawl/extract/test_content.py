@@ -1,6 +1,9 @@
 from typing import Any
 
+from lxml import html as lxml_html
+
 from data_pipeline.crawl.extract.article import analyze_article
+from data_pipeline.crawl.extract.content import select_content
 from data_pipeline.crawl.extract.links import HtmlDiscovery
 
 
@@ -161,3 +164,14 @@ def test_title_text_and_links_fields_are_present() -> None:
     assert article["title"] == "A"
     assert article["text"] == "A\nB\nC"
     assert article["links"] == [{"url": "https://a.test/c", "text": "C"}]
+
+
+def test_select_content_falls_back_to_body_for_tiny_candidate() -> None:
+    root = lxml_html.fromstring(
+        "<html><body>"
+        '<ul class="content-icons"><li><a href="/fb">f</a></li><li>in</li></ul>'
+        "<div><p>Sinh viên cần nộp hồ sơ trước ngày 15 tháng 10 tại phòng đào tạo.</p></div>"
+        "</body></html>"
+    )
+
+    assert select_content(root).tag == "body"
