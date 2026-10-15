@@ -111,6 +111,9 @@ class FakeCrawlWriter:
         self.skipped.append(record)
         self.state.merge_url(record, completed=True)
 
+    def store_html(self, url: str, body: bytes, **metadata: object) -> None:
+        return None
+
     def record_rejected(self, record: dict[str, Any]) -> None:
         self.record_skipped(record)
 

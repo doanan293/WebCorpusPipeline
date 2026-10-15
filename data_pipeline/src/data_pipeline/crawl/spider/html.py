@@ -148,6 +148,13 @@ class HtmlHandler:
         analysis = analyze_article(response.body, response.url, getattr(response, "encoding", None))
         article_data = self.article_record(response, analysis, page.input_url, page.content_type)
         stored_article = self._store_article(article_data)
+        self.writer.store_html(
+            page.input_url,
+            response.body,
+            final_url=response.url,
+            status=response.status,
+            content_type=page.content_type,
+        )
         self.store_validators(page.input_url, response)
         if self.refresh is not None:
             self.refresh.record_change(

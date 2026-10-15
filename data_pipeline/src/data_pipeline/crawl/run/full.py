@@ -50,6 +50,7 @@ from data_pipeline.crawl.state.discovery import (
     upsert_host_discovery,
 )
 from data_pipeline.crawl.state.export import reason_counts
+from data_pipeline.crawl.state.html_store import HtmlStore
 from data_pipeline.crawl.state.refresh_store import RefreshStore
 from data_pipeline.crawl.state.requeue import (
     requeue_access_gates,
@@ -192,7 +193,16 @@ def _prepare(ctx: _CrawlContext, state: CrawlState, continue_run_id: str | None)
             import_reused_content(ctx.reuse_content_from, state, ctx.input_path)
             prepare_reused_asset_targets(state)
         prepared = _Prepared(
-            writer=CrawlWriter(ctx.output, state, ctx.options),
+            writer=CrawlWriter(
+                ctx.output,
+                state,
+                ctx.options,
+                html_store=(
+                    HtmlStore(ctx.output / "html", state.connection)
+                    if ctx.config.store_html
+                    else None
+                ),
+            ),
             policy=AssetPolicy(ctx.options),
             reused_targets=reused_asset_targets(state) if ctx.reuse_content_from else (),
             refresh_session=None,

@@ -36,9 +36,9 @@ Chi tiết từng package con:
 
 | Package | Nội dung |
 |---|---|
-| `crawl/run` | các chế độ chạy: `full` (crawl từ đầu, `--resume`), `refresh`, `reuse`, `discovery`; mã thoát |
+| `crawl/run` | các chế độ chạy: `full` (crawl từ đầu, `--resume`), `refresh`, `reuse`, `discovery`, `reextract`; mã thoát |
 | `crawl/spider` | `UnifiedSpider` và các bộ xử lý: `requests`, `html`, `assets`, `refresh`, `routing` |
-| `crawl/state` | SQLite `CrawlState`: `store`, `requeue`, `discovery`, `export`, `resume`, `refresh_store` |
+| `crawl/state` | SQLite `CrawlState`: `store`, `requeue`, `discovery`, `export`, `resume`, `refresh_store`, `html_store` (HTML gốc) |
 | `crawl/extract` | bóc tách HTML: `content`, `metadata`, `sanitize`, `blocks`, `assets`, `links`, `article` |
 | `crawl/frontier` | frontier, chính sách link, sitemap, seed, chính sách tải asset |
 | `crawl/runtime` | cấu hình Scrapy, middleware, điều chỉnh đồng thời thích ứng, tiến độ |
@@ -52,7 +52,7 @@ Các sơ đồ:
 
 - [Tổng quan](#tổng-quan-các-giai-đoạn): thứ tự các lệnh từ danh sách host đến corpus.
 - [Sơ đồ 1](#1-luồng-crawl-từ-đầu-và-crawl-tăng-dần): một lượt crawl, từ đầu và refresh.
-- [Sơ đồ 1b](#1b-các-chế-độ-chạy-crawl): chọn chế độ chạy: mới, resume, retry, refresh, reuse, discover.
+- [Sơ đồ 1b](#1b-các-chế-độ-chạy-crawl): chọn chế độ chạy: mới, resume, retry, refresh, reuse, discover, reextract.
 - [Sơ đồ 2](#2-luồng-xử-lý-dữ-liệu-theo-yêu-cầu-của-thầy): từ `final/` đến corpus, MongoDB và Kaggle.
 - [Sơ đồ 3](#3-kiểm-tra-host-domains-audit): kiểm tra host, chạy trước crawl.
 - [Sơ đồ 4](#4-chấm-điểm-trích-xuất-eval-extraction): chấm điểm thuật toán trích xuất.
@@ -307,6 +307,15 @@ flowchart TD
     DOUT["urls.txt (bảng targets), errors.jsonl,<br/>manifest.json phase discover, state/"]
     DSTART --> DPROBE --> DMODE --> DOUT
 
+    %% ===== REEXTRACT =====
+    XSTART["data-pipeline crawl reextract<br/>-o output"]
+    XCHK{"Crawl đã kết thúc,<br/>run.lock không bị giữ?"}
+    XRUN["Đọc html/ + raw_pages, không mạng;<br/>trích xuất lại mọi trang extracted,<br/>tính lại bài gốc theo thứ tự URL"]
+    XOUT["articles viết lại,<br/>final/ dựng lại"]
+    XSTART --> XCHK
+    XCHK -- "không" --> BAD
+    XCHK -- "có" --> XRUN --> XOUT
+
     classDef run fill:#dbeafe,stroke:#2563eb,color:#0f172a;
     classDef retry fill:#ffedd5,stroke:#ea580c,color:#0f172a;
     classDef out fill:#dcfce7,stroke:#16a34a,color:#0f172a;
@@ -317,7 +326,8 @@ flowchart TD
     class RETRY,RQ1,RQ3 retry;
     class BAD bad;
     class DSTART,DPROBE,DMODE disc;
-    class DOUT out;
+    class DOUT,XOUT out;
+    class XSTART,XCHK,XRUN run;
 ```
 
 | Chế độ | Khi nào dùng |
@@ -327,6 +337,7 @@ flowchart TD
 | `--refresh` | cập nhật tăng dần sau khi crawl đã kết thúc |
 | `--assets all --reuse-content-from` | nâng một crawl `content-only` đã xong thành bản có tệp tài nguyên |
 | `crawl discover` | chẩn đoán sitemap: xem host nào có sitemap và sitemap liệt kê bao nhiêu URL |
+| `crawl reextract` | áp dụng bộ trích xuất mới lên HTML gốc đã lưu của một crawl đã xong, không tải lại |
 
 ---
 

@@ -225,6 +225,13 @@ class RefreshHandler:
             self.session.finish_target(url, f"gate_{gate.reason}")
             return
         stored_article, outcome = self._store_refetch(response, analysis, url, content_type, text)
+        self.writer.store_html(
+            url,
+            response.body,
+            final_url=response.url,
+            status=response.status,
+            content_type=content_type,
+        )
         self.html.store_validators(url, response, last_checked_run=self.session.run_id)
         self.session.finish_target(url, outcome)
         yield from self.html.expand(

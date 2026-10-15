@@ -5,7 +5,7 @@ xuất hiện trong trường hợp nào; `null` nghĩa là key có mặt nhưng
 
 | Thư mục | Giai đoạn | File chính |
 |---|---|---|
-| `data/crawl/` | crawl | [`articles.jsonl`](#articlesjsonl), [`url_records.jsonl`](#url_recordsjsonl), [`errors.jsonl`](#errorsjsonl), [`files.jsonl`](#filesjsonl), [`manifest.json`](#manifestjson-crawl), [`final/`](#final), [`changes/<run_id>/`](#changesrun_id), [`state/`](#state) |
+| `data/crawl/` | crawl | [`articles.jsonl`](#articlesjsonl), [`url_records.jsonl`](#url_recordsjsonl), [`errors.jsonl`](#errorsjsonl), [`files.jsonl`](#filesjsonl), [`manifest.json`](#manifestjson-crawl), [`final/`](#final), [`changes/<run_id>/`](#changesrun_id), [`state/`](#state), `html/` |
 | `data/enrichment/` | enrich | [`state.sqlite3`](#statesqlite3), [`files/`, `parts/`, `cache/`](#tệp-trong-dataenrichment) |
 | `data/corpus/<phiên bản>/` | corpus | [`documents.jsonl`](#documentsjsonl), [`links.jsonl`](#linksjsonl), [`images.jsonl`](#imagesjsonl), [`manifest.json`](#manifestjson-corpus), [`extraction-report.json`](#extraction-reportjson) |
 | MongoDB | corpus | [collection](#mongodb) |
@@ -322,6 +322,10 @@ Lý do chọn mục tiêu (`targets_by_reason`): `homepage`, `sitemap`, `navigat
 | `manifest.json` | bản gốc của manifest |
 | `run.lock` | PID của tiến trình đang chạy |
 
+HTML gốc nằm ở `data/crawl/html/<2 ký tự đầu của sha256>/<sha256>.html.gz` (gzip mức 6). Tên là SHA-256 của
+**body**, nên nhiều URL cùng nội dung chỉ lưu một tệp. Bảng `raw_pages` nối URL với tệp. Chỉ ghi khi
+`store_html: true` trong `config/crawler.yaml`; `crawl reextract` đọc từ đây.
+
 | Bảng | Khoá | Nội dung |
 |---|---|---|
 | `url_records` | `url` | `payload` (JSON của `url_records.jsonl`), `status`, `completed` (0/1) |
@@ -333,7 +337,7 @@ Lý do chọn mục tiêu (`targets_by_reason`): `homepage`, `sitemap`, `navigat
 | `asset_referrers` | (`url`, `page_url`, `role`) | tài nguyên → trang tham chiếu |
 | `host_discovery` | `hostname` | trạng thái khám phá robots/sitemap của host |
 | `route_families` | `family_key` | nhóm route/phân trang: ordinal kế tiếp, dấu vân tay nội dung, `closed`, `closure_reason` |
-| `metrics` | `name` | chưa dùng |
+| `raw_pages` | `url` | HTML gốc của trang `extracted`: `final_url`, `status`, `content_type`, `fetched_at` (ISO 8601 UTC), `body_sha256` → tệp `html/<2 ký tự đầu>/<body_sha256>.html.gz` |
 | `refresh_runs`, `refresh_targets`, `refresh_changes` | `run_id`… | chỉ có sau refresh: lần chạy, mục tiêu và kết quả, thay đổi |
 
 ### Chế độ `discover`

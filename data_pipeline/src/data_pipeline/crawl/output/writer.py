@@ -4,6 +4,7 @@ import hashlib
 import json
 import mimetypes
 import os
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Literal
 from urllib.parse import urlsplit
@@ -11,6 +12,7 @@ from urllib.parse import urlsplit
 from data_pipeline.crawl.frontier.assets import AssetGroup, AssetRole
 from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.state.export import DUPLICATE_DROPPED_FIELDS, export_crawl
+from data_pipeline.crawl.state.html_store import HtmlStore
 from data_pipeline.crawl.state.store import CrawlState
 
 _MAX_EXTENSION_LENGTH = 5
@@ -67,16 +69,39 @@ class StorageLimitError(Exception):
 
 
 class CrawlWriter:
-    def __init__(self, root: Path, state: CrawlState, options: CrawlOptions) -> None:
+    def __init__(
+        self,
+        root: Path,
+        state: CrawlState,
+        options: CrawlOptions,
+        *,
+        html_store: HtmlStore | None = None,
+    ) -> None:
         self.root = root
         self.state = state
         self.options = options
+        self.html_store = html_store
         self.files_dir = root / "files"
         self._stored_bytes = 0
         if self.files_dir.exists():
             for entry in self.files_dir.iterdir():
                 if entry.is_file() and not entry.name.startswith("."):
                     self._stored_bytes += entry.stat().st_size
+
+    def store_html(
+        self, url: str, body: bytes, *, final_url: str, status: int, content_type: str
+    ) -> None:
+        """Keep the raw HTML of an extracted page when the crawl stores HTML."""
+        if self.html_store is None:
+            return
+        self.html_store.put(
+            url,
+            body,
+            final_url=final_url,
+            status=status,
+            content_type=content_type,
+            fetched_at=datetime.now(tz=UTC).isoformat(timespec="seconds"),
+        )
 
     def record_scheduled(self, record: dict[str, object]) -> None:
         self.state.merge_url(record, completed=False)

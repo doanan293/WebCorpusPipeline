@@ -191,3 +191,20 @@ def discover(
         tuning=tuning,
         resume=resume,
     )
+
+
+@app.command()
+def reextract(
+    output: Annotated[
+        Path, typer.Option("--output", "-o", help="Finished crawl output directory.")
+    ],
+) -> int:
+    """Re-run extraction on the stored raw HTML of a finished crawl and rebuild final/ (offline)."""
+    from data_pipeline.crawl.run import reextract as run_reextract
+
+    summary = run_reextract.reextract(output)
+    print(
+        f"reextract: pages={summary.pages} changed={summary.changed} "
+        f"duplicates={summary.duplicates}"
+    )
+    return 0

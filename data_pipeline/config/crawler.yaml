@@ -27,3 +27,4 @@ refresh_pagination_empty_pages: 1
 refresh_recent_days: 60
 refresh_recent_runs: 4
 refresh_recheck_limit: 5000
+store_html: true

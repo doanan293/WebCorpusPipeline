@@ -18,6 +18,7 @@ from data_pipeline.crawl.output.writer import CrawlWriter
 from data_pipeline.crawl.spider.refresh import RefreshSession, RefreshSettings
 from data_pipeline.crawl.spider.unified import UnifiedSpider
 from data_pipeline.crawl.state.export import iter_final_articles
+from data_pipeline.crawl.state.html_store import HtmlStore
 from data_pipeline.crawl.state.refresh_store import RefreshStore
 from data_pipeline.crawl.state.store import CrawlState
 
@@ -407,4 +408,30 @@ def test_404_on_refetch_is_removed_and_dropped_from_final(tmp_path: Path) -> Non
     assert changes(store) == {url: "removed"}
     assert (writer.state.url_record(url) or {})["status"] == "absent"
     assert [u for u, _ in iter_final_articles(writer.state)] == []
+    writer.close()
+
+
+def test_refresh_refetch_replaces_stored_body(tmp_path: Path) -> None:
+    plain = open_writer(tmp_path)
+    store = HtmlStore(tmp_path / "html", plain.state.connection)
+    writer = CrawlWriter(tmp_path, plain.state, plain.options, html_store=store)
+    url = "https://a.test/thong-bao"
+    known_page(writer, url, COUNTED_V1)
+    store.put(
+        url,
+        COUNTED_V1.encode(),
+        final_url=url,
+        status=200,
+        content_type="text/html",
+        fetched_at="2026-10-01T00:00:00+00:00",
+    )
+    spider, _ = refresh_spider(writer, [(url, "recent")])
+    [request] = list(spider.start_requests())
+    edited = COUNTED_V1.replace("học bổng", "nhập học")
+
+    list(spider.parse_response(page(request, edited)))
+
+    raw = store.get(url)
+    assert raw is not None
+    assert raw.body == edited.encode()
     writer.close()

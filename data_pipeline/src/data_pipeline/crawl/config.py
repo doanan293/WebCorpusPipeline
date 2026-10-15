@@ -55,6 +55,7 @@ _REQUIRED_SETTINGS = (
     "refresh_recent_days",
     "refresh_recent_runs",
     "refresh_recheck_limit",
+    "store_html",
 )
 _NON_POSITIVE_SETTINGS = frozenset(
     {
@@ -106,6 +107,7 @@ class CrawlerConfig:
     refresh_recent_days: int = 60
     refresh_recent_runs: int = 4
     refresh_recheck_limit: int = 5000
+    store_html: bool = True
 
     @classmethod
     def load(
@@ -170,6 +172,7 @@ class CrawlerConfig:
             refresh_recent_days=int(raw["refresh_recent_days"]),
             refresh_recent_runs=int(raw["refresh_recent_runs"]),
             refresh_recheck_limit=int(raw["refresh_recheck_limit"]),
+            store_html=required_bool("store_html"),
         )
         config._validate()
         return config
@@ -221,6 +224,7 @@ _RUNTIME_CONFIG_KEYS = {
     "refresh_recent_days",
     "refresh_recent_runs",
     "refresh_recheck_limit",
+    "store_html",
 }
 
 

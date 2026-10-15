@@ -89,6 +89,7 @@ trong tmux phải dừng và chạy lại để nhận mã hoặc YAML mới.
 | `errors.jsonl` | lỗi cuối cùng và lý do loại |
 | `manifest.json` | trạng thái, thời gian, số lượng, chỉ số tài nguyên, chẩn đoán route family, lý do bỏ qua |
 | `state/` | SQLite có thể resume (`index.sqlite3`), `manifest.json` gốc và khoá `run.lock` |
+| `html/` | HTML gốc nén gzip của mọi trang `extracted`, mỗi nội dung một tệp (`store_html: true`); xem [Trích xuất lại](#trích-xuất-lại-không-cần-mạng-crawl-reextract) |
 | `final/` | tạo lại khi crawl kết thúc: `articles.jsonl` (chỉ bài `extracted`; bài trùng giữ `duplicate_of` và không có `text`, trừ khi bản gốc không nằm trong file thì văn bản gốc được chèn vào), `urls.txt`, `README.json` (số bài, thời gian, `crawl_id`) |
 | `changes/<run_id>/` | đầu ra của mỗi lần refresh |
 | `logs/`, `archive/` | log của người vận hành và snapshot thủ công; `--resume` không dùng |
@@ -137,6 +138,24 @@ bị gỡ, `crawl_id`). `final/` được dựng lại như thường; `final/RE
 hưởng khả năng resume.
 
 Cập nhật corpus sau refresh: xem [enrich.md](enrich.md#sau-một-lần-refresh).
+
+## Trích xuất lại không cần mạng (`crawl reextract`)
+
+```bash
+uv run data-pipeline crawl reextract -o data/crawl
+```
+
+Khi `store_html: true` (mặc định), mỗi response HTML được trích xuất cũng được lưu nén vào `html/`, kể cả bài trùng
+và bản tải lại khi refresh. `crawl reextract` chạy lại bộ trích xuất hiện tại trên các tệp đó, **không gửi request
+nào**:
+
+- Chỉ xét URL đang `extracted` có HTML gốc; viết lại bản ghi trong `articles`.
+- Tính lại bài gốc/bài trùng theo thứ tự URL. Bài gốc cũ giữ quyền nếu `content_id` của nó không đổi, nên chạy hai
+  lần cho cùng kết quả.
+- Dựng lại `final/`. In `pages`, `changed` (số trang đổi `content_id`) và `duplicates`.
+- Từ chối khi crawl chưa kết thúc hoặc `state/run.lock` đang bị giữ.
+
+Nhờ vậy, sửa thuật toán trích xuất (khối nội dung, ngày, `observed_refs`…) chỉ cần `reextract` thay vì crawl lại.
 
 ## Mã thoát
 

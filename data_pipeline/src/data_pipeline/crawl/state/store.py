@@ -96,6 +96,21 @@ class CrawlState:
         else:
             return instance
 
+    @classmethod
+    def open_existing(cls, root: Path) -> CrawlState:
+        """Open a finished crawl's state as it is, holding its lock, without a new manifest."""
+        lock_path = _acquire_lock(root)
+        try:
+            manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+            connection = sqlite3.connect(str(root / "index.sqlite3"), autocommit=True)
+            connection.execute("PRAGMA journal_mode=WAL;")
+            cls._init_db(connection)
+            instance = cls(root, manifest, connection)
+        except Exception:
+            lock_path.unlink(missing_ok=True)
+            raise
+        return instance
+
     @staticmethod
     def _init_db(connection: sqlite3.Connection) -> None:
         connection.execute(
@@ -123,6 +138,18 @@ class CrawlState:
         connection.execute(
             "CREATE TABLE IF NOT EXISTS content_owner (content_id TEXT PRIMARY KEY, url TEXT NOT "
             "NULL);"
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS raw_pages (
+                url TEXT PRIMARY KEY,
+                final_url TEXT NOT NULL,
+                status INTEGER NOT NULL,
+                content_type TEXT NOT NULL,
+                fetched_at TEXT NOT NULL,
+                body_sha256 TEXT NOT NULL
+            );
+            """
         )
         connection.execute(
             """

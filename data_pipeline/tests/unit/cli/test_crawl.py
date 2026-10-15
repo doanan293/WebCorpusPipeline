@@ -10,6 +10,8 @@ from data_pipeline.cli.main import main
 from data_pipeline.core.paths import ProjectPaths
 from data_pipeline.crawl.run import discovery as run_discovery
 from data_pipeline.crawl.run import full as run_full
+from data_pipeline.crawl.run import reextract as run_reextract
+from data_pipeline.crawl.run.reextract import ReextractSummary
 
 
 def write_complete_config(directory: Path, name: str = "crawler.yaml") -> Path:
@@ -301,3 +303,24 @@ def test_removed_flags_are_unknown(
 ) -> None:
     assert crawl(seeds, tmp_path, config, *flag) == 2
     assert "No such option" in capsys.readouterr().err
+
+
+def test_reextract_command_prints_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seen: list[Path] = []
+
+    def fake_reextract(output: Path) -> ReextractSummary:
+        seen.append(output)
+        return ReextractSummary(pages=3, changed=2, duplicates=1)
+
+    monkeypatch.setattr(run_reextract, "reextract", fake_reextract)
+
+    code = main(["crawl", "reextract", "-o", str(tmp_path / "crawl")])
+
+    assert code == 0
+    assert seen == [tmp_path / "crawl"]
+    out = capsys.readouterr().out
+    assert "pages=3" in out
+    assert "changed=2" in out
+    assert "duplicates=1" in out
