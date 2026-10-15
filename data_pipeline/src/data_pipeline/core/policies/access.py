@@ -6,6 +6,7 @@ from http import HTTPStatus
 from typing import Literal
 
 import lxml.html as lxml_html
+from lxml import etree
 
 _MIN_VISIBLE_CHARS = 40
 _ERROR_PAGE_MAX_CHARS = 1000
@@ -87,10 +88,19 @@ def _is_embedded_in_public_form(
     return len(" ".join(public_text.split())) >= _MIN_VISIBLE_CHARS
 
 
-def _visible_body_text(html: str) -> str:
+def _parse_html(html: str) -> lxml_html.HtmlElement | None:
+    """Parse a page; None for empty, whitespace or comment-only markup lxml cannot root."""
+    if not html or not html.strip():
+        return None
     try:
-        root = lxml_html.fromstring(html or "<html></html>")
-    except (TypeError, ValueError):
+        return lxml_html.fromstring(html)
+    except (TypeError, ValueError, etree.ParserError):
+        return None
+
+
+def _visible_body_text(html: str) -> str:
+    root = _parse_html(html)
+    if root is None:
         return ""
     bodies = root.xpath("//body")
     container = bodies[0] if bodies else root
@@ -102,9 +112,8 @@ def _visible_body_text(html: str) -> str:
 
 
 def _has_page_level_captcha(html: str, *, rate_limited: bool = False) -> bool:
-    try:
-        root = lxml_html.fromstring(html or "<html></html>")
-    except (TypeError, ValueError):
+    root = _parse_html(html)
+    if root is None:
         return False
     for element in root.iter():
         if isinstance(element.tag, str) and element.tag.lower() in {"script", "link"}:
@@ -150,7 +159,9 @@ def classify_access(*, status: int, url: str, html: str, rendered: bool) -> Acce
 
 
 def html_title(html: str) -> str:
-    root = lxml_html.fromstring(html or "<html></html>")
+    root = _parse_html(html)
+    if root is None:
+        return ""
     values = root.xpath("//title/text() | //h1[1]//text()")
     return " ".join(str(value).strip() for value in values if str(value).strip())
 

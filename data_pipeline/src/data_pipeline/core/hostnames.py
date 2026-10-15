@@ -1,16 +1,15 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
-from urllib.parse import urlsplit
+
+_LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
 
 
 def normalize_hostname(value: str) -> str:
     hostname = value.strip().lower().rstrip(".")
-    if not hostname or any(char.isspace() for char in hostname):
-        msg = f"invalid hostname: {value!r}"
-        raise ValueError(msg)
-    parsed = urlsplit(f"//{hostname}")
-    if parsed.hostname != hostname or parsed.port is not None or "/" in hostname:
+    labels = hostname.split(".")
+    if len(labels) < 2 or not all(_LABEL.match(label) for label in labels):  # noqa: PLR2004 -- a name and a TLD
         msg = f"expected hostname, got: {value!r}"
         raise ValueError(msg)
     return hostname
@@ -25,8 +24,6 @@ def load_hostnames(path: Path) -> frozenset[str]:
         if value.lower().startswith(("http://", "https://")):
             msg = f"{path}:{line_number}: expected hostname, got URL: {value!r}"
             raise ValueError(msg)
-        if value.startswith("-") or ":" in value or " " in value:
-            continue
         try:
             hostnames.add(normalize_hostname(value))
         except ValueError as exc:

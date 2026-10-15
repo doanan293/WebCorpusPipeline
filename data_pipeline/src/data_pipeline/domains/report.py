@@ -4,19 +4,18 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from data_pipeline.core.hostnames import load_hostnames
 from data_pipeline.domains.probe import ProbeResult
 
 
 def load_candidate_hostnames(path: Path) -> tuple[str, ...]:
-    hostnames: set[str] = set()
-    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        hostname = raw_line.strip().lower().rstrip(".")
-        if not hostname or hostname.startswith("#"):
-            continue
-        if hostname != "hust.edu.vn" and not hostname.endswith(".hust.edu.vn"):
-            msg = f"{path}:{line_number}: hostname outside HUST scope: {hostname}"
-            raise ValueError(msg)
-        hostnames.add(hostname)
+    hostnames = load_hostnames(path)
+    outside = sorted(
+        host for host in hostnames if host != "hust.edu.vn" and not host.endswith(".hust.edu.vn")
+    )
+    if outside:
+        msg = f"{path}: hostname outside HUST scope: {', '.join(outside)}"
+        raise ValueError(msg)
     return tuple(sorted(hostnames))
 
 

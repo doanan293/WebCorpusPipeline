@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from posixpath import normpath
-from urllib.parse import SplitResult, parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import SplitResult, parse_qsl, quote_plus, unquote_plus, urlsplit, urlunsplit
 
 _REPEATED_SEGMENT_RUN = 4
 _MAX_QUERY_PAIRS = 50
@@ -62,15 +62,40 @@ def _path_trap(lowered_path: str, segments: list[str]) -> str | None:
     return None
 
 
+# A query item; a value of None is a bare key such as "?print".
+_QueryItem = tuple[str, str | None]
+
+
+def _query_items(query: str) -> list[_QueryItem]:
+    items: list[_QueryItem] = []
+    for raw in query.split("&"):
+        if not raw:
+            continue
+        key, separator, value = raw.partition("=")
+        items.append((unquote_plus(key), unquote_plus(value) if separator else None))
+    return items
+
+
+def _encode_query(items: list[_QueryItem]) -> str:
+    """Encode sorted items, keeping bare keys bare and "/" readable."""
+    ordered = sorted(items, key=lambda item: (item[0], item[1] is not None, item[1] or ""))
+    return "&".join(
+        quote_plus(key, safe="/")
+        if value is None
+        else f"{quote_plus(key, safe='/')}={quote_plus(value, safe='/')}"
+        for key, value in ordered
+    )
+
+
 def _clean_query(
-    pairs: list[tuple[str, str]],
+    pairs: list[_QueryItem],
     *,
     trap_keys: set[str],
     lowered_path: str,
     check_traps: bool,
-) -> list[tuple[str, str]] | str:
+) -> list[_QueryItem] | str:
     """Drop tracking parameters; return a rejection reason when a search trap shows up."""
-    cleaned: list[tuple[str, str]] = []
+    cleaned: list[_QueryItem] = []
     for key, value in pairs:
         key_lower = key.lower()
         if key_lower in trap_keys or key_lower in _TRACKING_KEYS or key_lower.startswith("utm_"):
@@ -112,7 +137,7 @@ def canonicalize_url(
     segments = [segment for segment in path.split("/") if segment]
     if check_traps and (reason := _path_trap(lowered_path, segments)):
         return None, hostname, reason
-    pairs = parse_qsl(parts.query, keep_blank_values=True)
+    pairs = _query_items(parts.query)
     if len(pairs) > _MAX_QUERY_PAIRS:
         return None, hostname, "too_many_query_pairs"
     cleaned = _clean_query(
@@ -125,7 +150,7 @@ def canonicalize_url(
         return None, hostname, cleaned
     if check_traps and "calendar" in lowered_path and _is_calendar_trap(segments):
         return None, hostname, "calendar_trap"
-    canonical = urlunsplit((scheme, netloc, path, urlencode(sorted(cleaned)), ""))
+    canonical = urlunsplit((scheme, netloc, path, _encode_query(cleaned), ""))
     return canonical, hostname, None
 
 

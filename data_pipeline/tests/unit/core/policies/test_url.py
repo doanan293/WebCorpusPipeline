@@ -55,3 +55,11 @@ def test_tracking_parameters_do_not_create_distinct_urls() -> None:
 )
 def test_frontier_traps(url: str, reason: str) -> None:
     assert classify_frontier_trap(url) == reason
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://a.test/x?abc", "https://a.test/index.php?/news/1", "https://a.test/x?a=1&flag"],
+)
+def test_canonicalize_keeps_valueless_keys_and_slashes(url: str) -> None:
+    assert canonicalize_url(url)[0] == url

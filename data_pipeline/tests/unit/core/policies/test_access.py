@@ -208,3 +208,12 @@ def test_expansion_gate_uses_visible_body_text() -> None:
     gate = classify_page_gate(status=200, url="https://a.test/", html=html, text="")
 
     assert (gate.expandable, gate.reason) == (True, None)
+
+
+@pytest.mark.parametrize("html", ["", "   \n  ", "<!-- only a comment -->"])
+def test_whitespace_html_is_empty_not_error(html: str) -> None:
+    gate = classify_page_gate(status=200, url="https://a.test/p", html=html, text="")
+    access = classify_access(status=200, url="https://a.test/p", html=html, rendered=False)
+
+    assert gate.reason == "empty"
+    assert access.outcome == "public"

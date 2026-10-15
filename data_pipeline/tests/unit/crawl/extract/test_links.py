@@ -1,6 +1,10 @@
-import pytest
+from typing import Any
 
-from data_pipeline.crawl.extract.links import normalize_url, resource_kind
+import pytest
+from lxml import html as lxml_html
+
+from data_pipeline.crawl.extract import links
+from data_pipeline.crawl.extract.links import discoveries_from_root, normalize_url, resource_kind
 
 DECLARED_UTF8_HTML = (
     '<?xml version="1.0" encoding="utf-8"?>'
@@ -60,3 +64,36 @@ def test_resource_kind_uses_mime_before_extension(
     url: str, content_type: str, expected: str
 ) -> None:
     assert resource_kind(url, content_type) == expected
+
+
+def test_observed_refs_skip_link_noise() -> None:
+    root = lxml_html.fromstring(
+        "<html><head>"
+        '<link rel="icon" href="/favicon.ico"><link rel="manifest" href="/site.webmanifest">'
+        '<link rel="preconnect" href="https://fonts.test"><link rel="next" href="/news?page=2">'
+        '<link rel="alternate" hreflang="en" href="/en/news"><link rel="alternate" href="/feed">'
+        '</head><body><a href="/a">A</a></body></html>'
+    )
+
+    urls = [item["url"] for item in discoveries_from_root(root, "https://a.test/news")]
+
+    assert urls == ["https://a.test/news?page=2", "https://a.test/en/news", "https://a.test/a"]
+
+
+def test_labels_computed_only_for_href_src(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    original = links._element_label
+
+    def spy(element: Any) -> str:
+        calls.append(element.tag)
+        return original(element)
+
+    monkeypatch.setattr(links, "_element_label", spy)
+    root = lxml_html.fromstring(
+        '<html><body><div><p>Text <b>bold</b></p><a href="/a">A</a>'
+        '<img src="/i.png"><span>x</span></div></body></html>'
+    )
+
+    discoveries_from_root(root, "https://a.test/")
+
+    assert sorted(calls) == ["a", "img"]

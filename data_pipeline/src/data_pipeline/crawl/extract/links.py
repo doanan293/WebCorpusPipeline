@@ -233,6 +233,17 @@ def _srcset_urls(value: str) -> list[str]:
     return urls
 
 
+_URL_ATTRIBUTES = ("href", "src", "data", "poster", "srcset")
+_SRC_TAGS = frozenset({"audio", "embed", "iframe", "img", "input", "source", "track", "video"})
+
+
+def _is_navigation_link(relation: set[str], element: etree._Element) -> bool:
+    """Keep <link> only for pagination and language alternates, not icons or preconnects."""
+    return bool(relation & {"next", "prev"}) or (
+        "alternate" in relation and bool(element.get("hreflang"))
+    )
+
+
 def discoveries_from_root(root: etree._Element, base_url: str) -> list[HtmlDiscovery]:
     discoveries: list[HtmlDiscovery] = []
     seen: set[tuple[str, str, str, tuple[str, ...]]] = set()
@@ -267,23 +278,18 @@ def discoveries_from_root(root: etree._Element, base_url: str) -> list[HtmlDisco
         if not isinstance(element.tag, str):
             continue
         tag = element.tag.lower()
+        if not any(element.get(attribute) for attribute in _URL_ATTRIBUTES):
+            continue
         relation = {token.lower() for token in element.get("rel", "").split()}
         as_kind = element.get("as", "").lower()
         if tag == "script" or "stylesheet" in relation or as_kind in {"font", "script", "style"}:
             continue
+        if tag == "link" and not _is_navigation_link(relation, element):
+            continue
         text = _element_label(element)
         if tag in {"a", "area", "link"} and element.get("href"):
             add(element.get("href", ""), text, tuple(sorted(relation)))
-        if tag in {
-            "audio",
-            "embed",
-            "iframe",
-            "img",
-            "input",
-            "source",
-            "track",
-            "video",
-        } and element.get("src"):
+        if tag in _SRC_TAGS and element.get("src"):
             add(element.get("src", ""), text, (), kind_hint="file")
         if tag == "object" and element.get("data"):
             add(element.get("data", ""), text, (), kind_hint="file")
