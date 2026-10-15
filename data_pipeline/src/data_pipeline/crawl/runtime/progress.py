@@ -87,8 +87,7 @@ class CrawlProgressReporter:
     def from_crawler(cls, crawler: Crawler) -> CrawlProgressReporter:
         reporter = cls(crawler)
         crawler.progress_reporter = reporter  # pyrefly: ignore[missing-attribute] -- read back by run/full.py
-        tuning = crawler.settings.get("HUST_TUNING")
-        interval = float(getattr(tuning, "progress_interval_seconds", 0.0) or 0.0)
+        interval = crawler.settings["HUST_TUNING"].progress_interval_seconds
         if interval > 0:
             loop = LoopingCall(reporter.report)
             reporter._loop = loop

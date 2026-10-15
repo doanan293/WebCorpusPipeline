@@ -64,7 +64,6 @@ def test_candidate_rejected_by_frontier_returns_none() -> None:
         "https://other.test/page",
         "recursive",
         None,
-        "html",
         "page",
         explicit=False,
         discovery_source="html_link",

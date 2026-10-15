@@ -61,8 +61,6 @@ class DiscoverySpider(scrapy.Spider):
             "sitemap": self._sitemap,
             "optional_absent": self._absent,
             "http_error": self._http_error,
-            "transient": self._unsupported,
-            "unknown": self._unsupported,
         }
 
     @override
@@ -267,10 +265,6 @@ class DiscoverySpider(scrapy.Spider):
                 "error": probe.route.error or f"http_{response.status}",
             }
         )
-
-    def _unsupported(self, probe: _Probe) -> Iterator[scrapy.Request]:
-        self.writer.write_error({"url": probe.input_url, "error": "unsupported_content_type"})
-        return iter(())
 
     def on_request_error(self, failure: Any) -> Iterator[scrapy.Request] | None:
         request = failure.request

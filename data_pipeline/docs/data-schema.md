@@ -205,11 +205,11 @@ Chỉ mục trạng thái của mọi URL crawler đã gặp, sắp theo URL. Fi
 | Nhóm | Giá trị |
 |---|---|
 | Loại liên kết điều hướng | `search_filter` (tìm kiếm, bộ lọc, danh sách), `action_auth` (đăng nhập, giỏ hàng, in, chia sẻ), `calendar_archive` (lưu trữ theo ngày) |
-| Phạm vi | `host_out_of_scope` (host không thuộc seed), `exact_seed_no_expansion` (liên kết trên trang seed exact) |
+| Phạm vi | `host_out_of_scope` (host không thuộc seed) |
 | Bẫy URL | `api_endpoint_trap` (`wp-json`), `feed_trap` (feed/rss/atom), `auth_trap`, `calendar_export_trap` (`.ics`), `search_trap`, `action_endpoint_trap` |
 | Hạn mức | `host_url_limit`, `total_url_limit` |
 | Truy cập | `login_required`, `captcha_blocked` |
-| Tài nguyên | `unsupported_asset_type`, `unexpected_asset_content` (URL tài nguyên trả HTML), `asset_mode_content_only`, `file_size_limit`, `storage_budget`, `non_public_address`, `unsupported_scheme`, `credentials_not_allowed`, `non_default_port`, `redirect_without_location`, `redirect_limit`, `redirect_loop` |
+| Tài nguyên | `unsupported_asset_type`, `unexpected_asset_content` (URL tài nguyên trả HTML), `file_size_limit`, `storage_budget`, `non_public_address`, `unsupported_scheme`, `credentials_not_allowed`, `non_default_port`, `redirect_without_location`, `redirect_limit`, `redirect_loop` |
 | Lỗi (`failed`) | `http_<mã>`, `request_failed`, `sitemap_parse_error`; seed không hợp lệ: `unsupported_scheme`, `invalid_hostname`, `invalid_url` |
 | Dữ liệu cũ | `url_length_limit` (do script sửa chữa ghi, mã hiện tại không sinh) |
 
@@ -308,7 +308,7 @@ refresh, SQLite được sao lưu vào `archive/pre-refresh-<run_id>/index.sqlit
 Lý do chọn mục tiêu (`targets_by_reason`): `homepage`, `sitemap`, `navigation`, `pagination_head`, `recent`,
 `pagination_next`. Kết quả (`outcomes`): `new`, `unchanged`, `modified`, `not_modified` (304), `fetched`
 (robots/sitemap), `http_<mã>`, `sitemap_parse_error`, `non_html`, `gate_soft_404`, `gate_login`, `gate_captcha`,
-`gate_empty`, `gate_unsupported`, `access_gate`, `request_failed`, `pending`.
+`gate_empty`, `access_gate`, `request_failed`, `pending`.
 
 ### `state/`
 

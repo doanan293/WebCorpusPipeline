@@ -9,7 +9,6 @@ from scrapy.exceptions import IgnoreRequest
 from scrapy.http import Response
 
 from data_pipeline.crawl.config import CrawlerConfig
-from data_pipeline.crawl.extract.links import resource_kind
 from data_pipeline.crawl.frontier.assets import (
     AssetPolicy,
     is_recognizable_binary,
@@ -65,17 +64,6 @@ class UnifiedSpider(scrapy.Spider):
         self.refresh = refresh
         self.refresh_targets = tuple(refresh_targets)
 
-        exact_hosts = (
-            frozenset(
-                (urlsplit(u).hostname or "").lower().rstrip(".")
-                for u in seeds.exact_urls
-                if urlsplit(u).hostname
-            )
-            - seeds.recursive_hostnames
-        )
-        for eh in exact_hosts:
-            self.coordinator.register_exact_host(eh)
-
         self.requests = RequestFactory(
             options=options,
             frontier=frontier,
@@ -123,7 +111,6 @@ class UnifiedSpider(scrapy.Spider):
                 f"https://{hostname}/robots.txt",
                 "recursive",
                 None,
-                "file",
                 "robots",
                 explicit=True,
                 discovery_source="seed",
@@ -139,7 +126,6 @@ class UnifiedSpider(scrapy.Spider):
                     sm_url,
                     "recursive",
                     None,
-                    "file",
                     "sitemap",
                     explicit=True,
                     discovery_source="sitemap",
@@ -152,7 +138,6 @@ class UnifiedSpider(scrapy.Spider):
                 f"https://{hostname}/",
                 "recursive",
                 None,
-                "html",
                 "page",
                 explicit=False,
                 discovery_source="seed",
@@ -165,14 +150,12 @@ class UnifiedSpider(scrapy.Spider):
         for url in self.seeds.exact_urls:
             host = (urlsplit(url).hostname or "").lower().rstrip(".")
             mode = "recursive" if host in self.seeds.recursive_hostnames else "exact"
-            kind = resource_kind(url)
             group = recognizable_asset(url)
             if group is not None or is_recognizable_binary(url):
                 cand = Candidate(
                     url=url,
                     source_mode=mode,
                     discovered_from=None,
-                    kind=kind,
                     purpose="asset",
                     explicit=True,
                     discovery_source="seed",
@@ -184,7 +167,6 @@ class UnifiedSpider(scrapy.Spider):
                     url=url,
                     source_mode=mode,
                     discovered_from=None,
-                    kind=kind,
                     purpose="page",
                     explicit=True,
                     discovery_source="seed",
@@ -293,12 +275,10 @@ class UnifiedSpider(scrapy.Spider):
 
             if is_homepage or is_robots or is_sitemap:
                 http_url = f"http://{parsed.netloc}{parsed.path}"
-                kind = "file" if (is_robots or is_sitemap) else "html"
                 cand = Candidate(
                     http_url,
                     seed_mode,
                     None,
-                    kind,
                     purpose,
                     explicit=request.meta.get("explicit", False),
                     discovery_source=discovery_source,

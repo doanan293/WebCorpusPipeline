@@ -1,9 +1,7 @@
 import json
 from pathlib import Path
 
-from data_pipeline.crawl.state.export import (
-    export,
-)
+from data_pipeline.crawl.state.export import export_crawl
 from data_pipeline.crawl.state.requeue import (
     requeue_access_gates,
     requeue_retryable_failures,
@@ -92,7 +90,7 @@ def test_requeue_retryable_failures_only_resets_transport_errors(tmp_path: Path)
     ]
     assert all(not record.get("completed") for record in pending)
 
-    export(state, tmp_path / "output")
+    export_crawl(state, tmp_path / "output")
     remaining_errors = [
         json.loads(line) for line in (tmp_path / "output/errors.jsonl").read_text().splitlines()
     ]

@@ -18,7 +18,7 @@ class AccessDecision:
     reason: str | None
 
 
-PageGateReason = Literal["soft_404", "login", "captcha", "empty", "unsupported"]
+PageGateReason = Literal["soft_404", "login", "captcha", "empty"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,11 +155,7 @@ def html_title(html: str) -> str:
     return " ".join(str(value).strip() for value in values if str(value).strip())
 
 
-def classify_page_gate(
-    *, status: int, url: str, html: str, text: str, supported: bool = True
-) -> PageGateDecision:
-    if not supported:
-        return PageGateDecision(expandable=False, reason="unsupported")
+def classify_page_gate(*, status: int, url: str, html: str, text: str) -> PageGateDecision:
     access = classify_access(status=status, url=url, html=html, rendered=True)
     if access.outcome == "login_required":
         return PageGateDecision(expandable=False, reason="login")

@@ -9,7 +9,6 @@ from scrapy.exceptions import IgnoreRequest
 from scrapy.http import HtmlResponse, Request, Response
 
 from data_pipeline.crawl.config import CrawlerConfig
-from data_pipeline.crawl.extract.assets import ArticleAsset
 from data_pipeline.crawl.frontier.assets import AssetPolicy
 from data_pipeline.crawl.frontier.frontier import Candidate, FrontierPolicy
 from data_pipeline.crawl.frontier.seeds import SeedSet
@@ -61,12 +60,6 @@ class FakeState:
         if error is not None:
             self.errors.append(error)
         self.merge_url(disposition, completed=True)
-
-    def put_article(self, record: dict[str, Any]) -> None:
-        self.articles.append(record)
-
-    def put_file(self, record: dict[str, Any]) -> None:
-        self.files.append(record)
 
     def put_error(self, record: dict[str, Any]) -> None:
         self.errors.append(record)
@@ -125,9 +118,6 @@ class FakeCrawlWriter:
             self.next_duplicate_of = None
         self.state.complete_url({"url": record["url"], "status": "extracted"}, article=rec)
         return rec
-
-    def put_article(self, record: dict[str, Any]) -> None:
-        self.write_article(record)
 
     def write_file(
         self,
@@ -237,7 +227,6 @@ def seed_duplicate(frontier: FrontierPolicy, url: str) -> None:
         url=url,
         source_mode="recursive",
         discovered_from=None,
-        kind="html",
         purpose="page",
         explicit=False,
         discovery_source="html_link",
@@ -440,36 +429,6 @@ def test_https_transport_failure_yields_one_http_fallback_and_second_yields_none
 
 
 # Migrated Cases from ContentSpider & Historical Spider
-
-
-def test_asset_policy_schedules_in_all_and_records_in_content_only() -> None:
-    light_policy = AssetPolicy(CrawlOptions(assets="content-only"))
-    assert (
-        light_policy.consider(
-            ArticleAsset("https://a.test/photo.jpg", "inline_image", external=False)
-        ).action
-        == "record_only"
-    )
-    assert (
-        light_policy.consider(
-            ArticleAsset("https://a.test/report.pdf", "document_attachment", external=False)
-        ).action
-        == "record_only"
-    )
-
-    all_policy = AssetPolicy(CrawlOptions(assets="all"))
-    assert (
-        all_policy.consider(
-            ArticleAsset("https://a.test/photo.jpg", "inline_image", external=False)
-        ).action
-        == "schedule"
-    )
-    assert (
-        all_policy.consider(
-            ArticleAsset("https://a.test/report.pdf", "document_attachment", external=False)
-        ).action
-        == "schedule"
-    )
 
 
 def test_known_image_media_targets_skipped_without_request() -> None:

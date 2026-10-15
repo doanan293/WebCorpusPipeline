@@ -23,7 +23,11 @@ def _slots(middleware: AdaptiveConcurrencyMiddleware) -> dict[str, Any]:
 
 def _middleware() -> tuple[AdaptiveConcurrencyMiddleware, Any]:
     crawler: Any = SimpleNamespace(
-        settings={"HUST_TUNING": SimpleNamespace(max_per_host=4, max_concurrency=64)},
+        settings={
+            "HUST_TUNING": SimpleNamespace(
+                max_per_host=4, max_concurrency=64, resource_limit_percent=80
+            )
+        },
         engine=SimpleNamespace(
             downloader=SimpleNamespace(
                 slots={"a.test": SimpleNamespace(concurrency=1, delay=0.25)},

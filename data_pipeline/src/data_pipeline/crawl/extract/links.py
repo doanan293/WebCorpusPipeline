@@ -5,7 +5,6 @@ from typing import TypedDict
 from urllib.parse import quote, unquote_plus, urljoin, urlsplit, urlunsplit
 
 from lxml import etree
-from lxml import html as lxml_html
 
 _TRACKING_KEYS = {
     "_ga",
@@ -126,16 +125,6 @@ def normalize_url(value: str, base_url: str | None = None) -> str | None:
     path = quote(parts.path or "/", safe="/%:@!$&'()*+,;=-._~")
     query = quote(_clean_query(parts.query), safe="!$&'()*+,-./:;=?@_%~")
     return urlunsplit((scheme, rendered_host, path, query, ""))
-
-
-def parse_html(source: bytes | str, encoding: str | None = None) -> etree._Element:
-    if isinstance(source, str):
-        source = source.encode("utf-8")
-        encoding = "utf-8"
-    if not source.strip():
-        source = b"<html></html>"
-    parser = lxml_html.HTMLParser(encoding=encoding, recover=True)
-    return lxml_html.document_fromstring(source, parser=parser)
 
 
 def normalized_text(values: list[str] | tuple[str, ...]) -> str:
@@ -291,7 +280,6 @@ def discoveries_from_root(root: etree._Element, base_url: str) -> list[HtmlDisco
             "iframe",
             "img",
             "input",
-            "script",
             "source",
             "track",
             "video",

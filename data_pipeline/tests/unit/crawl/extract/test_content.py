@@ -1,5 +1,16 @@
+from typing import Any
+
 from data_pipeline.crawl.extract.article import analyze_article
-from data_pipeline.crawl.extract.content import discover_html, extract_html
+from data_pipeline.crawl.extract.links import HtmlDiscovery
+
+
+def extract_html(html: bytes | str, url: str, encoding: str | None = None) -> dict[str, Any]:
+    return analyze_article(html, url, encoding).article
+
+
+def discover_html(html: bytes | str, url: str, encoding: str | None = None) -> list[HtmlDiscovery]:
+    return analyze_article(html, url, encoding).discoveries
+
 
 DECLARED_UTF8_HTML = (
     '<?xml version="1.0" encoding="utf-8"?>'
@@ -142,7 +153,7 @@ def test_discovery_includes_media_and_srcset_but_discards_transients() -> None:
     ]
 
 
-def test_legacy_title_text_and_links_fields_remain_present() -> None:
+def test_title_text_and_links_fields_are_present() -> None:
 
     article = analyze_article(
         "<main><h1>A</h1><p>B</p><a href='/c'>C</a></main>", "https://a.test/"

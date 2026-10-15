@@ -22,8 +22,6 @@ RouteAction = Literal[
 @dataclass(frozen=True, slots=True)
 class ResponseRoute:
     action: RouteAction
-    kind: str
-    status: int
     content_type: str
     error: str | None = None
 
@@ -34,14 +32,10 @@ def route_response(
     normalized_type = content_type.partition(";")[0].strip().lower()
     if status >= HTTPStatus.BAD_REQUEST:
         if purpose in {"robots", "sitemap"} and status in {404, 410}:
-            return ResponseRoute("optional_absent", purpose, status, normalized_type)
-        return ResponseRoute("http_error", purpose, status, normalized_type, f"http_{status}")
-    if purpose == "robots":
-        return ResponseRoute("robots", "robots", status, normalized_type)
-    if purpose == "sitemap":
-        return ResponseRoute("sitemap", "sitemap", status, normalized_type)
+            return ResponseRoute("optional_absent", normalized_type)
+        return ResponseRoute("http_error", normalized_type, f"http_{status}")
+    if purpose in {"robots", "sitemap"}:
+        return ResponseRoute(purpose, normalized_type)
     if purpose == "asset":
-        kind = resource_kind(url, normalized_type)
-        return ResponseRoute("file", kind, status, normalized_type)
-    kind = resource_kind(url, normalized_type)
-    return ResponseRoute(cast(RouteAction, kind), kind, status, normalized_type)
+        return ResponseRoute("file", normalized_type)
+    return ResponseRoute(cast(RouteAction, resource_kind(url, normalized_type)), normalized_type)

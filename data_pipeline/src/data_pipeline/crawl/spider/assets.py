@@ -43,7 +43,7 @@ class AssetResponseHandler:
                     "final_url": response.url,
                     "status": "discovered_not_downloaded",
                     "seed_type": seed_mode,
-                    "discovered_from": response.meta.get("referring_page"),
+                    "discovered_from": response.meta.get("discovered_from"),
                     "content_type": content_type or None,
                     "discovery_source": discovery_source,
                     "response_purpose": "asset" if request_scope == "asset" else purpose,
@@ -115,7 +115,7 @@ class AssetResponseHandler:
                         "final_url": response.url,
                         "status": "discovered_not_downloaded",
                         "seed_type": seed_mode,
-                        "discovered_from": response.meta.get("referring_page"),
+                        "discovered_from": response.meta.get("discovered_from"),
                         "content_type": content_type or None,
                         "discovery_source": discovery_source,
                         "response_purpose": "asset",
@@ -140,7 +140,7 @@ class AssetResponseHandler:
                         response.body,
                         asset_group=group,
                         asset_role=derived_role,
-                        referring_page=response.meta.get("referring_page"),
+                        referring_page=response.meta.get("discovered_from"),
                     )
                 except StorageLimitError as exc:
                     self.writer.record_skipped(

@@ -8,9 +8,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import yaml
 
-from data_pipeline.core.hostnames import load_hostnames
-from data_pipeline.core.paths import project_paths
-
 MIN_HTTP_STATUS = 100
 MAX_HTTP_STATUS = 599
 MAX_PERCENT = 100
@@ -114,17 +111,12 @@ class CrawlerConfig:
     def load(
         cls,
         config_path: Path,
-        domains_path: Path | None = None,
         *,
+        hostnames: frozenset[str],
         environ: Mapping[str, str] | None = None,
-        hostnames: frozenset[str] | None = None,
     ) -> CrawlerConfig:
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         environment = os.environ if environ is None else environ
-        if hostnames is None:
-            hostnames = load_hostnames(domains_path or project_paths().domains_active)
-        else:
-            hostnames = frozenset(hostnames)
         contact = environment.get("CRAWLER_CONTACT", "").strip()
         if not contact:
             msg = "CRAWLER_CONTACT is required (set it in .env)"
@@ -147,7 +139,7 @@ class CrawlerConfig:
             return value
 
         config = cls(
-            hostnames=hostnames,
+            hostnames=frozenset(hostnames),
             contact=contact,
             browser_user_agent=str(raw["browser_user_agent"]),
             concurrent_requests=int(raw["concurrent_requests"]),
@@ -191,9 +183,6 @@ class CrawlerConfig:
             status < MIN_HTTP_STATUS or status > MAX_HTTP_STATUS for status in self.retry_statuses
         ):
             msg = "retry_statuses must contain HTTP status codes"
-            raise ValueError(msg)
-        if self.download_delay_seconds <= 0:
-            msg = "download_delay_seconds must be positive"
             raise ValueError(msg)
         if (
             self.throttle_start_seconds <= 0
@@ -252,15 +241,6 @@ def _normalized_snapshot(values: dict[str, object]) -> dict[str, object]:
         return value
 
     return {key: normalize(value) for key, value in sorted(values.items())}
-
-
-def config_snapshot(config: CrawlerConfig, *, concurrency: int) -> dict[str, object]:
-    """Return a deterministic JSON-safe configuration snapshot for phase state."""
-
-    values = asdict(config)
-    values["concurrent_requests"] = concurrency
-
-    return _normalized_snapshot(values)
 
 
 def semantic_config_snapshot(config: CrawlerConfig) -> dict[str, object]:

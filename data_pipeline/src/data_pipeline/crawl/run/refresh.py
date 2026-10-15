@@ -12,14 +12,18 @@ from urllib.parse import urlsplit
 
 from data_pipeline.crawl.spider.refresh import RefreshSession, RefreshSettings
 from data_pipeline.crawl.state.export import iter_final_articles
-from data_pipeline.crawl.state.refresh_store import CONTINUABLE_RUN_STATUSES, RefreshStore
+from data_pipeline.crawl.state.refresh_store import (
+    CONTINUABLE_RUN_STATUSES,
+    FINISHED_STATUSES,
+    RefreshStore,
+    latest_refresh_run,
+)
 from data_pipeline.crawl.state.requeue import restore_status
 from data_pipeline.crawl.state.store import CrawlState
 
 RefreshReason = Literal[
     "homepage", "sitemap", "navigation", "pagination_head", "recent", "pagination_next"
 ]
-FINISHED_CRAWL_STATUSES = frozenset({"complete", "complete_with_failures", "truncated"})
 RUN_ID_FORMAT = "%Y%m%dT%H%M%SZ"
 
 
@@ -47,20 +51,12 @@ def _hostname(url: str) -> str:
     return (urlsplit(url).hostname or "").lower().rstrip(".")
 
 
-def _latest_run(db_path: Path) -> tuple[str, str] | None:
+def _latest_run(db_path: Path) -> dict[str, object] | None:
     if not db_path.exists():
         return None
     connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
-        table = connection.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'refresh_runs';"
-        ).fetchone()
-        if table is None:
-            return None
-        row = connection.execute(
-            "SELECT run_id, status FROM refresh_runs ORDER BY run_id DESC LIMIT 1;"
-        ).fetchone()
-        return (str(row[0]), str(row[1])) if row else None
+        return latest_refresh_run(connection)
     finally:
         connection.close()
 
@@ -72,10 +68,10 @@ def preflight(state_dir: Path) -> str | None:
         msg = f"--refresh requires an existing crawl: {state_dir.parent}"
         raise ValueError(msg)
     latest = _latest_run(state_dir / "index.sqlite3")
-    if latest is not None and latest[1] in CONTINUABLE_RUN_STATUSES:
-        return latest[0]
+    if latest is not None and latest["status"] in CONTINUABLE_RUN_STATUSES:
+        return str(latest["run_id"])
     status = json.loads(manifest_path.read_text(encoding="utf-8")).get("status")
-    if status not in FINISHED_CRAWL_STATUSES:
+    if status not in FINISHED_STATUSES:
         msg = f"--refresh requires a finished crawl; current status is {status}"
         raise ValueError(msg)
     return None

@@ -6,7 +6,6 @@ import yaml
 from data_pipeline.core.hostnames import load_hostnames
 from data_pipeline.crawl.config import (
     CrawlerConfig,
-    config_snapshot,
     runtime_config_snapshot,
     semantic_config_snapshot,
     validate_network_contact,
@@ -64,12 +63,10 @@ def test_config_exposes_only_active_two_phase_fields(tmp_path: Path) -> None:
 
 
 def test_config_enforces_safety_defaults(tmp_path: Path) -> None:
-    domains = tmp_path / "domains.txt"
-    domains.write_text("example.com\n", encoding="utf-8")
 
     config = CrawlerConfig.load(
         Path("config/crawler.yaml"),
-        domains,
+        hostnames=frozenset({"example.com"}),
         environ={"CRAWLER_CONTACT": "ops@example.org"},
     )
 
@@ -83,15 +80,13 @@ def test_config_enforces_safety_defaults(tmp_path: Path) -> None:
 
 
 def test_config_loads_complete_runtime_policy(tmp_path: Path) -> None:
-    domains = tmp_path / "domains.txt"
-    domains.write_text("example.com\n", encoding="utf-8")
     raw = complete_yaml(
         tmp_path,
         retry_times=4,
         download_timeout_seconds=75,
     )
 
-    config = CrawlerConfig.load(raw, domains)
+    config = CrawlerConfig.load(raw, hostnames=frozenset({"example.com"}))
 
     assert config.retry_times == 4
     assert config.retry_statuses == (408, 425, 429, 500, 502, 503, 504)
@@ -132,38 +127,20 @@ def test_config_load_requires_contact_in_environment(tmp_path: Path) -> None:
     ],
 )
 def test_config_rejects_non_positive_runtime_values(tmp_path: Path, field: str, value: int) -> None:
-    domains = tmp_path / "domains.txt"
-    domains.write_text("example.com\n", encoding="utf-8")
-    raw = tmp_path / "crawler.yaml"
     raw = complete_yaml(tmp_path, **{field: value})
 
     with pytest.raises(ValueError, match=field):
-        CrawlerConfig.load(raw, domains)
+        CrawlerConfig.load(raw, hostnames=frozenset({"example.com"}))
 
 
 @pytest.mark.parametrize(
     "field", ["concurrent_requests", "concurrent_per_host", "playwright_max_pages"]
 )
 def test_config_rejects_non_positive_concurrency_fields(tmp_path: Path, field: str) -> None:
-    domains = tmp_path / "domains.txt"
-    domains.write_text("example.com\n", encoding="utf-8")
-    raw = tmp_path / "crawler.yaml"
     raw = complete_yaml(tmp_path, **{field: 0})
 
     with pytest.raises(ValueError, match=field):
-        CrawlerConfig.load(raw, domains)
-
-
-def test_config_snapshot_is_json_safe_and_overrides_concurrency(tmp_path: Path) -> None:
-    domains = tmp_path / "domains.txt"
-    domains.write_text("b.test\na.test\n", encoding="utf-8")
-    raw = tmp_path / "crawler.yaml"
-    raw = complete_yaml(tmp_path)
-    snapshot = config_snapshot(CrawlerConfig.load(raw, domains), concurrency=24)
-
-    assert snapshot["concurrent_requests"] == 24
-    assert snapshot["hostnames"] == ["a.test", "b.test"]
-    assert isinstance(snapshot["retry_statuses"], list)
+        CrawlerConfig.load(raw, hostnames=frozenset({"example.com"}))
 
 
 def test_config_reports_all_missing_required_keys(tmp_path: Path) -> None:

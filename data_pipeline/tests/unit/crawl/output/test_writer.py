@@ -7,6 +7,10 @@ from data_pipeline.crawl.output.writer import CrawlWriter, StorageLimitError, co
 from data_pipeline.crawl.state.store import CrawlState
 
 
+def stored_bytes(tmp_path: Path) -> int:
+    return sum(entry.stat().st_size for entry in (tmp_path / "output/files").iterdir())
+
+
 def make_writer(
     tmp_path: Path,
     *,
@@ -40,7 +44,7 @@ def test_identical_files_share_one_blob(tmp_path: Path) -> None:
     )
     assert first["path"] == second["path"]
     assert len(list((tmp_path / "output/files").iterdir())) == 1
-    assert writer.stored_bytes == 4
+    assert stored_bytes(tmp_path) == 4
     writer.close()
 
 
@@ -57,12 +61,12 @@ def test_file_size_limit_rejection(tmp_path: Path) -> None:
 def test_storage_budget_rejection(tmp_path: Path) -> None:
     writer = make_writer(tmp_path, max_total_file_bytes=5)
     writer.write_file("https://a.test/1.pdf", "https://a.test/1.pdf", "application/pdf", b"abc")
-    assert writer.stored_bytes == 3
+    assert stored_bytes(tmp_path) == 3
 
     with pytest.raises(StorageLimitError) as exc_info:
         writer.write_file("https://a.test/2.pdf", "https://a.test/2.pdf", "application/pdf", b"def")
     assert exc_info.value.reason == "storage_budget"
-    assert writer.stored_bytes == 3
+    assert stored_bytes(tmp_path) == 3
     # No partial file created for rejected blob
     assert len(list((tmp_path / "output/files").iterdir())) == 1
     writer.close()

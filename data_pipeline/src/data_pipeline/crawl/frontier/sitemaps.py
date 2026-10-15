@@ -237,8 +237,6 @@ def parse_sitemap(body: bytes, base_url: str, content_type: str = "") -> Sitemap
     source = _maybe_decompress(body, base_url, content_type)
     try:
         root = ElementTree.fromstring(source)  # noqa: S314 -- expat limits entity expansion; response size is capped
-    except ElementTree.ParseError as exc:
-        raise SitemapParseError("invalid_xml") from exc
     except Exception as exc:
         raise SitemapParseError("invalid_xml") from exc
 

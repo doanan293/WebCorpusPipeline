@@ -15,7 +15,6 @@ class UrlDecision:
     accepted: bool
     canonical_url: str | None
     reason: str | None
-    target_kind: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,25 +138,16 @@ class UrlPolicy:
         self.allowed_hostnames = frozenset(allowed_hostnames)
         self.trap_query_keys = trap_query_keys
 
-    def decide(self, url: str, *, target_kind: str = "page") -> UrlDecision:
+    def decide(self, url: str) -> UrlDecision:
         canonical, hostname, reason = canonicalize_url(url, trap_query_keys=self.trap_query_keys)
         if reason is not None:
-            return UrlDecision(
-                accepted=False, canonical_url=None, reason=reason, target_kind=target_kind
-            )
+            return UrlDecision(accepted=False, canonical_url=None, reason=reason)
         if canonical is None or hostname is None:
             msg = "canonicalize_url returned no URL without giving a reason"
             raise RuntimeError(msg)
         if hostname not in self.allowed_hostnames:
-            return UrlDecision(
-                accepted=False,
-                canonical_url=None,
-                reason="host_out_of_scope",
-                target_kind=target_kind,
-            )
-        return UrlDecision(
-            accepted=True, canonical_url=canonical, reason=None, target_kind=target_kind
-        )
+            return UrlDecision(accepted=False, canonical_url=None, reason="host_out_of_scope")
+        return UrlDecision(accepted=True, canonical_url=canonical, reason=None)
 
 
 _AUTH_PATHS = frozenset({"login", "signin", "sign-in", "auth", "sso", "cas", "oauth"})

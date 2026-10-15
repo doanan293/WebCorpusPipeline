@@ -12,7 +12,7 @@ def test_exact_host_and_tracking_cleanup() -> None:
     decision = UrlPolicy(frozenset({"example.com"})).decide(
         "HTTPS://EXAMPLE.COM:443/a/../b?utm_source=x&z=2&a=1#top"
     )
-    assert decision == UrlDecision(True, "https://example.com/b?a=1&z=2", None, "page")
+    assert decision == UrlDecision(True, "https://example.com/b?a=1&z=2", None)
 
 
 @pytest.mark.parametrize(

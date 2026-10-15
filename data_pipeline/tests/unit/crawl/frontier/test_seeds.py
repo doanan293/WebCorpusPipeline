@@ -21,8 +21,6 @@ def test_mixed_seeds_are_canonical_and_recursive_host_wins(tmp_path: Path) -> No
         "https://hust.edu.vn/news/one",
         "https://lms.hust.edu.vn/course/view.php?id=2",
     )
-    assert seeds.mode_for("https://lms.hust.edu.vn/course/view.php?id=2") == "recursive"
-    assert seeds.mode_for("https://hust.edu.vn/news/one") == "exact"
 
 
 def test_invalid_lines_are_retained_but_one_valid_seed_is_enough(tmp_path: Path) -> None:

@@ -191,13 +191,13 @@ def test_shortlink_relation_overrides_other_pagination_signals() -> None:
 def test_selects_only_one_semantic_next() -> None:
     links = (
         ClassifiedLink(
-            "https://a.test/news?page=2", "pagination", "a.test/news?page={page}", 2, False, None
+            "https://a.test/news?page=2", "pagination", "a.test/news?page={page}", 2, False
         ),
         ClassifiedLink(
-            "https://a.test/news?page=3", "pagination", "a.test/news?page={page}", 3, True, None
+            "https://a.test/news?page=3", "pagination", "a.test/news?page={page}", 3, True
         ),
         ClassifiedLink(
-            "https://a.test/news?page=99", "pagination", "a.test/news?page={page}", 99, False, None
+            "https://a.test/news?page=99", "pagination", "a.test/news?page={page}", 99, False
         ),
     )
     selected = select_semantic_next(links, current_ordinal=2)

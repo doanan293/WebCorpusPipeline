@@ -120,13 +120,14 @@ def test_reused_asset_targets_are_read_from_materialized_sqlite_rows(tmp_path: P
         runtime_config={},
     )
 
-    state.put_article(
-        {
+    state.complete_url(
+        {"url": "https://a.test/article", "status": "extracted"},
+        article={
             "url": "https://a.test/article",
             "assets": [
                 {"url": "https://cdn.test/photo.jpg", "role": "inline_image"},
             ],
-        }
+        },
     )
     prepare_reused_asset_targets(state)
     targets = reused_asset_targets(state)

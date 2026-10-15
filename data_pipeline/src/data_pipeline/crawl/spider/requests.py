@@ -6,7 +6,6 @@ from urllib.parse import urlsplit
 
 import scrapy
 
-from data_pipeline.crawl.extract.links import resource_kind
 from data_pipeline.crawl.frontier.assets import (
     AssetPolicy,
     is_recognizable_binary,
@@ -55,8 +54,7 @@ class RequestFactory:
             raise ValueError(msg)
 
         # Skip completed URLs on resume
-        state = getattr(self.writer, "state", None)
-        if state is not None and hasattr(state, "is_complete") and state.is_complete(canonical):
+        if self.writer.state.is_complete(canonical):
             return None
 
         # Persist scheduled decision
@@ -232,7 +230,6 @@ class RequestFactory:
                     if record.get("discovered_from") is not None
                     else None
                 ),
-                kind=resource_kind(url),
                 purpose=purpose,
                 explicit=bool(record.get("explicit", False)),
                 discovery_source=discovery_source,

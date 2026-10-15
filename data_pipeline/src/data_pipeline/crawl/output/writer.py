@@ -78,10 +78,6 @@ class CrawlWriter:
                 if entry.is_file() and not entry.name.startswith("."):
                     self._stored_bytes += entry.stat().st_size
 
-    @property
-    def stored_bytes(self) -> int:
-        return self._stored_bytes
-
     def record_scheduled(self, record: dict[str, object]) -> None:
         self.state.merge_url(record, completed=False)
 

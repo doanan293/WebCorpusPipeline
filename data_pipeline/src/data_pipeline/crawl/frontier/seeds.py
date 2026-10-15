@@ -29,12 +29,6 @@ class SeedSet:
         exact_hosts = {urlsplit(url).hostname for url in self.exact_urls}
         return self.recursive_hostnames | frozenset(host for host in exact_hosts if host)
 
-    def mode_for(self, url: str) -> SeedMode | None:
-        host = (urlsplit(url).hostname or "").lower().rstrip(".")
-        if host in self.recursive_hostnames:
-            return "recursive"
-        return "exact" if url in self.exact_urls else None
-
 
 def parse_seed_file(path: Path) -> SeedSet:
     recursive_hosts: set[str] = set()

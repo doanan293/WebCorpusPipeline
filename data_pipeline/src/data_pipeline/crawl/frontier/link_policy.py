@@ -130,7 +130,6 @@ class ClassifiedLink:
     family_key: str | None
     ordinal: int | None
     rel_next: bool
-    reason: str | None
 
 
 def query_key_kind(key: str) -> Literal["pagination", "filter"] | None:
@@ -297,7 +296,7 @@ def classify_link(
         raise ValueError(msg)
     group = recognizable_asset(normalized)
     if resource_kind_hint == "file" or group is not None:
-        return ClassifiedLink(normalized, "asset", None, None, rel_next=False, reason=None)
+        return ClassifiedLink(normalized, "asset", None, None, rel_next=False)
     kind, ordinal = _classify_navigation(normalized, text.casefold(), rel)
     return ClassifiedLink(
         normalized,
@@ -305,7 +304,6 @@ def classify_link(
         route_family_key(normalized, kind),
         ordinal,
         "next" in {token.casefold() for token in rel},
-        None,
     )
 
 

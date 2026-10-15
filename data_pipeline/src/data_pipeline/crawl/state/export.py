@@ -66,10 +66,6 @@ def export_crawl(state: CrawlState, output: Path) -> None:
     _export_table("errors", output / "errors.jsonl")
 
 
-def export(state: CrawlState, output: Path) -> None:
-    export_crawl(state, output)
-
-
 def iter_final_articles(
     state: CrawlState, urls: Iterable[str] | None = None
 ) -> Iterator[tuple[str, str]]:

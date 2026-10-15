@@ -85,8 +85,10 @@ def test_finish_publishes_only_current_extracted_articles_to_final(tmp_path: Pat
             "duplicate_of": "https://a.test/stale",
         },
     )
-    state.put_article({"url": "https://a.test/stale", "title": "Stale", "text": "Full text"})
-    state.upsert_url({"url": "https://a.test/stale", "status": "skipped", "reason": "action_auth"})
+    state.complete_url(
+        {"url": "https://a.test/stale", "status": "skipped", "reason": "action_auth"},
+        article={"url": "https://a.test/stale", "title": "Stale", "text": "Full text"},
+    )
 
     state.finish("complete_with_failures", 3, state.counts(), {}, public_output=output)
 
@@ -189,15 +191,20 @@ def test_interruption_safe_reopen(tmp_path: Path) -> None:
 
 def test_counts_and_finish_manifest(tmp_path: Path) -> None:
     state = open_state(tmp_path)
-    state.upsert_url({"url": "https://a.test/1", "status": "extracted"}, completed=True)
+    state.complete_url(
+        {"url": "https://a.test/1", "status": "extracted"},
+        article={"url": "https://a.test/1", "title": "One"},
+    )
     state.upsert_url({"url": "https://a.test/2", "status": "discovered_not_downloaded"})
-    state.put_article({"url": "https://a.test/1", "title": "One"})
-    state.put_file({"url": "https://a.test/doc.pdf", "path": "files/abc.pdf"})
+    state.complete_url(
+        {"url": "https://a.test/doc.pdf", "status": "file_saved"},
+        file={"url": "https://a.test/doc.pdf", "path": "files/abc.pdf"},
+    )
     state.put_error({"url": "https://a.test/err", "error": "timeout"})
 
     counts = state.counts()
-    assert counts["total_urls"] == 2
-    assert counts["completed_urls"] == 1
+    assert counts["total_urls"] == 3
+    assert counts["completed_urls"] == 2
     assert counts["url_status_extracted"] == 1
     assert counts["url_status_discovered_not_downloaded"] == 1
     assert counts["articles"] == 1
@@ -210,7 +217,7 @@ def test_counts_and_finish_manifest(tmp_path: Path) -> None:
     manifest = json.loads((tmp_path / "output/state/manifest.json").read_text(encoding="utf-8"))
     assert manifest["status"] == "complete"
     assert manifest["exit_code"] == 0
-    assert manifest["counts"]["total_urls"] == 2
+    assert manifest["counts"]["total_urls"] == 3
 
 
 def test_iter_pending_scheduled_records_excludes_completed_urls(tmp_path: Path) -> None:
@@ -279,7 +286,6 @@ def test_finish_publishes_discovery_strategy_to_public_manifest(tmp_path: Path) 
     state = open_state(tmp_path, phase="discover")
     discovery = {
         "strategy": "sitemap-only",
-        "sitemap_url_limits": "unbounded",
         "hosts": {"a.test": {"mode": "sitemap"}},
     }
     state.finish("complete", 0, {}, {}, discovery=discovery, public_output=tmp_path / "output")
@@ -315,13 +321,14 @@ def test_asset_referrers_persists_and_updates_file_payload(tmp_path: Path) -> No
     )
 
     # If file row already exists, add_asset_referrer updates its payload
-    state.put_file(
-        {
+    state.complete_url(
+        {"url": "https://cdn.test/a.png", "status": "file_saved"},
+        file={
             "url": "https://cdn.test/a.png",
             "final_url": "https://cdn.test/a.png",
             "asset_role": "inline_image",
             "referring_pages": ["https://a.test/p1", "https://a.test/p2"],
-        }
+        },
     )
     state.add_asset_referrer("https://cdn.test/a.png", "https://a.test/p3", "inline_image")
     cursor = state.connection.execute(

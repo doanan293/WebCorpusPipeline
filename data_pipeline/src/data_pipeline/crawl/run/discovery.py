@@ -4,7 +4,6 @@ import time
 from dataclasses import asdict
 from functools import partial
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from scrapy.crawler import CrawlerProcess
 from scrapy.settings import Settings
@@ -13,7 +12,7 @@ from data_pipeline.crawl.config import CrawlerConfig, semantic_config_snapshot
 from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
 from data_pipeline.crawl.output.discovery_writer import DiscoveryWriter
-from data_pipeline.crawl.run.common import record_invalid_seeds
+from data_pipeline.crawl.run.common import exact_only_hosts, record_invalid_seeds
 from data_pipeline.crawl.run.exit_codes import finish_reason_to_exit
 from data_pipeline.crawl.runtime.profiles import RuntimeTuning
 from data_pipeline.crawl.runtime.settings import build_settings
@@ -45,16 +44,8 @@ def run_discovery(
     )
     writer = DiscoveryWriter(output, state)
 
-    exact_hosts = (
-        frozenset(
-            (urlsplit(u).hostname or "").lower().rstrip(".")
-            for u in seeds.exact_urls
-            if urlsplit(u).hostname
-        )
-        - seeds.recursive_hostnames
-    )
     coordinator = SitemapDiscoveryCoordinator(
-        exact_hostnames=exact_hosts, on_change=partial(upsert_host_discovery, state)
+        exact_hostnames=exact_only_hosts(seeds), on_change=partial(upsert_host_discovery, state)
     )
     if resume:
         coordinator.restore(iter_host_discovery(state))

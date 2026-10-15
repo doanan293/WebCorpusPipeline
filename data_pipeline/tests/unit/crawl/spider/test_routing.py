@@ -52,7 +52,7 @@ def test_successful_probe_purpose_overrides_generic_mime() -> None:
         status=200,
         content_type="application/octet-stream",
         purpose="robots",
-    ) == ResponseRoute("robots", "robots", 200, "application/octet-stream")
+    ) == ResponseRoute("robots", "application/octet-stream")
 
 
 def test_asset_purpose_is_terminal_even_when_server_returns_html() -> None:

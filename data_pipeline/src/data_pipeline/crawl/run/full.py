@@ -6,7 +6,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from scrapy.crawler import Crawler, CrawlerProcess
 from scrapy.settings import Settings
@@ -22,7 +21,7 @@ from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
 from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.output.writer import CrawlWriter
-from data_pipeline.crawl.run.common import record_invalid_seeds
+from data_pipeline.crawl.run.common import exact_only_hosts, record_invalid_seeds
 from data_pipeline.crawl.run.exit_codes import TRUNCATION_REASONS, finish_reason_to_exit
 from data_pipeline.crawl.run.refresh import (
     RefreshSession,
@@ -107,22 +106,35 @@ class _Prepared:
     refresh_targets: list[tuple[str, str]]
 
 
-def _validate_modes(ctx: _CrawlContext) -> None:
-    if ctx.refresh and (
-        ctx.resume
-        or ctx.reuse_content_from is not None
-        or ctx.retry_failed
-        or ctx.retry_access_gates
-    ):
+def validate_mode_flags(
+    *,
+    resume: bool,
+    retry_failed: bool,
+    retry_access_gates: bool,
+    reuse_content_from: Path | None,
+    refresh: bool,
+) -> None:
+    """Reject crawl mode flag combinations that have no meaning together."""
+    if refresh and (resume or reuse_content_from is not None or retry_failed or retry_access_gates):
         msg = "--refresh cannot be combined with --resume, --reuse-content-from or --retry-* flags"
         raise ValueError(msg)
     for enabled, flag in (
-        (ctx.retry_failed, "--retry-failed"),
-        (ctx.retry_access_gates, "--retry-access-gates"),
+        (retry_failed, "--retry-failed"),
+        (retry_access_gates, "--retry-access-gates"),
     ):
-        if enabled and not ctx.resume:
+        if enabled and not resume:
             msg = f"{flag} requires --resume"
             raise ValueError(msg)
+
+
+def _validate_modes(ctx: _CrawlContext) -> None:
+    validate_mode_flags(
+        resume=ctx.resume,
+        retry_failed=ctx.retry_failed,
+        retry_access_gates=ctx.retry_access_gates,
+        reuse_content_from=ctx.reuse_content_from,
+        refresh=ctx.refresh,
+    )
     source = ctx.reuse_content_from
     if source is None:
         return
@@ -230,7 +242,7 @@ class _CrawlRun:
         self.state = state
         self.prepared = prepared
         self.coordinator = SitemapDiscoveryCoordinator(
-            exact_hostnames=_exact_only_hosts(ctx.seeds),
+            exact_hostnames=exact_only_hosts(ctx.seeds),
             on_change=partial(upsert_host_discovery, state),
             strategy="hybrid-unified",
         )
@@ -363,18 +375,6 @@ class _CrawlRun:
             public_output=self.ctx.output,
         )
         return exit_code
-
-
-def _exact_only_hosts(seeds: SeedSet) -> frozenset[str]:
-    """Hosts that only appear in exact URL seeds (no recursive crawl)."""
-    return (
-        frozenset(
-            (urlsplit(url).hostname or "").lower().rstrip(".")
-            for url in seeds.exact_urls
-            if urlsplit(url).hostname
-        )
-        - seeds.recursive_hostnames
-    )
 
 
 def run_crawl(  # noqa: PLR0913 -- one keyword per documented crawl mode

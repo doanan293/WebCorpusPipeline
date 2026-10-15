@@ -24,7 +24,6 @@ class Candidate:
     url: str
     source_mode: SeedMode
     discovered_from: str | None
-    kind: str
     purpose: Purpose
     explicit: bool = False
     discovery_source: DiscoverySource = "seed"
@@ -172,8 +171,6 @@ class FrontierPolicy:
             else:
                 in_scope = hostname in seeds.allowed_hostnames
             return None if in_scope else "host_out_of_scope"
-        if candidate.source_mode != "recursive":
-            return "exact_seed_no_expansion"
         if candidate.discovered_from:
             parent_host = (urlsplit(candidate.discovered_from).hostname or "").lower().rstrip(".")
             in_scope = parent_host in seeds.recursive_hostnames and hostname == parent_host

@@ -2,24 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 from urllib.parse import urlsplit
 
 from data_pipeline.crawl.options import CrawlOptions
 
-if TYPE_CHECKING:
-    from data_pipeline.crawl.extract.assets import ArticleAsset
-
 AssetGroup = Literal["image", "media", "document"]
 AssetRole = Literal["inline_image", "media_reference", "document_attachment"]
-AssetAction = Literal["schedule", "record_only", "reject"]
-
-
-@dataclass(frozen=True, slots=True)
-class AssetDecision:
-    action: AssetAction
-    group: AssetGroup | None
-    reason: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,33 +161,7 @@ class AssetPolicy:
     def __init__(self, options: CrawlOptions | None = None) -> None:
         self.options = options if options is not None else CrawlOptions()
 
-    def consider(self, asset: ArticleAsset) -> AssetDecision:
-        group = recognizable_asset(asset.url)
-        if group is None:
-            if asset.role == "inline_image":
-                group = "image"
-            elif asset.role == "media_reference":
-                group = "media"
-            elif asset.role == "document_attachment":
-                group = "document"
-
-        if group is None:
-            return AssetDecision("reject", None, "unsupported_asset_type")
-
-        if self.options.assets == "content-only":
-            return AssetDecision("record_only", group, "asset_mode_content_only")
-
-        if self.options.assets == "all":
-            return AssetDecision("schedule", group, None)
-
-        return AssetDecision("reject", None, "unsupported_asset_mode")
-
     def validate_response(self, content_type: str, final_url: str) -> AssetResponseDecision:
-        if self.options.assets != "all":
-            return AssetResponseDecision(
-                persist=False, group=None, reason="asset_mode_content_only"
-            )
-
         mime = content_type.partition(";")[0].strip().lower()
         if mime in {"text/html", "application/xhtml+xml"} or mime.startswith("text/html"):
             return AssetResponseDecision(

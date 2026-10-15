@@ -117,9 +117,6 @@ class CrawlState:
             "NULL);"
         )
         connection.execute(
-            "CREATE TABLE IF NOT EXISTS metrics (name TEXT PRIMARY KEY, value INTEGER NOT NULL);"
-        )
-        connection.execute(
             """
             CREATE TABLE IF NOT EXISTS host_discovery (
                 hostname TEXT PRIMARY KEY,
@@ -232,12 +229,6 @@ class CrawlState:
 
     def upsert_url(self, record: Mapping[str, object], *, completed: bool = False) -> None:
         self.merge_url(record, completed=completed)
-
-    def put_article(self, record: Mapping[str, object]) -> None:
-        self._put_payload("articles", record)
-
-    def put_file(self, record: Mapping[str, object]) -> None:
-        self._put_payload("files", record)
 
     def put_error(self, record: Mapping[str, object]) -> None:
         self._put_payload("errors", record)
@@ -394,11 +385,6 @@ class CrawlState:
             "INSERT OR REPLACE INTO targets (url, payload) VALUES (?, ?);",
             (url, json.dumps(dict(record), sort_keys=True, ensure_ascii=False)),
         )
-
-    def iter_targets(self) -> Iterator[dict[str, object]]:
-        cursor = self.connection.execute("SELECT payload FROM targets ORDER BY url;")
-        for row in cursor:
-            yield json.loads(row[0])
 
     def add_asset_referrer(self, url: str, page_url: str, role: AssetRole) -> None:
         self.connection.execute(

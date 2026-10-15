@@ -12,7 +12,6 @@ from scrapy.http import Response
 
 from data_pipeline.core.policies.access import classify_page_gate
 from data_pipeline.crawl.extract.article import analyze_article
-from data_pipeline.crawl.extract.links import resource_kind
 from data_pipeline.crawl.frontier.assets import (
     AssetPolicy,
     classify_asset,
@@ -159,11 +158,7 @@ class HtmlHandler:
         yield from self.expand(response, analysis, stored_article, page.input_url, page.seed_mode)
 
     def _store_article(self, article_data: dict[str, Any]) -> dict[str, Any]:
-        if hasattr(self.writer, "write_article"):
-            return self.writer.write_article(article_data)
-        if hasattr(self.writer, "put_article"):
-            self.writer.put_article(article_data)
-        return article_data
+        return self.writer.write_article(article_data)
 
     def _robots(self, page: _Page) -> Iterator[scrapy.Request]:
         response = page.response
@@ -179,7 +174,6 @@ class HtmlHandler:
                         sitemap_url,
                         "recursive",
                         response.url,
-                        "file",
                         "sitemap",
                         explicit=False,
                         discovery_source="sitemap",
@@ -218,7 +212,6 @@ class HtmlHandler:
                     loc,
                     page.seed_mode,
                     page.response.url,
-                    resource_kind(loc),
                     "sitemap",
                     explicit=False,
                     discovery_source="sitemap",
@@ -248,7 +241,6 @@ class HtmlHandler:
                 loc,
                 seed_mode,
                 source_url,
-                resource_kind(loc),
                 purpose="asset",
                 explicit=False,
                 discovery_source="sitemap",
@@ -268,7 +260,6 @@ class HtmlHandler:
             loc,
             seed_mode,
             source_url,
-            resource_kind(loc),
             purpose="page",
             explicit=False,
             discovery_source="sitemap",
@@ -328,7 +319,6 @@ class HtmlHandler:
             f"http://{parsed.netloc}/",
             page.seed_mode,
             None,
-            "html",
             "page",
             explicit=response.meta.get("explicit", False),
             discovery_source=page.discovery_source,
@@ -384,12 +374,9 @@ class HtmlHandler:
         }
 
     def store_validators(self, url: str, response: Response, **extra: object) -> None:
-        state = getattr(self.writer, "state", None)
-        if state is None or not hasattr(state, "update_url_fields"):
-            return
         fields: dict[str, object] = {**response_validators(response.headers), **extra}
         if fields:
-            state.update_url_fields(url, fields)
+            self.writer.state.update_url_fields(url, fields)
 
     def expand(
         self,
@@ -416,13 +403,11 @@ class HtmlHandler:
         self, response: Response, analysis: Any, seed_mode: SeedMode
     ) -> Iterator[scrapy.Request]:
         for asset in analysis.assets:
-            if hasattr(self.writer, "state") and hasattr(self.writer.state, "add_asset_referrer"):
-                self.writer.state.add_asset_referrer(asset.url, response.url, asset.role)
+            self.writer.state.add_asset_referrer(asset.url, response.url, asset.role)
             candidate = Candidate(
                 url=asset.url,
                 source_mode=seed_mode,
                 discovered_from=response.url,
-                kind="file",
                 purpose="asset",
                 explicit=False,
                 discovery_source="html_link",
@@ -485,7 +470,6 @@ class HtmlHandler:
             url=link.url,
             source_mode="recursive",
             discovered_from=parent_url,
-            kind="html",
             purpose="page",
             explicit=False,
             discovery_source="html_link",
@@ -548,7 +532,6 @@ class HtmlHandler:
             url=next_link.url,
             source_mode="recursive",
             discovered_from=parent_url,
-            kind="html",
             purpose="page",
             explicit=False,
             discovery_source="html_link",

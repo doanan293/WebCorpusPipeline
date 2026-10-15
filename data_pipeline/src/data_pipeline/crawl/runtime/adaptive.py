@@ -146,7 +146,7 @@ class AdaptiveConcurrencyMiddleware:
             crawler,
             max_per_host=int(tuning.max_per_host),
             max_concurrency=int(tuning.max_concurrency),
-            resource_limit_percent=int(getattr(tuning, "resource_limit_percent", 80)),
+            resource_limit_percent=int(tuning.resource_limit_percent),
         )
         crawler.signals.connect(
             middleware._response_downloaded,

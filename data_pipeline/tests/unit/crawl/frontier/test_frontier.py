@@ -25,7 +25,6 @@ def candidate(
         url=url,
         source_mode="recursive",
         discovered_from=discovered_from if discovered_from is not None else "https://a.test/",
-        kind="html",
         purpose="page",
         discovery_source=source,
         link_kind=link_kind,
@@ -127,7 +126,6 @@ def test_explicit_urls_do_not_expand_another_hostname() -> None:
             url="https://b.test/seed",
             source_mode="exact",
             discovered_from=None,
-            kind="html",
             purpose="page",
             explicit=True,
             discovery_source="seed",
@@ -135,19 +133,18 @@ def test_explicit_urls_do_not_expand_another_hostname() -> None:
     )
     assert explicit_decision.action == "schedule"
 
-    # Discovered candidate with exact source_mode cannot expand
+    # A page discovered from an exact seed is outside the recursive scope
     child = Candidate(
         url="https://b.test/child",
         source_mode="exact",
         discovered_from="https://b.test/seed",
-        kind="html",
         purpose="page",
         explicit=False,
         discovery_source="html_link",
     )
     assert (frontier.consider(child).action, frontier.consider(child).reason) == (
         "reject",
-        "exact_seed_no_expansion",
+        "host_out_of_scope",
     )
 
     # Discovered asset attachment on exact seed host is allowed
@@ -155,7 +152,6 @@ def test_explicit_urls_do_not_expand_another_hostname() -> None:
         url="https://b.test/doc.pdf",
         source_mode="exact",
         discovered_from="https://b.test/seed",
-        kind="file",
         purpose="asset",
         explicit=False,
         discovery_source="html_link",
@@ -167,7 +163,6 @@ def test_explicit_urls_do_not_expand_another_hostname() -> None:
         url="https://other.test/doc.pdf",
         source_mode="exact",
         discovered_from="https://unallowed.test/seed",
-        kind="file",
         purpose="asset",
         explicit=False,
         discovery_source="html_link",
@@ -182,7 +177,6 @@ def test_explicit_urls_do_not_expand_another_hostname() -> None:
         url="https://other.test/page",
         source_mode="recursive",
         discovered_from="https://a.test/home",
-        kind="html",
         purpose="page",
         explicit=False,
         discovery_source="html_link",
@@ -200,7 +194,6 @@ def test_content_urls_outrank_navigation_urls() -> None:
             url="https://a.test/robots.txt",
             source_mode="recursive",
             discovered_from=None,
-            kind="html",
             purpose="robots",
         )
     )
@@ -332,7 +325,6 @@ def test_direct_external_asset_is_allowed_but_external_page_is_not() -> None:
             "https://cdn.test/a.png",
             "recursive",
             "https://a.test/p",
-            "image",
             "asset",
             discovery_source="html_link",
         )
@@ -342,7 +334,6 @@ def test_direct_external_asset_is_allowed_but_external_page_is_not() -> None:
             "https://cdn.test/page",
             "recursive",
             "https://a.test/p",
-            "html",
             "page",
             discovery_source="html_link",
         )

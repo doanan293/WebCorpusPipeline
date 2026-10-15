@@ -13,10 +13,10 @@ from typing import cast
 from data_pipeline.core.policies.network import validate_public_web_url
 from data_pipeline.crawl.frontier.assets import AssetRole, classify_asset
 from data_pipeline.crawl.spider.reuse import ReusedAssetTarget
+from data_pipeline.crawl.state.refresh_store import FINISHED_STATUSES
 from data_pipeline.crawl.state.resume import STATE_VERSION
 from data_pipeline.crawl.state.store import CrawlState
 
-_REUSABLE_STATUSES = frozenset({"complete", "complete_with_failures", "truncated"})
 _ASSET_ROLES = frozenset({"inline_image", "media_reference", "document_attachment"})
 
 
@@ -52,7 +52,7 @@ def validate_reuse_source(source_output: Path, input_path: Path) -> tuple[Path, 
     ):
         msg = "source is not a compatible content-only crawl"
         raise ValueError(msg)
-    if manifest.get("status") not in _REUSABLE_STATUSES:
+    if manifest.get("status") not in FINISHED_STATUSES:
         msg = "source crawl has not completed with reusable output"
         raise ValueError(msg)
 

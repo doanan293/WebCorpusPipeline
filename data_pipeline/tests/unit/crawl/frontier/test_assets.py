@@ -1,11 +1,7 @@
-from typing import cast
-
 import pytest
 
-from data_pipeline.crawl.extract.assets import ArticleAsset
 from data_pipeline.crawl.frontier.assets import (
     AssetPolicy,
-    AssetRole,
     is_recognizable_binary,
     recognizable_asset,
 )
@@ -13,24 +9,16 @@ from data_pipeline.crawl.options import CrawlOptions
 
 
 @pytest.mark.parametrize(
-    "url,role,group",
+    "url,group",
     [
-        ("https://cdn.test/a.svg", "inline_image", "image"),
-        ("https://cdn.test/a.mp4", "media_reference", "media"),
-        ("https://cdn.test/a.pdf", "document_attachment", "document"),
-        ("https://cdn.test/a.odp", "document_attachment", "document"),
+        ("https://cdn.test/a.svg", "image"),
+        ("https://cdn.test/a.mp4", "media"),
+        ("https://cdn.test/a.pdf", "document"),
+        ("https://cdn.test/a.odp", "document"),
     ],
 )
-def test_all_schedules_supported_semantic_assets(url: str, role: str, group: str) -> None:
-    asset = ArticleAsset(url=url, role=cast(AssetRole, role), alt="", caption="", external=True)
-    decision = AssetPolicy(CrawlOptions(assets="all")).consider(asset)
-    assert (decision.action, decision.group, decision.reason) == ("schedule", group, None)
-
-
-def test_content_only_records_without_scheduling() -> None:
-    asset = ArticleAsset("https://a.test/a.pdf", "document_attachment", "", "", False)
-    decision = AssetPolicy(CrawlOptions()).consider(asset)
-    assert (decision.action, decision.reason) == ("record_only", "asset_mode_content_only")
+def test_supported_semantic_assets_are_recognized(url: str, group: str) -> None:
+    assert recognizable_asset(url) == group
 
 
 @pytest.mark.parametrize("url", ["/app.js", "/site.css", "/font.woff2", "/frame.html"])

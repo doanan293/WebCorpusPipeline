@@ -8,7 +8,25 @@ from collections.abc import Iterable, Iterator
 
 SUCCESS_OUTCOMES = frozenset({"new", "unchanged", "modified", "not_modified", "fetched"})
 CONTINUABLE_RUN_STATUSES = frozenset({"running", "interrupted", "failed"})
-FINISHED_RUN_STATUSES = ("complete", "complete_with_failures", "truncated")
+FINISHED_STATUSES = frozenset({"complete", "complete_with_failures", "truncated"})
+
+
+def latest_refresh_run(connection: sqlite3.Connection) -> dict[str, object] | None:
+    """Return the newest refresh run, or None when the crawl has never been refreshed."""
+    table = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'refresh_runs';"
+    ).fetchone()
+    if table is None:
+        return None
+    row = connection.execute(
+        """
+        SELECT run_id, status, started_at, finished_at
+        FROM refresh_runs ORDER BY run_id DESC LIMIT 1;
+        """
+    ).fetchone()
+    if row is None:
+        return None
+    return {"run_id": row[0], "status": row[1], "started_at": row[2], "finished_at": row[3]}
 
 
 class RefreshStore:
@@ -64,15 +82,7 @@ class RefreshStore:
         )
 
     def latest_run(self) -> dict[str, object] | None:
-        row = self.connection.execute(
-            """
-            SELECT run_id, status, started_at, finished_at
-            FROM refresh_runs ORDER BY run_id DESC LIMIT 1;
-            """
-        ).fetchone()
-        if row is None:
-            return None
-        return {"run_id": row[0], "status": row[1], "started_at": row[2], "finished_at": row[3]}
+        return latest_refresh_run(self.connection)
 
     def run_started_at(self, run_id: str) -> float:
         row = self.connection.execute(
@@ -90,10 +100,10 @@ class RefreshStore:
         rows = self.connection.execute(
             f"""
             SELECT run_id FROM refresh_runs
-            WHERE status IN ({",".join("?" for _ in FINISHED_RUN_STATUSES)})
+            WHERE status IN ({",".join("?" for _ in FINISHED_STATUSES)})
             ORDER BY run_id DESC LIMIT ?;
             """,  # noqa: S608 -- only fixed table names and "?" placeholders are interpolated
-            (*FINISHED_RUN_STATUSES, limit),
+            (*sorted(FINISHED_STATUSES), limit),
         )
         return [str(row[0]) for row in rows]
 

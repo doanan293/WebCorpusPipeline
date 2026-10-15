@@ -89,18 +89,15 @@ def run(
     from data_pipeline.crawl.run import full as run_full
     from data_pipeline.crawl.runtime.profiles import resolve_runtime_tuning
 
-    if refresh and (resume or reuse_content_from is not None or retry_failed or retry_access_gates):
-        return errors.fail(
-            "--refresh cannot be combined with --resume, --reuse-content-from or --retry-* flags"
-        )
+    run_full.validate_mode_flags(
+        resume=resume,
+        retry_failed=retry_failed,
+        retry_access_gates=retry_access_gates,
+        reuse_content_from=reuse_content_from,
+        refresh=refresh,
+    )
     if reuse_content_from is not None and assets not in (None, "all"):
         return errors.fail("--reuse-content-from requires --assets all")
-    for enabled, flag in (
-        (retry_failed, "--retry-failed"),
-        (retry_access_gates, "--retry-access-gates"),
-    ):
-        if enabled and not resume:
-            return errors.fail(f"{flag} requires --resume")
 
     if not input_path.is_file():
         return errors.fail(f"input file not found: {input_path}")
