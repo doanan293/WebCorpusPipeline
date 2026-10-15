@@ -273,19 +273,14 @@ class AdaptiveConcurrencyMiddleware:
             decision = HostDecision(1, decision.cooldown_until)
 
         slots = self._downloader_slots()
-        slot_keys = {host, f"playwright:{host}"}
+        slot_keys = {host}
         if request is not None:
             slot_keys.add(str(request.meta.get("download_slot", host)))
         for slot_key in slot_keys:
             slot = slots.get(slot_key)
             if slot is None:
                 continue
-            ceiling = (
-                min(2, self._max_per_host)
-                if slot_key.startswith("playwright:")
-                else self._max_per_host
-            )
-            slot.concurrency = min(ceiling, max(1, decision.concurrency))
+            slot.concurrency = min(self._max_per_host, max(1, decision.concurrency))
             if decision.cooldown_until is not None:
                 baseline = self._slot_delays.setdefault(slot_key, float(slot.delay))
                 remaining = max(0.0, decision.cooldown_until - current_time)

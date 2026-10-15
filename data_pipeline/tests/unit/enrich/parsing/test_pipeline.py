@@ -232,3 +232,26 @@ def test_finished_cloud_result_written_before_local_loop_ends(
     run_extract(tmp_path, monkeypatch, PDF_FILES[:2], [("K1", "s")])
 
     assert seen_cache == [True]
+
+
+def test_same_document_under_two_urls_is_sent_to_the_cloud_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[str] = []
+
+    def cloud(url: str, file: Path, local: LocalResult, *rest: object) -> ParseResult:
+        calls.append(url)
+        return extracted(local)
+
+    cloud_only(monkeypatch, cloud)
+    same = [
+        DownloadedFile(
+            f"https://a.test/{n}.pdf", Path(f"{n}.pdf"), "same", 1, "application/pdf", ""
+        )
+        for n in ("a", "b")
+    ]
+
+    rows = run_extract(tmp_path, monkeypatch, same, [("K1", "s")])
+
+    assert len(calls) == 1
+    assert {rows[file.url]["status"] for file in same} == {"extracted"}

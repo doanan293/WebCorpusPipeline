@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from pathlib import Path
 
 from data_pipeline.enrich.models import ParseResult, jsonable
@@ -36,7 +37,8 @@ def write_cached(root: Path, key: str, result: ParseResult) -> Path:
     payload = json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     raw["checksum"] = hashlib.sha256(payload.encode()).hexdigest()
     target = root / f"{key}.json"
-    temp = target.with_suffix(".tmp")
+    # Unique per writer: two workers may cache the same key at once.
+    temp = target.with_name(f"{target.name}.{uuid.uuid4().hex}.tmp")
     temp.write_text(json.dumps(raw, ensure_ascii=False, sort_keys=True))
     temp.replace(target)
     return target

@@ -123,7 +123,8 @@ _TRAP_QUERY_KEYS: Final[frozenset[str]] = frozenset(
     {"p_p_id", "p_p_lifecycle", "p_p_state", "p_p_mode", "redirect", "inheritredirect"}
 )
 _LIFERAY_NAMESPACED_KEY_RE: Final[re.Pattern[str]] = re.compile(r"^_\d+_")
-_MAX_ACTION_LABEL_WORDS: Final = 4
+# Arrow labels of next/previous links; \u203a and \u2039 are the single angle quotes.
+_PAGINATION_ARROWS: Final[frozenset[str]] = frozenset({"»", "\u203a", ">", "«", "\u2039", "<"})
 
 _PATH_PAGINATION_RE: Final[re.Pattern[str]] = re.compile(
     r"/(?:(?:page|p)/|page-)(\d+)(?:/)?$", re.IGNORECASE
@@ -182,13 +183,21 @@ def is_trap_query_key(key: str) -> bool:
 
 
 def _is_action_label(text: str) -> bool:
-    """Match auth/action words only as whole words of a short anchor label."""
-    words = text.split()
-    if len(words) > _MAX_ACTION_LABEL_WORDS:
-        return False
-    label = " ".join(words)
-    return any(
-        re.search(rf"(?<!\w){re.escape(token)}(?!\w)", label) for token in ACTION_AUTH_TEXT_TOKENS
+    """True when the whole anchor label is an auth/action phrase ("Đăng nhập", "» Login").
+
+    A longer label that only contains one ("Đăng ký xét tuyển") names content about it.
+    """
+    label = " ".join(re.sub(r"[^\w\s]", " ", text).split())
+    return label in ACTION_AUTH_TEXT_TOKENS
+
+
+def _is_pagination_label(label: str, value: str) -> bool:
+    """True for a page number, a next/previous word or arrow, or "trang N" / "page N"."""
+    return (
+        label == value
+        or label in PAGINATION_LABELS
+        or label in _PAGINATION_ARROWS
+        or label in {f"trang {value}", f"page {value}"}
     )
 
 
@@ -208,7 +217,7 @@ def _query_pagination(
             if "shortlink" in rel_tokens:
                 return "search_filter", None
             label = " ".join(text.split())
-            if not ({"next", "prev"} & rel_tokens or label == val or label in PAGINATION_LABELS):
+            if not ({"next", "prev"} & rel_tokens or _is_pagination_label(label, val)):
                 if len(query_pairs) == 1 and val.isdigit():
                     # A WordPress shortlink; the slug URL of the same post is crawled anyway.
                     return "search_filter", None

@@ -260,3 +260,25 @@ def test_page_n_path_and_pagenumber_are_pagination(url: str, ordinal: int) -> No
     link = classify_link(url, source_url="https://a.test/tin-tuc", text=str(ordinal))
 
     assert (link.kind, link.ordinal) == ("pagination", ordinal)
+
+
+@pytest.mark.parametrize(
+    ("text", "kind"),
+    [
+        ("Đăng ký xét tuyển", "content"),
+        ("Hướng dẫn đăng ký", "content"),
+        ("» Đăng nhập", "action_auth"),
+        ("Đăng ký", "action_auth"),
+    ],
+)
+def test_action_label_must_be_the_whole_anchor(text: str, kind: str) -> None:
+    link = classify_link("https://a.test/news/item-1", source_url="https://a.test/", text=text)
+
+    assert link.kind == kind
+
+
+@pytest.mark.parametrize("text", ["»", "\u203a", "Trang 3", "page 3"])
+def test_p_query_with_pagination_arrow_or_page_label_is_pagination(text: str) -> None:
+    link = classify_link("https://a.test/?p=3", source_url="https://a.test/", text=text)
+
+    assert (link.kind, link.ordinal) == ("pagination", 3)

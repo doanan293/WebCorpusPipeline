@@ -40,6 +40,12 @@ def _assert_enrichment_complete(state: WorkState, source: Path) -> None:
     if summary.pending:
         msg = f"cannot package while downloads are pending: {summary.pending}"
         raise ValueError(msg)
+    if summary.cloud_failed or summary.quota_blocked:
+        msg = (
+            f"cannot package: {summary.cloud_failed} documents failed in LlamaParse and "
+            f"{summary.quota_blocked} are blocked by quota; run enrich extract again"
+        )
+        raise ValueError(msg)
     unparsed = sum(1 for _ in state.pending_parse())
     if unparsed:
         msg = f"cannot package while {unparsed} downloaded files are unparsed"
@@ -54,9 +60,15 @@ def _line_count(path: Path) -> int:
 def swap_into_place(staging: Path, output: Path) -> None:
     """Replace ``output`` with ``staging``; the old output survives until the swap succeeds."""
     previous = output.with_name(f"{output.name}.old-{os.getpid()}")
-    if output.exists():
+    had_output = output.exists()
+    if had_output:
         output.replace(previous)
-    staging.replace(output)
+    try:
+        staging.replace(output)
+    except OSError:
+        if had_output:
+            previous.replace(output)  # put the old package back
+        raise
     shutil.rmtree(previous, ignore_errors=True)
 
 

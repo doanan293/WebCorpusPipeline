@@ -294,7 +294,9 @@ def test_html_shell_is_rescheduled_once_with_playwright() -> None:
     assert isinstance(rerender, Request)
     assert rerender.meta["playwright"] is True
     assert rerender.meta["rendered"] is True
-    assert rerender.meta["download_slot"] == "playwright:a.test"
+    # Rendering shares the host's slot, so plain and rendered requests together stay within
+    # concurrent_per_host.
+    assert "download_slot" not in rerender.meta
     assert rerender.dont_filter is True
     page_methods = list(rerender.meta["playwright_page_methods"].values())
     assert len(page_methods) == 1

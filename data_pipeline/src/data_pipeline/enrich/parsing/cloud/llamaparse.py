@@ -86,6 +86,10 @@ def parse_cloud_subset(
         if kind == "quota":
             pool.mark_quota_exhausted(label)
             return parse_cloud_subset(document_url, file, local, mapping, state, settings, pool)
+        if kind == "invalid":
+            # LlamaParse will never accept this file; keep the local text instead of retrying.
+            warning = f"cloud_rejected: {kind}: {exc}"
+            return ParseResult(local.source_sha256, [], "extracted", [warning], {})
         return ParseResult(local.source_sha256, [], "cloud_failed", [f"{kind}: {exc}"], {})
     finally:
         if file_id is not None:

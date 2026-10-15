@@ -240,16 +240,9 @@ def test_public_contact_form_captcha_does_not_open_host_circuit() -> None:
     assert _slots(middleware)["a.test"].delay == 0.25
 
 
-def test_playwright_captcha_cools_normal_and_browser_slots() -> None:
+def test_rendered_captcha_cools_the_shared_host_slot() -> None:
     middleware, crawler = _middleware()
-    crawler.engine.downloader.slots["playwright:a.test"] = SimpleNamespace(
-        concurrency=2,
-        delay=0.5,
-    )
-    request = Request(
-        "https://a.test/article",
-        meta={"playwright": True, "rendered": True, "download_slot": "playwright:a.test"},
-    )
+    request = Request("https://a.test/article", meta={"playwright": True, "rendered": True})
     response = HtmlResponse(
         request.url,
         status=200,
@@ -263,5 +256,4 @@ def test_playwright_captcha_cools_normal_and_browser_slots() -> None:
 
     assert crawler.engine.downloader.slots["a.test"].concurrency == 1
     assert crawler.engine.downloader.slots["a.test"].delay >= 299.9
-    assert crawler.engine.downloader.slots["playwright:a.test"].concurrency == 1
-    assert crawler.engine.downloader.slots["playwright:a.test"].delay >= 299.9
+    assert set(crawler.engine.downloader.slots) == {"a.test"}

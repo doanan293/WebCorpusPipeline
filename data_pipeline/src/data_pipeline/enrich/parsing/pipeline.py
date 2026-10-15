@@ -63,12 +63,15 @@ def extract_documents(
     def drain(timeout: float | None) -> None:
         done, _ = wait(in_cloud, timeout=timeout, return_when=FIRST_COMPLETED)
         for future in done:
-            file, local = in_cloud.pop(future)
-            finish_cloud(file, local, *future.result())
+            key = in_cloud.pop(future)
+            for file, local in waiting.pop(key):
+                finish_cloud(file, local, *future.result())
 
     # LlamaParse jobs mostly wait on the server, so up to cloud_workers of them run at once while
-    # local parsing continues; finished ones are recorded between local results.
-    in_cloud: dict[Future[tuple[ParseResult, Path | None]], tuple[DownloadedFile, LocalResult]] = {}
+    # local parsing continues; finished ones are recorded between local results. One job runs per
+    # cache key: the same pages of the same file under another URL wait for its result.
+    in_cloud: dict[Future[tuple[ParseResult, Path | None]], str] = {}
+    waiting: dict[str, list[tuple[DownloadedFile, LocalResult]]] = {}
     with (
         ThreadPoolExecutor(max_workers=settings.local_workers) as workers,
         ThreadPoolExecutor(max_workers=settings.cloud_workers) as cloud,
@@ -101,8 +104,11 @@ def extract_documents(
                 finish_cloud(file, local, remote, cache_root / f"{key}.json")
             elif not keys.keys:
                 finish_cloud(file, local, _blocked(local, "no LlamaParse keys"), None)
+            elif key in waiting:
+                waiting[key].append((file, local))
             else:
-                in_cloud[cloud.submit(parse_cloud, file, local, missing, key)] = (file, local)
+                waiting[key] = [(file, local)]
+                in_cloud[cloud.submit(parse_cloud, file, local, missing, key)] = key
         while in_cloud:
             drain(timeout=None)
     return state.summary()

@@ -61,7 +61,12 @@ Crawl dừng theo bằng chứng của đồ thị, không theo thời gian:
 
 - **Khử trùng URL chuẩn hoá:** mỗi URL chuẩn hoá được tải tối đa một lần; bản trùng trả `record_only`.
 - **Loại link sinh trang vô hạn:** lịch/lưu trữ (`calendar_archive`), tìm kiếm/lọc (`search_filter`) và endpoint
-  hành động/đăng nhập (`action_auth`) bị phân loại và loại trước khi vào frontier.
+  hành động/đăng nhập (`action_auth`) bị phân loại và loại trước khi vào frontier. Nhãn chỉ làm link thành
+  `action_auth` khi **cả nhãn** là cụm đăng nhập/đăng ký ("Đăng nhập", "» Login"); "Đăng ký xét tuyển" vẫn là bài.
+  Trang lọc DSpace (`f.*`, `spc.*`), tham số hành động Liferay và shortlink WordPress `?p=<số>` là `search_filter`;
+  `?p=N` vẫn là phân trang khi nhãn là số trang, "Trang N", mũi tên (`»`, `›`) hay có `rel="next"`.
+- **Bỏ qua rồi lên lịch lại:** URL từng bị ghi `skipped` (ví dụ link điều hướng) mà sau đó được lên lịch từ đường
+  khác sẽ mở lại thành chưa xong, nên `--resume` vẫn tải nó.
 - **Phân trang theo novelty:** đi từng bước bằng `select_semantic_next`. Mỗi route family theo dõi vân tay nội dung
   và tập đích, đóng khi cạn: `repeated_content_fingerprint`, `repeated_target_set`, `zero_novelty`
   (`--pagination-empty-pages`, mặc định 3).

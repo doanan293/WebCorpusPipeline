@@ -508,3 +508,16 @@ def test_reason_counts_only_count_skipped(tmp_path: Path) -> None:
 
     assert reason_counts(state) == {"storage_budget": 1}
     state.close()
+
+
+def test_url_skipped_then_scheduled_is_pending_on_resume(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    writer = CrawlWriter(tmp_path / "output", state, CrawlOptions())
+    url = "https://a.test/huong-dan-dang-ky"
+    writer.record_navigation_skip({"url": url, "status": "skipped", "reason": "action_auth"})
+
+    writer.record_scheduled({"url": url, "status": "scheduled", "frontier_action": "scheduled"})
+
+    assert [r["url"] for r in state.iter_pending_scheduled_records()] == [url]
+    assert not state.is_complete(url)
+    writer.close()

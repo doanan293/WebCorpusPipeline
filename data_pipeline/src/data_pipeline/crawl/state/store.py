@@ -238,7 +238,9 @@ class CrawlState:
             ON CONFLICT(url) DO UPDATE SET
               payload = excluded.payload,
               status = excluded.status,
-              completed = MAX(url_records.completed, excluded.completed);
+              -- Scheduling reopens a URL an earlier skip had closed, so a resume fetches it.
+              completed = CASE WHEN excluded.status = 'scheduled' THEN excluded.completed
+                               ELSE MAX(url_records.completed, excluded.completed) END;
             """,
             {"url": url, "payload": payload, "status": status, "completed": comp_val},
         )

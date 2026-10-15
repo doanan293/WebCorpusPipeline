@@ -166,3 +166,14 @@ def test_refs_stored_only_for_document_targets(tmp_path: Path) -> None:
         index_inventory(final, state)
 
         assert refs(state) == {("https://a.test/", "https://a.test/f.pdf")}
+
+
+def test_inventory_is_not_done_after_source_rewrite(tmp_path: Path) -> None:
+    final = write_source(tmp_path / "final", [page("https://a.test/", "https://a.test/f.pdf")])
+    with WorkState.open(tmp_path / "work", "c1") as state:
+        index_inventory(final, state)
+        assert state.inventory_done(source_key(final))
+
+        write_source(final, [page("https://a.test/refreshed-page", "https://a.test/g.pdf")])
+
+        assert not state.inventory_done(source_key(final))

@@ -76,14 +76,10 @@ def test_package_is_deterministic_across_insert_order(tmp_path: Path) -> None:
     urls = [f"https://example.test/{n}" for n in range(5)]
     snapshots = []
     for name, order in (("one", urls), ("two", list(reversed(urls)))):
-        source = write_source(tmp_path / f"source-{name}", order)
+        source = write_source(tmp_path / f"source-{name}", urls)
         with WorkState.open(tmp_path / f"work-{name}", "c1") as state:
             index_inventory(source, state)
             download_all(state, [f"{url}.pdf" for url in order])
-            (source / "articles.jsonl").write_text(
-                (tmp_path / "source-one" / "articles.jsonl").read_text()
-            )
-            (source / "urls.txt").write_text((tmp_path / "source-one" / "urls.txt").read_text())
             output = package_corpus(source, state, tmp_path / f"corpus-{name}")
         snapshots.append(json.loads((output / "manifest.json").read_text())["snapshot_id"])
 
@@ -148,3 +144,15 @@ def test_manifest_counts_lines(tmp_path: Path) -> None:
     assert manifest["counts"]["articles.jsonl"] == 2
     assert manifest["counts"]["documents.jsonl"] == 0
     assert "status" not in manifest
+
+
+def test_package_names_cloud_failures(tmp_path: Path) -> None:
+    source = write_source(tmp_path / "source", ["https://example.test/a"])
+    with WorkState.open(tmp_path / "work", "c1") as state:
+        index_inventory(source, state)
+        download_all(state, ["https://example.test/a.pdf"])
+        failed = ParseResult("sha", [], "cloud_failed", ["transient: boom"], {})
+        state.mark_parse("https://example.test/a.pdf", failed, used_cloud=True)
+
+        with pytest.raises(ValueError, match="1 documents failed in LlamaParse"):
+            package_corpus(source, state, tmp_path / "corpus")

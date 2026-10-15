@@ -104,7 +104,7 @@ def test_per_file_limit_error_does_not_exhaust_keys(tmp_path: Path, cloud: type[
 
     result, _ = run_subset(tmp_path, pool)
 
-    assert result.status == "cloud_failed"
+    assert result.warnings[0].startswith("cloud_rejected: invalid:")
     assert pool.exhausted == set()
     assert cloud.keys == ["s1"]
 
@@ -115,3 +115,15 @@ def test_llamaparse_part_keeps_local_visual_flag(tmp_path: Path, cloud: type[Fak
     result, _ = run_subset(tmp_path, KeyPool([("K1", "s1")]))
 
     assert [(part.text, part.has_visual_content) for part in result.parts] == [("", True)]
+
+
+def test_rejected_file_keeps_local_result_and_is_not_retried(
+    tmp_path: Path, cloud: type[FakeCloud]
+) -> None:
+    cloud.fail = StatusError("unsupported or encrypted PDF", 422)
+
+    result, _ = run_subset(tmp_path, KeyPool([("K1", "s1")]))
+
+    assert result.status == "extracted"
+    assert result.parts == []
+    assert result.warnings == ["cloud_rejected: invalid: unsupported or encrypted PDF"]

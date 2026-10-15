@@ -205,8 +205,15 @@ class WorkState:
             )
 
     def inventory_done(self, source_key: str) -> bool:
+        """True once the source file was read to the end and has not changed since."""
         progress = self.source_progress(source_key)
-        return progress is not None and progress.done
+        if progress is None or not progress.done:
+            return False
+        path = Path(source_key)
+        if not path.exists():
+            return False
+        stat = path.stat()
+        return (progress.size, progress.mtime_ns) == (stat.st_size, stat.st_mtime_ns)
 
     @_locked
     def delete_refs_from(self, source_urls: Iterable[str]) -> None:

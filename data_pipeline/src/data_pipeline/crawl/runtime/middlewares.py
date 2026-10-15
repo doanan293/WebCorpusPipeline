@@ -280,12 +280,10 @@ class PlaywrightFallbackMiddleware:
         if decision.outcome != "public":
             if decision.use_playwright and not rendered:
                 meta = dict(request.meta)
-                hostname = (urlsplit(response.url).hostname or "").lower().rstrip(".")
                 meta.update(
                     {
                         "playwright": True,
                         "rendered": True,
-                        "download_slot": f"playwright:{hostname}",
                     }
                 )
                 return request.replace(meta=meta, dont_filter=True)
@@ -295,12 +293,10 @@ class PlaywrightFallbackMiddleware:
         if not decision.use_playwright:
             return response
         meta = dict(request.meta)
-        hostname = (urlsplit(response.url).hostname or "").lower().rstrip(".")
         meta.update(
             {
                 "playwright": True,
                 "rendered": True,
-                "download_slot": f"playwright:{hostname}",
                 "playwright_page_methods": {
                     "stable_body": PageMethod(_wait_for_stable_body),
                 },

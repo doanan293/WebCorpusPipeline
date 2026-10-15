@@ -51,9 +51,12 @@ Văn bản chỉ ra file JSONL khi `corpus package` đóng gói (`documents.json
   `LLAMAPARSE_KEY1..n` đọc từ `.env`.
   - Tối đa `cloud_workers` job chạy song song với parse cục bộ. Kết quả thành công được ghi vào `cache/` ngay trong
     worker và ghi vào `state.sqlite3` giữa các tài liệu cục bộ, nên ngắt giữa chừng không mất kết quả đã trả tiền.
-  - Mọi lỗi của một job (mạng, timeout, lỗi máy chủ, lỗi riêng của tệp) chỉ làm tài liệu đó `cloud_failed`; chỉ
-    lỗi tài khoản hết credit/quota mới chuyển sang khoá kế tiếp. Hết mọi khoá, hoặc chưa có khoá nào (cảnh báo
-    `no LlamaParse keys`), cho `quota_blocked`. Cả hai được parse lại ở lần `extract` sau.
+  - Lỗi tạm thời của một job (mạng, timeout, lỗi máy chủ) chỉ làm tài liệu đó `cloud_failed`; chỉ lỗi tài khoản
+    hết credit/quota mới chuyển sang khoá kế tiếp. Hết mọi khoá, hoặc chưa có khoá nào (cảnh báo
+    `no LlamaParse keys`), cho `quota_blocked`. Cả hai được parse lại ở lần `extract` sau và chặn `corpus package`.
+  - Tệp LlamaParse từ chối vĩnh viễn (400/422, vượt giới hạn trang của tệp) giữ văn bản cục bộ, có cảnh báo
+    `cloud_rejected: …`, trạng thái `extracted` và không thử lại.
+  - Nhiều URL cùng một tệp chỉ gửi LlamaParse một lần; các URL còn lại nhận chung kết quả.
   - Tệp đã upload luôn bị xoá khỏi LlamaCloud sau job. `cloud_jobs` ghi URL tài liệu và giữ `file_id`/`job_id`
     cả khi job lỗi.
 - `enrich extract --reparse-cloud` xoá kết quả parse **và tệp cache** của các tài liệu đã qua LlamaParse, nên
