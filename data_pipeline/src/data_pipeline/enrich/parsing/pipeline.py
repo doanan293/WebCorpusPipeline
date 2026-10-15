@@ -42,7 +42,7 @@ def extract_documents(
     def finish_cloud(
         file: DownloadedFile, local: LocalResult, key: str, remote: ParseResult
     ) -> None:
-        if remote.status in {"extracted", "cloud_failed"}:
+        if remote.status == "extracted":
             write_cached(cache_root, key, remote)
         state.mark_parse(file.url, merge_parts(local, remote), cache_root / f"{key}.json")
 

@@ -67,3 +67,36 @@ def test_cloud_parses_run_concurrently_up_to_cloud_workers(
 
     assert jobs == workers
     assert all(f"cloud {file.sha256}" in texts[file.url] for file in files)
+
+
+def test_failed_cloud_parse_is_not_cached_so_the_next_run_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    file = DownloadedFile(
+        "https://a.test/x.pdf", tmp_path / "x.pdf", "sha", 1, "application/pdf", ""
+    )
+
+    def parse_local(file: DownloadedFile) -> LocalResult:
+        return LocalResult(
+            file.sha256, [ExtractedPart(1, "page", "", True, "pymupdf")], [], "pymupdf"
+        )
+
+    def cloud_part_indices(local: LocalResult) -> list[int]:
+        return [1]
+
+    def build_pdf_subset(source: Path, pages: list[int], target: Path) -> dict[int, int]:
+        return {1: 1}
+
+    def parse_cloud_subset(*args: object) -> ParseResult:
+        return ParseResult("sha", [], "cloud_failed", ["unknown: Request timed out."], {})
+
+    monkeypatch.setattr(pipeline, "parse_local", parse_local)
+    monkeypatch.setattr(pipeline, "cloud_part_indices", cloud_part_indices)
+    monkeypatch.setattr(pipeline, "build_pdf_subset", build_pdf_subset)
+    monkeypatch.setattr(pipeline, "parse_cloud_subset", parse_cloud_subset)
+
+    with WorkState.open(tmp_path / "work", "fp") as state:
+        monkeypatch.setattr(state, "pending_parse", lambda: iter([file]))
+        pipeline.extract_documents(state, Settings(tmp_path), api_keys=[("K1", "s")])
+
+    assert list((tmp_path / "work" / "cache").glob("*.json")) == []
