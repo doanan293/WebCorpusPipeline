@@ -132,9 +132,6 @@ class SafeRedirectMiddleware:
         return redirect
 
 
-ExactHostRedirectMiddleware = SafeRedirectMiddleware
-
-
 class PublicAssetAddressMiddleware:
     def __init__(self, resolver: Callable[..., Awaitable[None]] = resolve_public_hostname) -> None:
         self.resolver = resolver

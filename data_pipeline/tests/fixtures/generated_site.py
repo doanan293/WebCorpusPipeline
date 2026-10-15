@@ -105,17 +105,13 @@ def run_generated_site(
     sorts: int = 4,
     languages: int = 5,
     detail_pages: int = 250,
-    max_query_variants_per_path: int = 20,
     max_total_urls: int = 10000,
     routes: dict[str, Any] | None = None,
 ) -> GeneratedSiteResult:
     seeds_file = tmp_path / "seeds.txt"
     seeds_file.write_text("site.test\n", encoding="utf-8")
     seeds = SeedSet(frozenset({"site.test"}), (), ())
-    options = CrawlOptions(
-        max_query_variants_per_path=max_query_variants_per_path,
-        max_total_urls=max_total_urls,
-    )
+    options = CrawlOptions(max_total_urls=max_total_urls)
     config = CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
     frontier = FrontierPolicy(seeds, options)
 

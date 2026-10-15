@@ -223,15 +223,7 @@ class UnifiedSpider(scrapy.Spider):
             self.refresh.finish_target(input_url, outcome, error=error_str[:500])
             return None
 
-        # 1. robots_disallowed
-        if isinstance(failure.value, IgnoreRequest) and "robots.txt" in error_str.lower():
-            self.writer.record_skipped(
-                {"url": input_url, "status": "skipped", "reason": "robots_disallowed"}
-            )
-            self.writer.checkpoint(input_url)
-            return None
-
-        # 2. captcha_blocked / login_required
+        # 1. captcha_blocked / login_required
         access_reason = next(
             (
                 reason
@@ -247,7 +239,7 @@ class UnifiedSpider(scrapy.Spider):
             self.writer.checkpoint(input_url)
             return None
 
-        # 3. Asset-only IgnoreRequest mapping
+        # 2. Asset-only IgnoreRequest mapping
         if request_scope == "asset" and isinstance(failure.value, IgnoreRequest):
             asset_safety_reasons = {
                 "non_public_address",
@@ -285,13 +277,13 @@ class UnifiedSpider(scrapy.Spider):
             self.writer.checkpoint(input_url)
             return None
 
-        # 4. Coordinator notification
+        # 3. Coordinator notification
         if purpose == "sitemap":
             self.coordinator.complete_sitemap(hostname, request.url, result="failed")
         elif purpose == "robots":
             self.coordinator.complete_robots(hostname)
 
-        # 5. HTTPS transport error fallback
+        # 4. HTTPS transport error fallback
         fallback_requests: list[scrapy.Request] = []
         if request.url.startswith("https://") and not request.meta.get("http_fallback"):
             parsed = urlsplit(request.url)

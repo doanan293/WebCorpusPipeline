@@ -50,7 +50,6 @@ def capture_runner_dependencies(monkeypatch: pytest.MonkeyPatch) -> dict[str, An
     def fake_create(self: Any, spider_cls: Any, *args: Any, **kwargs: Any):
         if isinstance(spider_cls, type):
             observed["spider"] = spider_cls
-        observed["jobdir"] = self.settings.get("JOBDIR")
         return original_create(self, spider_cls, *args, **kwargs)
 
     monkeypatch.setattr(runner.CrawlerProcess, "create_crawler", fake_create)
@@ -73,9 +72,7 @@ def run_unified_for_test(
     *,
     resume: bool = False,
     retry_failed: bool = False,
-    retry_truncated: bool = False,
     retry_access_gates: bool = False,
-    retry_policy_skips: bool = False,
 ) -> int:
     urls_file = tmp_path / "seeds.txt"
     urls_file.write_text("https://a.test/article\n", encoding="utf-8")
@@ -86,7 +83,7 @@ def run_unified_for_test(
     )
     config = CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
     options = CrawlOptions()
-    tuning = resolve_runtime_tuning(profile="safe-fast")
+    tuning = resolve_runtime_tuning(config=config)
     output = tmp_path / "crawl-output"
     return run_crawl(
         input_path=urls_file,
@@ -97,22 +94,8 @@ def run_unified_for_test(
         tuning=tuning,
         resume=resume,
         retry_failed=retry_failed,
-        retry_truncated=retry_truncated,
         retry_access_gates=retry_access_gates,
-        retry_policy_skips=retry_policy_skips,
     )
-
-
-def test_crawl_runner_policy_recovery_is_explicit_and_resumable(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    observed = capture_runner_dependencies(monkeypatch)
-    assert run_unified_for_test(tmp_path) == 0
-
-    observed.clear()
-    assert run_unified_for_test(tmp_path, resume=True, retry_policy_skips=True) == 0
-    assert observed["allow_policy_migration"] is True
-    assert {row["url"] for row in observed["crawl_kwargs"]["resume_records"]} == {"https://a.test/"}
 
 
 def test_crawl_runner_uses_crawl_phase_and_unified_spider(
@@ -187,7 +170,7 @@ def test_crawl_runner_reuses_articles_and_selects_asset_only_spider(
         config=config,
         seeds=seeds,
         options=CrawlOptions(assets="all"),
-        tuning=resolve_runtime_tuning(profile="safe-fast"),
+        tuning=resolve_runtime_tuning(config=config),
         reuse_content_from=source,
     )
 
@@ -214,7 +197,9 @@ def test_crawl_runner_rejects_missing_reuse_source_before_creating_output(
             config=CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com"),
             seeds=seeds,
             options=CrawlOptions(assets="all"),
-            tuning=resolve_runtime_tuning(profile="safe-fast"),
+            tuning=resolve_runtime_tuning(
+                config=CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
+            ),
             reuse_content_from=tmp_path / "missing-crawl",
         )
 
@@ -239,7 +224,9 @@ def test_crawl_runner_rejects_existing_reuse_output_without_touching_it(
             config=CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com"),
             seeds=seeds,
             options=CrawlOptions(assets="all"),
-            tuning=resolve_runtime_tuning(profile="safe-fast"),
+            tuning=resolve_runtime_tuning(
+                config=CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
+            ),
             reuse_content_from=tmp_path / "crawl",
         )
 
@@ -277,7 +264,9 @@ def test_crawl_runner_cleans_destination_after_corrupt_source_database(
             config=CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com"),
             seeds=seeds,
             options=CrawlOptions(assets="all"),
-            tuning=resolve_runtime_tuning(profile="safe-fast"),
+            tuning=resolve_runtime_tuning(
+                config=CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
+            ),
             reuse_content_from=source,
         )
 
@@ -318,7 +307,9 @@ def test_crawl_runner_cleans_reuse_destination_when_scrapy_setup_fails(
             config=config,
             seeds=seeds,
             options=CrawlOptions(assets="all"),
-            tuning=resolve_runtime_tuning(profile="safe-fast"),
+            tuning=resolve_runtime_tuning(
+                config=CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
+            ),
             reuse_content_from=source,
         )
 
@@ -358,7 +349,9 @@ def test_crawl_runner_rejects_malformed_reused_article_before_scrapy_starts(
             config=config,
             seeds=seeds,
             options=CrawlOptions(assets="all"),
-            tuning=resolve_runtime_tuning(profile="safe-fast"),
+            tuning=resolve_runtime_tuning(
+                config=CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
+            ),
             reuse_content_from=source,
         )
 
@@ -453,7 +446,6 @@ def test_crawl_runner_resume_restores_frontier_and_coordinator(
     assert resumed_frontier.snapshot()["total_scheduled"] == 1
     assert resumed_coordinator.hosts["a.test"].mode == "sitemap"
     assert [record["url"] for record in resume_records] == ["https://a.test/page1"]
-    assert observed["jobdir"] is None
 
 
 def test_crawl_runner_retry_failed_requeues_transport_errors(
@@ -492,42 +484,6 @@ def test_crawl_runner_retry_failed_requeues_transport_errors(
     assert [record["url"] for record in observed["crawl_kwargs"]["resume_records"]] == [
         "https://a.test/retry"
     ]
-
-
-def test_crawl_runner_retry_truncated_requeues_query_variant_limits(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    observed = capture_runner_dependencies(monkeypatch)
-    assert run_unified_for_test(tmp_path) == 0
-
-    state = CrawlState.open(
-        tmp_path / "crawl-output" / "state",
-        phase="crawl",
-        input_path=tmp_path / "seeds.txt",
-        semantic_config=observed["semantic_config"],
-        runtime_config=observed["runtime_config"],
-        resume=True,
-    )
-    state.complete_url(
-        {
-            "url": "https://a.test/news?page=22&tag=undergraduate",
-            "status": "skipped",
-            "reason": "query_variant_limit",
-            "discovery_source": "html_link",
-            "response_purpose": "page",
-        }
-    )
-    state.close()
-
-    observed.clear()
-    assert run_unified_for_test(tmp_path, resume=True, retry_truncated=True) == 0
-    resume_records = observed["crawl_kwargs"]["resume_records"]
-    assert [record["url"] for record in resume_records] == [
-        "https://a.test/news?page=22&tag=undergraduate"
-    ]
-    assert resume_records[0]["link_kind"] == "pagination"
-    assert resume_records[0]["family_key"] == ("a.test/news?page={page}&tag=undergraduate")
-    assert resume_records[0]["ordinal"] == 22
 
 
 def test_crawl_runner_retry_access_gates_requeues_captcha_blocked_pages(
@@ -578,20 +534,20 @@ def test_crawl_runner_retry_access_gates_requeues_captcha_blocked_pages(
     ]
 
 
-def test_crawl_runner_resume_rejects_incompatible_workflow(tmp_path: Path) -> None:
+def test_crawl_runner_resume_rejects_incompatible_state(tmp_path: Path) -> None:
     state_dir = tmp_path / "crawl-output" / "state"
     state_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / "manifest.json").write_text(
         json.dumps(
             {
                 "state_version": 4,
-                "phase": "crawl",
-                "semantic_config": {"crawl_strategy": "sitemap-only"},
+                "phase": "discover",
+                "semantic_config": {},
             }
         ),
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="hybrid-unified"):
+    with pytest.raises(ValueError, match="phase does not match"):
         run_unified_for_test(tmp_path, resume=True)
 
 
@@ -608,7 +564,7 @@ def test_refresh_requires_existing_crawl(tmp_path: Path) -> None:
             config=config,
             seeds=seeds,
             options=CrawlOptions(),
-            tuning=resolve_runtime_tuning(config=config, profile="safe-fast"),
+            tuning=resolve_runtime_tuning(config=config),
             refresh=True,
         )
     assert not (tmp_path / "missing").exists()

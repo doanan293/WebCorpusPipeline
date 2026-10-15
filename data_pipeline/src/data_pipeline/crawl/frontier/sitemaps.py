@@ -172,7 +172,6 @@ class SitemapDiscoveryCoordinator:
     def snapshot(self) -> dict[str, Any]:
         return {
             "strategy": self.strategy,
-            "sitemap_url_limits": "unbounded",
             "hosts": {h: self.hosts[h].to_summary() for h in sorted(self.hosts.keys())},
         }
 

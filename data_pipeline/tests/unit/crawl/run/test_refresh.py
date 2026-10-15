@@ -114,15 +114,15 @@ def test_select_targets_collects_each_hub_kind(tmp_path: Path) -> None:
         ("https://a.test/sitemap.xml", "sitemap"),
     ):
         state.upsert_url(
-            {"url": url, "status": "scheduled", "response_purpose": purpose, "completed": True}
+            {"url": url, "status": "scheduled", "response_purpose": purpose}, completed=True
         )
     state.upsert_url(
         {
             "url": "https://b.test/robots.txt",
             "status": "scheduled",
             "response_purpose": "robots",
-            "completed": True,
-        }
+        },
+        completed=True,
     )
 
     targets = select_targets(
@@ -338,7 +338,7 @@ def test_failed_prepare_restores_finished_crawl_status(
 
 def test_homepage_target_skips_https_when_only_http_homepage_works(tmp_path: Path) -> None:
     state = open_state(tmp_path)
-    state.upsert_url({"url": "https://a.test/", "status": "failed", "completed": True})
+    state.upsert_url({"url": "https://a.test/", "status": "failed"}, completed=True)
     put_page(state, "http://a.test/")
 
     targets = select_targets(state.connection, frozenset({"a.test"}), RefreshSettings(), [], NOW)

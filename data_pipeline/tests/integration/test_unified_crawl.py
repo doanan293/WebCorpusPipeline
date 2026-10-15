@@ -194,28 +194,6 @@ def test_crawl_ignores_redirected_robots_disallow_rules(tmp_path: Path) -> None:
     assert records["https://a.test/about"]["status"] == "extracted"
 
 
-def test_policy_recovery_resumes_without_refetching_successful_urls(tmp_path: Path) -> None:
-    initial = run_fixture(tmp_path, mode="policy_recovery_initial")
-    assert initial.returncode == 0, f"STDOUT:\n{initial.stdout}\nSTDERR:\n{initial.stderr}"
-    before = request_counts(tmp_path)
-    first_records = records_by_url(tmp_path / "crawl/url_records.jsonl")
-    assert first_records["https://a.test/about"]["reason"] == "robots_disallowed"
-    assert first_records["https://ua-gated.test/"]["reason"] == "login_required"
-    assert first_records["https://js-gated.test/"]["status"] == "extracted"
-
-    resumed = run_fixture(tmp_path, mode="policy_recovery_resume")
-    assert resumed.returncode == 0, f"STDOUT:\n{resumed.stdout}\nSTDERR:\n{resumed.stderr}"
-    after = request_counts(tmp_path)
-    records = records_by_url(tmp_path / "crawl/url_records.jsonl")
-    manifest = read_json(tmp_path / "crawl/manifest.json")
-
-    assert after["https://a.test/article"] == before["https://a.test/article"]
-    assert records["https://a.test/about"]["status"] == "extracted"
-    assert records["https://ua-gated.test/"]["status"] == "extracted"
-    assert records["https://js-gated.test/"]["status"] == "extracted"
-    assert manifest["host_completion"]["ua-gated.test"]["status"] == "complete"
-
-
 def test_captcha_and_login_access_gates_are_skipped(tmp_path: Path) -> None:
     result = run_fixture(tmp_path, mode="access_gate")
     assert result.returncode == 0, f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"

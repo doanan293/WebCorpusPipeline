@@ -54,12 +54,8 @@ from data_pipeline.crawl.state.export import reason_counts
 from data_pipeline.crawl.state.refresh_store import RefreshStore
 from data_pipeline.crawl.state.requeue import (
     requeue_access_gates,
-    requeue_policy_skips,
-    requeue_query_variant_truncations,
     requeue_retryable_failures,
-    requeue_zero_content_bootstrap,
 )
-from data_pipeline.crawl.state.resume import validate_resume_workflow
 from data_pipeline.crawl.state.store import CrawlState
 
 
@@ -82,9 +78,7 @@ class _CrawlContext:
     tuning: RuntimeTuning
     resume: bool
     retry_failed: bool
-    retry_truncated: bool
     retry_access_gates: bool
-    retry_policy_skips: bool
     reuse_content_from: Path | None
     refresh: bool
     output_existed: bool
@@ -118,17 +112,13 @@ def _validate_modes(ctx: _CrawlContext) -> None:
         ctx.resume
         or ctx.reuse_content_from is not None
         or ctx.retry_failed
-        or ctx.retry_truncated
         or ctx.retry_access_gates
-        or ctx.retry_policy_skips
     ):
         msg = "--refresh cannot be combined with --resume, --reuse-content-from or --retry-* flags"
         raise ValueError(msg)
     for enabled, flag in (
         (ctx.retry_failed, "--retry-failed"),
-        (ctx.retry_truncated, "--retry-truncated"),
         (ctx.retry_access_gates, "--retry-access-gates"),
-        (ctx.retry_policy_skips, "--retry-policy-skips"),
     ):
         if enabled and not ctx.resume:
             msg = f"{flag} requires --resume"
@@ -150,12 +140,7 @@ def _validate_modes(ctx: _CrawlContext) -> None:
 
 def _check_resumable(ctx: _CrawlContext) -> str | None:
     """Validate the saved state for --resume/--refresh; return a refresh run to continue."""
-    if ctx.resume:
-        validate_resume_workflow(ctx.state_dir, expected="hybrid-unified")
-    if ctx.refresh:
-        validate_resume_workflow(ctx.state_dir, expected="hybrid-unified")
-        return preflight(ctx.state_dir)
-    return None
+    return preflight(ctx.state_dir) if ctx.refresh else None
 
 
 def _open_state(ctx: _CrawlContext) -> CrawlState:
@@ -169,7 +154,6 @@ def _open_state(ctx: _CrawlContext) -> CrawlState:
         },
         runtime_config=runtime_config_snapshot(ctx.config, ctx.tuning),
         resume=ctx.resuming,
-        allow_policy_migration=ctx.retry_policy_skips,
     )
 
 
@@ -216,34 +200,18 @@ def _prepare(ctx: _CrawlContext, state: CrawlState, continue_run_id: str | None)
 def _requeue_for_resume(ctx: _CrawlContext, state: CrawlState) -> None:
     if ctx.retry_failed:
         requeue_retryable_failures(state)
-    if ctx.retry_truncated:
-        requeue_query_variant_truncations(state)
     if ctx.retry_access_gates:
         requeue_access_gates(state)
-    if ctx.retry_policy_skips:
-        requeue_policy_skips(state, ctx.seeds.recursive_hostnames)
-        requeue_retryable_failures(state)
-        requeue_zero_content_bootstrap(state, ctx.seeds.recursive_hostnames)
 
 
 def _scrapy_crawler(ctx: _CrawlContext) -> tuple[CrawlerProcess, Crawler]:
     extensions: dict[object, int] = {}
     if ctx.tuning.progress_interval_seconds > 0:
         extensions[CrawlProgressReporter] = 500
-    settings_map = build_settings(
-        ctx.config,
-        state_dir=ctx.state_dir / "scrapy-job",
-        phase="crawl",
-        tuning=ctx.tuning,
-        extensions=extensions,
-    )
-    if ctx.resuming:
-        settings_map.pop("JOBDIR", None)
+    settings_map = build_settings(ctx.config, tuning=ctx.tuning, extensions=extensions)
     settings = Settings()
-    settings.setmodule("data_pipeline.crawl.runtime.settings")
     for key, value in settings_map.items():
         settings.set(key, value, priority="cmdline")
-    settings.set("HUST_CRAWL_OPTIONS", ctx.options, priority="cmdline")
     process = CrawlerProcess(settings=settings)
     spider_cls = ReusedAssetSpider if ctx.reuse_content_from is not None else UnifiedSpider
     return process, process.create_crawler(spider_cls)
@@ -419,9 +387,7 @@ def run_crawl(  # noqa: PLR0913 -- one keyword per documented crawl mode
     *,
     resume: bool = False,
     retry_failed: bool = False,
-    retry_truncated: bool = False,
     retry_access_gates: bool = False,
-    retry_policy_skips: bool = False,
     reuse_content_from: Path | None = None,
     refresh: bool = False,
 ) -> int:
@@ -434,9 +400,7 @@ def run_crawl(  # noqa: PLR0913 -- one keyword per documented crawl mode
         tuning=tuning,
         resume=resume,
         retry_failed=retry_failed,
-        retry_truncated=retry_truncated,
         retry_access_gates=retry_access_gates,
-        retry_policy_skips=retry_policy_skips,
         reuse_content_from=reuse_content_from,
         refresh=refresh,
         output_existed=output.exists(),

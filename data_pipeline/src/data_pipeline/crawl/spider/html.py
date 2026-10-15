@@ -455,7 +455,6 @@ class HtmlHandler:
 
         if family_key and self.refresh is None:
             self._observe_family(stored_article, family_key, ordinal, accepted_content_urls)
-            self.frontier.observe_pagination(response.url, new_scheduled_content_count)
 
         for pagination_key, links in pagination_by_family.items():
             if not self._may_follow_pagination(pagination_key, new_scheduled_content_count):

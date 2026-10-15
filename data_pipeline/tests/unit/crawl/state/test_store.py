@@ -8,10 +8,6 @@ import pytest
 
 from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.output.writer import CrawlWriter
-from data_pipeline.crawl.state.resume import (
-    normalize_legacy_semantic_config,
-    validate_resume_workflow,
-)
 from data_pipeline.crawl.state.store import (
     CrawlState,
 )
@@ -161,93 +157,6 @@ def test_resume_rejects_semantic_change_but_accepts_runtime_change(tmp_path: Pat
     resumed.close()
 
 
-def test_resume_policy_migration_requires_explicit_opt_in(tmp_path: Path) -> None:
-    legacy = {
-        "crawl_strategy": "hybrid-unified",
-        "assets": "content-only",
-        "robots_txt_obey": True,
-        "user_agent_name": "HUSTPublicCrawler",
-        "user_agent_version": "1.0",
-    }
-    current = {
-        **legacy,
-        "robots_txt_obey": False,
-        "access_policy_revision": 2,
-        "browser_user_agent": "Mozilla/5.0 Chrome/140.0.0.0",
-    }
-    state = open_state(tmp_path, semantic_config=legacy)
-    state.close()
-    source = tmp_path / "output" / "input.txt"
-
-    with pytest.raises(ValueError, match="semantic configuration"):
-        CrawlState.open(
-            tmp_path / "output/state",
-            phase="crawl",
-            input_path=source,
-            semantic_config=current,
-            runtime_config={},
-            resume=True,
-        )
-
-    resumed = CrawlState.open(
-        tmp_path / "output/state",
-        phase="crawl",
-        input_path=source,
-        semantic_config=current,
-        runtime_config={},
-        resume=True,
-        allow_policy_migration=True,
-    )
-    assert resumed.manifest["semantic_config"] == current
-    assert resumed.manifest["policy_migrations"][0]["to_revision"] == 2
-    resumed.close()
-
-    resumed_again = CrawlState.open(
-        tmp_path / "output/state",
-        phase="crawl",
-        input_path=source,
-        semantic_config=current,
-        runtime_config={},
-        resume=True,
-        allow_policy_migration=True,
-    )
-    assert len(resumed_again.manifest["policy_migrations"]) == 1
-    resumed_again.close()
-
-
-def test_legacy_semantic_snapshot_drops_values_reclassified_as_runtime() -> None:
-    saved = {
-        "assets": "content-only",
-        "download_timeout_seconds": 60.0,
-        "retry_times": 3,
-        "retry_backoff_base_seconds": 2.0,
-        "retry_max_delay_seconds": 3600.0,
-        "retry_statuses": [408, 429, 500],
-    }
-    current = {
-        "assets": "content-only",
-        "retry_statuses": [408, 429, 500],
-        "user_agent_name": "HUSTPublicCrawler",
-        "user_agent_version": "1.0",
-    }
-
-    assert normalize_legacy_semantic_config(saved) == normalize_legacy_semantic_config(current)
-
-
-def test_resume_rejects_old_asset_policy(tmp_path: Path) -> None:
-    state = open_state(
-        tmp_path,
-        semantic_config={"assets": "documents", "asset_policy_version": 1},
-    )
-    state.close()
-    with pytest.raises(ValueError, match="semantic configuration"):
-        open_state(
-            tmp_path,
-            semantic_config={"assets": "content-only", "asset_policy_version": 2},
-            resume=True,
-        )
-
-
 def test_claim_content_deduplication(tmp_path: Path) -> None:
     state = open_state(tmp_path)
     owner1 = state.claim_content("hash-123", "https://a.test/first")
@@ -280,7 +189,7 @@ def test_interruption_safe_reopen(tmp_path: Path) -> None:
 
 def test_counts_and_finish_manifest(tmp_path: Path) -> None:
     state = open_state(tmp_path)
-    state.upsert_url({"url": "https://a.test/1", "status": "extracted", "completed": 1})
+    state.upsert_url({"url": "https://a.test/1", "status": "extracted"}, completed=True)
     state.upsert_url({"url": "https://a.test/2", "status": "discovered_not_downloaded"})
     state.put_article({"url": "https://a.test/1", "title": "One"})
     state.put_file({"url": "https://a.test/doc.pdf", "path": "files/abc.pdf"})
@@ -395,47 +304,6 @@ def test_crawl_manifest_includes_hybrid_discovery(tmp_path: Path) -> None:
     state.close()
 
 
-def test_resume_rejects_fixed_inventory_state_with_clear_message(tmp_path: Path) -> None:
-    state = open_state(tmp_path, phase="crawl", semantic_config={})
-    state.close()
-    state_dir = (
-        tmp_path
-        if tmp_path.name == "state" or (tmp_path / "manifest.json").exists()
-        else tmp_path / "output" / "state"
-    )
-    with pytest.raises(ValueError, match="hybrid-unified"):
-        validate_resume_workflow(state_dir, expected="hybrid-unified")
-
-
-def test_validate_resume_workflow_accepts_matching_strategy(tmp_path: Path) -> None:
-    state = open_state(
-        tmp_path, phase="crawl", semantic_config={"crawl_strategy": "hybrid-unified"}
-    )
-    state.close()
-    state_dir = (
-        tmp_path
-        if tmp_path.name == "state" or (tmp_path / "manifest.json").exists()
-        else tmp_path / "output" / "state"
-    )
-    validate_resume_workflow(state_dir, expected="hybrid-unified")
-
-
-def test_validate_resume_workflow_ignores_missing_manifest(tmp_path: Path) -> None:
-    validate_resume_workflow(tmp_path / "nonexistent", expected="hybrid-unified")
-
-
-def test_validate_resume_workflow_rejects_sitemap_only_state(tmp_path: Path) -> None:
-    state = open_state(tmp_path, phase="crawl", semantic_config={"crawl_strategy": "sitemap-only"})
-    state.close()
-    state_dir = (
-        tmp_path
-        if tmp_path.name == "state" or (tmp_path / "manifest.json").exists()
-        else tmp_path / "output" / "state"
-    )
-    with pytest.raises(ValueError, match="cannot resume sitemap-only state as hybrid-unified"):
-        validate_resume_workflow(state_dir, expected="hybrid-unified")
-
-
 def test_asset_referrers_persists_and_updates_file_payload(tmp_path: Path) -> None:
     state = open_state(tmp_path)
     state.add_asset_referrer("https://cdn.test/a.png", "https://a.test/p1", "inline_image")
@@ -483,7 +351,7 @@ def test_new_records_are_stamped_with_refresh_run(tmp_path: Path) -> None:
 def test_update_url_fields_keeps_status_and_completion(tmp_path: Path) -> None:
     state = open_state(tmp_path)
     url = "https://a.test/page"
-    state.upsert_url({"url": url, "status": "extracted", "completed": True, "duplicate_of": "x"})
+    state.upsert_url({"url": url, "status": "extracted", "duplicate_of": "x"}, completed=True)
     state.update_url_fields(url, {"etag": '"v1"', "duplicate_of": None})
     state.update_url_fields("https://a.test/missing", {"etag": '"v1"'})
 

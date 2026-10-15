@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Any, cast
@@ -38,6 +39,7 @@ class InterruptExtension:
 
 def main(root: Path, mode: str = "complete", assets: str = "content-only") -> int:
     root.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("CRAWLER_CONTACT", "ops@example.org")
     seeds_file = root / "seeds.txt"
     if not seeds_file.exists():
         if mode == "cycle":
@@ -51,8 +53,6 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
             seeds_file.write_text("https://a.test/retry-page\n", encoding="utf-8")
         elif mode == "generated_graph":
             seeds_file.write_text("a.test\nhttps://a.test/news?page=1\n", encoding="utf-8")
-        elif mode in {"policy_recovery_initial", "policy_recovery_resume"}:
-            seeds_file.write_text("a.test\nua-gated.test\njs-gated.test\n", encoding="utf-8")
         else:
             seeds_file.write_text(
                 "map.test\nhtml-only.test\na.test\nhttps://b.test/explicit\n",
@@ -62,24 +62,7 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
     config_file = root / "config.yaml"
     if not config_file.exists():
         values = yaml.safe_load(Path("config/crawler.yaml").read_text(encoding="utf-8"))
-        values.update(
-            contact="ops@example.org", retry_backoff_base_seconds=0.01, download_delay_seconds=0.001
-        )
-        if mode == "policy_recovery_initial":
-            values.update(
-                access_policy_revision=1,
-                browser_user_agent="HUSTPublicCrawler/1.0",
-                robots_txt_obey=True,
-            )
-        config_file.write_text(yaml.safe_dump(values), encoding="utf-8")
-    elif mode == "policy_recovery_resume":
-        values = yaml.safe_load(config_file.read_text(encoding="utf-8"))
-        current = yaml.safe_load(Path("config/crawler.yaml").read_text(encoding="utf-8"))
-        values.update(
-            access_policy_revision=current["access_policy_revision"],
-            browser_user_agent=current["browser_user_agent"],
-            robots_txt_obey=False,
-        )
+        values.update(retry_backoff_base_seconds=0.01, download_delay_seconds=0.001)
         config_file.write_text(yaml.safe_dump(values), encoding="utf-8")
 
     original_build_settings = crawl_settings.build_settings
@@ -88,14 +71,10 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
     def fixture_build_settings(
         cfg: Any,
         *,
-        state_dir: Any,
-        phase: str = "crawl",
         tuning: Any = None,
         extensions: Any = None,
     ):
-        vals = original_build_settings(
-            cfg, state_dir=state_dir, phase=phase, tuning=tuning, extensions=extensions
-        )
+        vals = original_build_settings(cfg, tuning=tuning, extensions=extensions)
         vals["DOWNLOAD_HANDLERS"] = {
             "http": "tests.fixtures.scrapy_download_handler.StaticDownloadHandler",
             "https": "tests.fixtures.scrapy_download_handler.StaticDownloadHandler",
@@ -131,8 +110,6 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
         str(config_file),
         "--assets",
         assets,
-        "--profile",
-        "safe-fast",
         "--concurrency",
         "4",
         "--max-per-host",
@@ -142,8 +119,6 @@ def main(root: Path, mode: str = "complete", assets: str = "content-only") -> in
         argv.extend(["--reuse-content-from", str(reuse_source)])
     if mode == "resume":
         argv.append("--resume")
-    elif mode == "policy_recovery_resume":
-        argv.extend(["--resume", "--retry-policy-skips"])
 
     return cli_main(["crawl", "run", *argv])
 

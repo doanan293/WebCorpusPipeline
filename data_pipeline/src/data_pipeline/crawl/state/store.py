@@ -63,7 +63,6 @@ class CrawlState:
         semantic_config: Mapping[str, object],
         runtime_config: Mapping[str, object],
         resume: bool = False,
-        allow_policy_migration: bool = False,
     ) -> CrawlState:
         root.mkdir(parents=True, exist_ok=True)
         input_sha256 = hashlib.sha256(input_path.read_bytes()).hexdigest()
@@ -76,7 +75,6 @@ class CrawlState:
                 input_sha256=input_sha256,
                 semantic_config=semantic_config,
                 runtime_config=runtime_config,
-                allow_policy_migration=allow_policy_migration,
             )
             connection = sqlite3.connect(str(root / "index.sqlite3"), autocommit=True)
             connection.execute("PRAGMA journal_mode=WAL;")
@@ -185,7 +183,7 @@ class CrawlState:
         url = str(merged["url"])
         payload = json.dumps(merged, ensure_ascii=False)
         status = str(merged.get("status", "discovered"))
-        comp_val = 1 if (completed or merged.get("completed")) else 0
+        comp_val = 1 if completed else 0
         self.connection.execute(
             """
             INSERT INTO url_records(url, payload, status, completed)
@@ -232,8 +230,8 @@ class CrawlState:
             self.connection.execute("ROLLBACK;")
             raise
 
-    def upsert_url(self, record: Mapping[str, object]) -> None:
-        self.merge_url(record, completed=bool(record.get("completed")))
+    def upsert_url(self, record: Mapping[str, object], *, completed: bool = False) -> None:
+        self.merge_url(record, completed=completed)
 
     def put_article(self, record: Mapping[str, object]) -> None:
         self._put_payload("articles", record)

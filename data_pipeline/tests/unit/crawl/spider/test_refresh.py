@@ -302,8 +302,8 @@ def known_sitemap(writer: CrawlWriter) -> None:
             "response_purpose": "sitemap",
             "discovery_source": "sitemap",
             "seed_type": "recursive",
-            "completed": True,
-        }
+        },
+        completed=True,
     )
 
 

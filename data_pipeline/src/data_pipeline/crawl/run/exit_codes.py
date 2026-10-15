@@ -6,7 +6,6 @@ TRUNCATION_REASONS = frozenset(
     {
         "file_size_limit",
         "storage_budget",
-        "query_variant_limit",
         "host_url_limit",
         "total_url_limit",
     }

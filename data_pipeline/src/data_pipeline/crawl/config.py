@@ -20,23 +20,21 @@ if TYPE_CHECKING:
 
 
 def validate_network_contact(contact: str) -> None:
+    """The contact is sent as the HTTP From header, so it must be a real email address."""
     normalized = contact.strip().lower()
-    if not normalized or ".invalid" in normalized:
-        msg = "a non-placeholder operator contact is required"
+    local, at, domain = normalized.partition("@")
+    if not (local and at and "." in domain) or " " in normalized or ".invalid" in normalized:
+        msg = "CRAWLER_CONTACT must be the operator's email address"
         raise ValueError(msg)
 
 
 _REQUIRED_SETTINGS = (
-    "user_agent_name",
-    "user_agent_version",
     "concurrent_requests",
-    "access_policy_revision",
     "browser_user_agent",
     "concurrent_per_host",
     "download_delay_seconds",
     "download_timeout_seconds",
     "max_response_bytes",
-    "robots_txt_obey",
     "cookies_enabled",
     "redirect_max_times",
     "autothrottle_enabled",
@@ -52,12 +50,9 @@ _REQUIRED_SETTINGS = (
     "assets",
     "max_file_bytes",
     "max_total_file_bytes",
-    "max_query_variants_per_path",
     "pagination_empty_pages",
     "max_urls_per_host",
     "max_total_urls",
-    "journal_batch_size",
-    "journal_flush_seconds",
     "progress_interval_seconds",
     "refresh_pagination_empty_pages",
     "refresh_recent_days",
@@ -66,10 +61,7 @@ _REQUIRED_SETTINGS = (
 )
 _NON_POSITIVE_SETTINGS = frozenset(
     {
-        "user_agent_name",
-        "user_agent_version",
         "browser_user_agent",
-        "robots_txt_obey",
         "cookies_enabled",
         "autothrottle_enabled",
         "assets",
@@ -97,14 +89,10 @@ class CrawlerConfig:
     retry_max_delay_seconds: float = 3600.0
     download_timeout_seconds: float = 60.0
     max_response_bytes: int = 100 * 1024 * 1024
-    user_agent_name: str = "HUSTPublicCrawler"
-    user_agent_version: str = "1.0"
-    access_policy_revision: int = 2
     browser_user_agent: str = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
     )
-    robots_txt_obey: bool = False
     cookies_enabled: bool = False
     redirect_max_times: int = 20
     autothrottle_enabled: bool = True
@@ -113,12 +101,9 @@ class CrawlerConfig:
     assets: Literal["content-only", "all"] = "content-only"
     max_file_bytes: int = 100 * 1024 * 1024
     max_total_file_bytes: int = 100 * 1024**3
-    max_query_variants_per_path: int = 20
     pagination_empty_pages: int = 3
     max_urls_per_host: int = 100_000
     max_total_urls: int = 1_000_000
-    journal_batch_size: int = 500
-    journal_flush_seconds: float = 2.0
     progress_interval_seconds: float = 10.0
     refresh_pagination_empty_pages: int = 1
     refresh_recent_days: int = 60
@@ -142,14 +127,14 @@ class CrawlerConfig:
             hostnames = frozenset(hostnames)
         contact = environment.get("CRAWLER_CONTACT", "").strip()
         if not contact:
-            contact = str(raw.get("contact", "")).strip()
-        if not contact:
-            msg = "contact is required"
+            msg = "CRAWLER_CONTACT is required (set it in .env)"
             raise ValueError(msg)
         validate_network_contact(contact)
+        unknown = sorted(set(raw) - set(_REQUIRED_SETTINGS))
+        if unknown:
+            msg = f"unknown crawler settings: {', '.join(unknown)}"
+            raise ValueError(msg)
         missing = sorted(name for name in _REQUIRED_SETTINGS if name not in raw)
-        if "contact" not in raw and not environment.get("CRAWLER_CONTACT", "").strip():
-            missing.insert(0, "contact")
         if missing:
             msg = f"missing required crawler settings: {', '.join(missing)}"
             raise ValueError(msg)
@@ -164,9 +149,6 @@ class CrawlerConfig:
         config = cls(
             hostnames=hostnames,
             contact=contact,
-            user_agent_name=str(raw["user_agent_name"]),
-            user_agent_version=str(raw["user_agent_version"]),
-            access_policy_revision=int(raw["access_policy_revision"]),
             browser_user_agent=str(raw["browser_user_agent"]),
             concurrent_requests=int(raw["concurrent_requests"]),
             concurrent_per_host=int(raw["concurrent_per_host"]),
@@ -180,7 +162,6 @@ class CrawlerConfig:
             retry_max_delay_seconds=float(raw["retry_max_delay_seconds"]),
             download_timeout_seconds=float(raw["download_timeout_seconds"]),
             max_response_bytes=int(raw["max_response_bytes"]),
-            robots_txt_obey=required_bool("robots_txt_obey"),
             cookies_enabled=required_bool("cookies_enabled"),
             redirect_max_times=int(raw["redirect_max_times"]),
             autothrottle_enabled=required_bool("autothrottle_enabled"),
@@ -189,12 +170,9 @@ class CrawlerConfig:
             assets=raw["assets"],
             max_file_bytes=int(raw["max_file_bytes"]),
             max_total_file_bytes=int(raw["max_total_file_bytes"]),
-            max_query_variants_per_path=int(raw["max_query_variants_per_path"]),
             pagination_empty_pages=int(raw["pagination_empty_pages"]),
             max_urls_per_host=int(raw["max_urls_per_host"]),
             max_total_urls=int(raw["max_total_urls"]),
-            journal_batch_size=int(raw["journal_batch_size"]),
-            journal_flush_seconds=float(raw["journal_flush_seconds"]),
             progress_interval_seconds=float(raw["progress_interval_seconds"]),
             refresh_pagination_empty_pages=int(raw["refresh_pagination_empty_pages"]),
             refresh_recent_days=int(raw["refresh_recent_days"]),
@@ -249,8 +227,6 @@ _RUNTIME_CONFIG_KEYS = {
     "retry_backoff_base_seconds",
     "retry_max_delay_seconds",
     "resource_limit_percent",
-    "journal_batch_size",
-    "journal_flush_seconds",
     "progress_interval_seconds",
     "refresh_pagination_empty_pages",
     "refresh_recent_days",
@@ -291,7 +267,7 @@ def semantic_config_snapshot(config: CrawlerConfig) -> dict[str, object]:
     """Return the configuration fields that define phase identity."""
 
     values = asdict(config)
-    for key in _RUNTIME_CONFIG_KEYS:
+    for key in (*_RUNTIME_CONFIG_KEYS, "contact"):
         values.pop(key, None)
     return _normalized_snapshot(values)
 

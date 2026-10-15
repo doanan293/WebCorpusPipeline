@@ -12,7 +12,6 @@ from data_pipeline.core.policies.network import resolve_public_hostname
 from data_pipeline.crawl.runtime import middlewares
 from data_pipeline.crawl.runtime.middlewares import (
     ContentOnlyHeadersGuard,
-    ExactHostRedirectMiddleware,
     PlaywrightFallbackMiddleware,
     PoliteRetryMiddleware,
     PublicAssetAddressMiddleware,
@@ -29,7 +28,7 @@ def test_redirect_outside_exact_hosts_raises_ignore_request() -> None:
         request=request,
     )
     try:
-        ExactHostRedirectMiddleware().process_response(request, response)
+        SafeRedirectMiddleware().process_response(request, response)
     except Exception as exc:  # noqa: BLE001 -- the helper reports any failure to the caller
         assert "redirect_out_of_scope" in str(exc)
     else:
@@ -47,7 +46,7 @@ def test_redirect_cannot_cross_request_host_even_if_other_host_in_crawl() -> Non
         request=request,
     )
     try:
-        ExactHostRedirectMiddleware().process_response(request, response)
+        SafeRedirectMiddleware().process_response(request, response)
     except Exception as exc:  # noqa: BLE001 -- the helper reports any failure to the caller
         assert "redirect_out_of_scope:host_out_of_scope" in str(exc)
     else:
@@ -56,7 +55,7 @@ def test_redirect_cannot_cross_request_host_even_if_other_host_in_crawl() -> Non
 
 
 def test_redirect_loop_is_rejected_before_refetching_seen_url() -> None:
-    middleware = ExactHostRedirectMiddleware()
+    middleware = SafeRedirectMiddleware()
     first = Request(
         "https://a.test/a",
         meta={"allowed_hostnames": frozenset({"a.test"})},
@@ -84,7 +83,7 @@ def test_redirect_loop_is_rejected_before_refetching_seen_url() -> None:
 
 
 def test_redirect_loop_normalizes_equivalent_target_before_comparing_history() -> None:
-    middleware = ExactHostRedirectMiddleware()
+    middleware = SafeRedirectMiddleware()
     first = Request(
         "https://a.test/a%20b",
         meta={"allowed_hostnames": frozenset({"a.test"})},
@@ -109,7 +108,7 @@ def test_redirect_loop_normalizes_equivalent_target_before_comparing_history() -
 
 
 def test_redirect_chain_is_rejected_after_twenty_redirects() -> None:
-    middleware = ExactHostRedirectMiddleware()
+    middleware = SafeRedirectMiddleware()
     request = Request(
         "https://a.test/20",
         meta={

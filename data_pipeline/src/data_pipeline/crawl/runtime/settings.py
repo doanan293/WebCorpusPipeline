@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from data_pipeline.crawl.config import CrawlerConfig
@@ -12,29 +11,28 @@ from data_pipeline.crawl.runtime.middlewares import (
     PublicAssetAddressMiddleware,
     SafeRedirectMiddleware,
 )
+from data_pipeline.crawl.runtime.profiles import RuntimeTuning, resolve_runtime_tuning
 
 
 def build_settings(
     config: CrawlerConfig,
     *,
-    state_dir: Path,
-    phase: str | None = None,
-    tuning: object | None = None,
+    tuning: RuntimeTuning | None = None,
     extensions: dict[object, int] | None = None,
 ) -> dict[str, Any]:
-
-    concurrency = getattr(tuning, "max_concurrency", config.concurrent_requests)
-    per_host = getattr(tuning, "max_per_host", config.concurrent_per_host)
-    playwright_pages = getattr(tuning, "playwright_max_pages", config.playwright_max_pages)
+    tuning = tuning or resolve_runtime_tuning(config=config)
     settings: dict[str, Any] = {
-        # Discovery must always be able to fetch robots.txt and declared
-        # sitemaps. The fixed-inventory content phase applies its rules.
-        "ROBOTSTXT_OBEY": config.robots_txt_obey if phase == "crawl" else False,
-        "ROBOTSTXT_USER_AGENT": config.browser_user_agent,
+        # Robots rules are not applied; robots.txt is only read for its Sitemap lines.
+        "ROBOTSTXT_OBEY": False,
         "USER_AGENT": config.browser_user_agent,
+        "DEFAULT_REQUEST_HEADERS": {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "vi,en;q=0.8",
+            "From": config.contact,
+        },
         "COOKIES_ENABLED": config.cookies_enabled,
-        "CONCURRENT_REQUESTS": concurrency,
-        "CONCURRENT_REQUESTS_PER_DOMAIN": per_host,
+        "CONCURRENT_REQUESTS": tuning.max_concurrency,
+        "CONCURRENT_REQUESTS_PER_DOMAIN": tuning.max_per_host,
         "DOWNLOAD_DELAY": config.download_delay_seconds,
         "AUTOTHROTTLE_ENABLED": config.autothrottle_enabled,
         "AUTOTHROTTLE_START_DELAY": config.throttle_start_seconds,
@@ -50,13 +48,12 @@ def build_settings(
         "TELNETCONSOLE_ENABLED": False,
         "LOG_FORMAT": "%(message)s",
         "TWISTED_REACTOR": "twisted.internet.asyncioreactor.AsyncioSelectorReactor",
-        "JOBDIR": str(state_dir),
         "DOWNLOAD_HANDLERS": {
             "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
             "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
         },
         "PLAYWRIGHT_BROWSER_TYPE": "chromium",
-        "PLAYWRIGHT_MAX_PAGES_PER_CONTEXT": playwright_pages,
+        "PLAYWRIGHT_MAX_PAGES_PER_CONTEXT": tuning.playwright_max_pages,
         "DOWNLOADER_MIDDLEWARES": {
             # Asset DNS safety must run before Scrapy's RobotsTxtMiddleware
             # (priority 100), otherwise Scrapy can fetch the asset host's
@@ -68,11 +65,8 @@ def build_settings(
             AdaptiveConcurrencyMiddleware: 580,
         },
         "HUST_CONFIG": config,
+        "HUST_TUNING": tuning,
     }
-    if phase:
-        settings["HUST_PHASE"] = phase
-    if tuning is not None:
-        settings["HUST_TUNING"] = tuning
     ext_dict: dict[object, int] = {ContentOnlyHeadersGuard: 100}
     if extensions:
         ext_dict.update(extensions)

@@ -18,7 +18,6 @@ AssetsOption = Annotated[
 ConfigOption = Annotated[
     Path | None, typer.Option(help="Crawler YAML (default: config/crawler.yaml in the project).")
 ]
-ProfileOption = Annotated[Literal["safe-fast"], typer.Option(help="Crawl concurrency profile.")]
 ConcurrencyOption = Annotated[
     int | None, typer.Option(help="Global concurrency limit (overrides YAML).")
 ]
@@ -41,9 +40,6 @@ def run(
         Path | None,
         typer.Option(help="Reuse a completed content-only crawl and download only its assets."),
     ] = None,
-    max_query_variants_per_path: Annotated[
-        int | None, typer.Option(help="Maximum query parameter variants per path (default: 20).")
-    ] = None,
     pagination_empty_pages: Annotated[
         int | None,
         typer.Option(help="Consecutive empty pagination pages before stopping (default: 3)."),
@@ -54,7 +50,6 @@ def run(
     max_total_urls: Annotated[
         int | None, typer.Option(help="Maximum total URLs across all hosts (default: 1000000).")
     ] = None,
-    profile: ProfileOption = "safe-fast",
     max_file_bytes: Annotated[
         int | None, typer.Option(help="Maximum single file size in bytes (default: 100 MiB).")
     ] = None,
@@ -72,25 +67,11 @@ def run(
         bool,
         typer.Option("--retry-failed", help="Retry transient network failures while resuming."),
     ] = False,
-    retry_truncated: Annotated[
-        bool,
-        typer.Option(
-            "--retry-truncated",
-            help="Requeue recoverable query-variant truncations while resuming.",
-        ),
-    ] = False,
     retry_access_gates: Annotated[
         bool,
         typer.Option(
             "--retry-access-gates",
-            help="Requeue pages previously skipped as CAPTCHA-blocked while resuming.",
-        ),
-    ] = False,
-    retry_policy_skips: Annotated[
-        bool,
-        typer.Option(
-            "--retry-policy-skips",
-            help="Migrate access policy and requeue recoverable policy skips while resuming.",
+            help="Requeue pages previously skipped behind a CAPTCHA or login gate while resuming.",
         ),
     ] = False,
     refresh: Annotated[
@@ -108,14 +89,7 @@ def run(
     from data_pipeline.crawl.run import full as run_full
     from data_pipeline.crawl.runtime.profiles import resolve_runtime_tuning
 
-    if refresh and (
-        resume
-        or reuse_content_from is not None
-        or retry_failed
-        or retry_truncated
-        or retry_access_gates
-        or retry_policy_skips
-    ):
+    if refresh and (resume or reuse_content_from is not None or retry_failed or retry_access_gates):
         return errors.fail(
             "--refresh cannot be combined with --resume, --reuse-content-from or --retry-* flags"
         )
@@ -123,9 +97,7 @@ def run(
         return errors.fail("--reuse-content-from requires --assets all")
     for enabled, flag in (
         (retry_failed, "--retry-failed"),
-        (retry_truncated, "--retry-truncated"),
         (retry_access_gates, "--retry-access-gates"),
-        (retry_policy_skips, "--retry-policy-skips"),
     ):
         if enabled and not resume:
             return errors.fail(f"{flag} requires --resume")
@@ -152,14 +124,12 @@ def run(
         assets=assets,
         max_file_bytes=max_file_bytes,
         max_total_file_bytes=max_total_file_bytes,
-        max_query_variants_per_path=max_query_variants_per_path,
         pagination_empty_pages=pagination_empty_pages,
         max_urls_per_host=max_urls_per_host,
         max_total_urls=max_total_urls,
     )
     tuning = resolve_runtime_tuning(
         config=crawler_config,
-        profile=profile,
         concurrency=concurrency,
         max_per_host=max_per_host,
         resource_limit_percent=resource_limit_percent,
@@ -173,9 +143,7 @@ def run(
         tuning=tuning,
         resume=resume,
         retry_failed=retry_failed,
-        retry_truncated=retry_truncated,
         retry_access_gates=retry_access_gates,
-        retry_policy_skips=retry_policy_skips,
         reuse_content_from=reuse_content_from,
         refresh=refresh,
     )
@@ -185,7 +153,6 @@ def run(
 def discover(
     input_path: Annotated[Path, typer.Option("--input", "-i", help="Path to the seeds file.")],
     output: Annotated[Path, typer.Option("--output", "-o", help="Discovery output directory.")],
-    profile: ProfileOption = "safe-fast",
     concurrency: ConcurrencyOption = None,
     max_per_host: PerHostOption = None,
     resource_limit_percent: ResourceLimitOption = None,
@@ -215,7 +182,6 @@ def discover(
 
     tuning = resolve_runtime_tuning(
         config=crawler_config,
-        profile=profile,
         concurrency=concurrency,
         max_per_host=max_per_host,
         resource_limit_percent=resource_limit_percent,

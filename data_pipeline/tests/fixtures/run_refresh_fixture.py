@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Any, cast
@@ -39,15 +40,14 @@ class StopAfterResponse:
 
 def main(root: Path, step: str, version: int, fail_paths: str = "") -> int:
     root.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("CRAWLER_CONTACT", "ops@example.org")
     seeds_file = root / "seeds.txt"
     if not seeds_file.exists():
         seeds_file.write_text("news.test\n", encoding="utf-8")
     config_file = root / "config.yaml"
     if not config_file.exists():
         values = yaml.safe_load(Path("config/crawler.yaml").read_text(encoding="utf-8"))
-        values.update(
-            contact="ops@example.org", retry_backoff_base_seconds=0.01, download_delay_seconds=0.001
-        )
+        values.update(retry_backoff_base_seconds=0.01, download_delay_seconds=0.001)
         config_file.write_text(yaml.safe_dump(values), encoding="utf-8")
     request_log = root / "requested_urls.txt"
     with request_log.open("a", encoding="utf-8") as log:
@@ -58,14 +58,10 @@ def main(root: Path, step: str, version: int, fail_paths: str = "") -> int:
     def fixture_build_settings(
         cfg: Any,
         *,
-        state_dir: Any,
-        phase: Any = "crawl",
         tuning: Any = None,
         extensions: Any = None,
     ):
-        values = original_build_settings(
-            cfg, state_dir=state_dir, phase=phase, tuning=tuning, extensions=extensions
-        )
+        values = original_build_settings(cfg, tuning=tuning, extensions=extensions)
         handler = "tests.fixtures.refresh_site_handler.RefreshSiteHandler"
         values["DOWNLOAD_HANDLERS"] = {"http": handler, "https": handler}
         values["FIXTURE_REQUEST_LOG"] = str(request_log)
@@ -86,8 +82,6 @@ def main(root: Path, step: str, version: int, fail_paths: str = "") -> int:
         str(root / "crawl"),
         "--config",
         str(config_file),
-        "--profile",
-        "safe-fast",
         "--concurrency",
         "4",
         "--max-per-host",

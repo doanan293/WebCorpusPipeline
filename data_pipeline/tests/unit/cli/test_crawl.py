@@ -12,11 +12,8 @@ from data_pipeline.crawl.run import discovery as run_discovery
 from data_pipeline.crawl.run import full as run_full
 
 
-def write_complete_config(
-    directory: Path, contact: str = "ops@example.org", name: str = "crawler.yaml"
-) -> Path:
+def write_complete_config(directory: Path, name: str = "crawler.yaml") -> Path:
     values = yaml.safe_load(Path("config/crawler.yaml").read_text(encoding="utf-8"))
-    values["contact"] = contact
     path = directory / name
     path.write_text(yaml.safe_dump(values), encoding="utf-8")
     return path
@@ -30,7 +27,8 @@ def seeds(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def config(tmp_path: Path) -> Path:
+def config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setenv("CRAWLER_CONTACT", "ops@example.org")
     return write_complete_config(tmp_path)
 
 
@@ -71,8 +69,6 @@ def test_accepts_mixed_seeds_and_frontier_limits(
         config,
         "--assets",
         "all",
-        "--max-query-variants-per-path",
-        "12",
         "--pagination-empty-pages",
         "4",
         "--max-urls-per-host",
@@ -84,7 +80,6 @@ def test_accepts_mixed_seeds_and_frontier_limits(
     assert code == 0
     options = observed["options"]
     assert options.assets == "all"
-    assert options.max_query_variants_per_path == 12
     assert options.pagination_empty_pages == 4
     assert options.max_urls_per_host == 50_000
     assert options.max_total_urls == 300_000
@@ -100,9 +95,7 @@ def test_defaults_come_from_the_config_file(
     for name in (
         "resume",
         "retry_failed",
-        "retry_truncated",
         "retry_access_gates",
-        "retry_policy_skips",
         "refresh",
     ):
         assert observed[name] is False
@@ -114,7 +107,7 @@ def test_asset_choices_are_validated(tmp_path: Path, seeds: Path, config: Path) 
 
 @pytest.mark.parametrize(
     "flag",
-    ["--retry-failed", "--retry-truncated", "--retry-access-gates", "--retry-policy-skips"],
+    ["--retry-failed", "--retry-access-gates"],
 )
 def test_retry_flag_requires_resume(
     flag: str, tmp_path: Path, seeds: Path, config: Path, capsys: pytest.CaptureFixture[str]
@@ -127,9 +120,7 @@ def test_retry_flag_requires_resume(
     ("flag", "name"),
     [
         ("--retry-failed", "retry_failed"),
-        ("--retry-truncated", "retry_truncated"),
         ("--retry-access-gates", "retry_access_gates"),
-        ("--retry-policy-skips", "retry_policy_skips"),
     ],
 )
 def test_retry_flag_is_passed_to_the_runner_with_resume(
@@ -212,7 +203,7 @@ def test_loads_contact_from_the_project_env_file(
     observed: dict[str, Any],
 ) -> None:
     project.env_file.write_text("CRAWLER_CONTACT=ops@example.org\n", encoding="utf-8")
-    config = write_complete_config(tmp_path, "replace-with-operator-contact@example.invalid")
+    config = write_complete_config(tmp_path)
 
     assert crawl(seeds, tmp_path, config) == 0
 
@@ -223,7 +214,8 @@ def test_config_defaults_to_the_project_crawler_yaml(
     project: ProjectPaths, tmp_path: Path, seeds: Path, observed: dict[str, Any]
 ) -> None:
     (project.root / "config").mkdir()
-    write_complete_config(project.root / "config", "ops@example.org")
+    write_complete_config(project.root / "config")
+    project.env_file.write_text("CRAWLER_CONTACT=ops@example.org\n", encoding="utf-8")
     code = main(["crawl", "run", "-i", str(seeds), "-o", str(tmp_path / "crawl")])
 
     assert code == 0
@@ -236,9 +228,7 @@ def test_config_defaults_to_the_project_crawler_yaml(
         ["--resume"],
         ["--reuse-content-from", "other"],
         ["--retry-failed"],
-        ["--retry-truncated"],
         ["--retry-access-gates"],
-        ["--retry-policy-skips"],
     ],
 )
 def test_refresh_rejects_incompatible_flags(
@@ -259,7 +249,7 @@ def test_discover_loads_contact_and_runs_discovery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     project.env_file.write_text("CRAWLER_CONTACT=ops@example.org\n", encoding="utf-8")
-    config = write_complete_config(tmp_path, "replace-with-operator-contact@example.invalid")
+    config = write_complete_config(tmp_path)
     captured: dict[str, Any] = {}
 
     def capture_run(**kwargs: object) -> int:
@@ -291,3 +281,23 @@ def test_crawl_help_mentions_resume_and_refresh(capsys: pytest.CaptureFixture[st
     text = capsys.readouterr().out.lower()
     assert "--resume" in text
     assert "--refresh" in text
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        ["--retry-policy-skips"],
+        ["--retry-truncated"],
+        ["--profile", "safe-fast"],
+        ["--max-query-variants-per-path", "5"],
+    ],
+)
+def test_removed_flags_are_unknown(
+    tmp_path: Path,
+    seeds: Path,
+    config: Path,
+    flag: list[str],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert crawl(seeds, tmp_path, config, *flag) == 2
+    assert "No such option" in capsys.readouterr().err

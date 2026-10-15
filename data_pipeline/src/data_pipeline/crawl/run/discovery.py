@@ -61,19 +61,11 @@ def run_discovery(
 
     record_invalid_seeds(seeds, state)
 
-    jobdir = state_dir / "scrapy-job"
     start_time = time.time()
     extensions: dict[object, int] = {}
 
-    settings_map = build_settings(
-        config,
-        state_dir=jobdir,
-        phase="discover",
-        tuning=tuning,
-        extensions=extensions,
-    )
+    settings_map = build_settings(config, tuning=tuning, extensions=extensions)
     settings = Settings()
-    settings.setmodule("data_pipeline.crawl.runtime.settings")
 
     for k, v in settings_map.items():
         settings.set(k, v, priority="cmdline")

@@ -14,6 +14,11 @@ from data_pipeline.crawl.config import (
 from data_pipeline.crawl.runtime.profiles import RuntimeTuning
 
 
+@pytest.fixture(autouse=True)
+def operator_contact(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CRAWLER_CONTACT", "ops@example.org")
+
+
 def complete_yaml(tmp_path: Path, **overrides: object) -> Path:
     values = yaml.safe_load(Path("config/crawler.yaml").read_text(encoding="utf-8"))
     values.update(overrides)
@@ -45,7 +50,7 @@ def test_load_hostnames_rejects_urls(tmp_path: Path) -> None:
 
 
 def test_config_exposes_only_active_two_phase_fields(tmp_path: Path) -> None:
-    raw = complete_yaml(tmp_path, contact="ops@example.org")
+    raw = complete_yaml(tmp_path)
     config = CrawlerConfig.load(raw, hostnames=frozenset({"a.test"}))
 
     removed = {
@@ -82,7 +87,6 @@ def test_config_loads_complete_runtime_policy(tmp_path: Path) -> None:
     domains.write_text("example.com\n", encoding="utf-8")
     raw = complete_yaml(
         tmp_path,
-        contact="ops@example.org",
         retry_times=4,
         download_timeout_seconds=75,
     )
@@ -94,47 +98,28 @@ def test_config_loads_complete_runtime_policy(tmp_path: Path) -> None:
     assert config.download_timeout_seconds == 75
 
 
-def test_access_policy_v2_uses_browser_transport_without_robots() -> None:
+def test_contact_comes_from_the_environment(tmp_path: Path) -> None:
     config = CrawlerConfig.load(
-        Path("config/crawler.yaml"),
-        environ={"CRAWLER_CONTACT": "ops@example.org"},
+        complete_yaml(tmp_path),
         hostnames=frozenset({"a.test"}),
+        environ={"CRAWLER_CONTACT": "crawler@hust.edu.vn"},
     )
 
-    assert config.access_policy_revision == 2
-    assert "Mozilla/5.0" in config.browser_user_agent
-    assert "Chrome/" in config.browser_user_agent
-    assert config.robots_txt_obey is False
-
-
-def test_environment_contact_overrides_yaml(tmp_path: Path) -> None:
-    domains = tmp_path / "domains.txt"
-    domains.write_text("example.com\n", encoding="utf-8")
-    raw = complete_yaml(tmp_path, contact="yaml@example.org")
-
-    config = CrawlerConfig.load(
-        raw,
-        domains,
-        environ={"CRAWLER_CONTACT": "ops@example.org"},
-    )
-
-    assert config.contact == "ops@example.org"
+    assert config.contact == "crawler@hust.edu.vn"
 
 
 @pytest.mark.parametrize(
     "contact",
-    ["", "replace-with-operator-contact@example.invalid"],
+    ["", "replace-with-operator-contact@example.invalid", "not an email", "ops@localhost"],
 )
-def test_network_contact_rejects_placeholder(contact: str) -> None:
-    with pytest.raises(ValueError, match="operator contact"):
+def test_network_contact_must_be_an_email(contact: str) -> None:
+    with pytest.raises(ValueError, match="email address"):
         validate_network_contact(contact)
 
 
-def test_config_load_rejects_placeholder_operator_contact(tmp_path: Path) -> None:
-    raw = complete_yaml(tmp_path)
-
-    with pytest.raises(ValueError, match="operator contact"):
-        CrawlerConfig.load(raw, hostnames=frozenset({"a.test"}), environ={})
+def test_config_load_requires_contact_in_environment(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="CRAWLER_CONTACT is required"):
+        CrawlerConfig.load(complete_yaml(tmp_path), hostnames=frozenset({"a.test"}), environ={})
 
 
 @pytest.mark.parametrize(
@@ -150,7 +135,7 @@ def test_config_rejects_non_positive_runtime_values(tmp_path: Path, field: str, 
     domains = tmp_path / "domains.txt"
     domains.write_text("example.com\n", encoding="utf-8")
     raw = tmp_path / "crawler.yaml"
-    raw = complete_yaml(tmp_path, contact="ops@example.org", **{field: value})
+    raw = complete_yaml(tmp_path, **{field: value})
 
     with pytest.raises(ValueError, match=field):
         CrawlerConfig.load(raw, domains)
@@ -163,7 +148,7 @@ def test_config_rejects_non_positive_concurrency_fields(tmp_path: Path, field: s
     domains = tmp_path / "domains.txt"
     domains.write_text("example.com\n", encoding="utf-8")
     raw = tmp_path / "crawler.yaml"
-    raw = complete_yaml(tmp_path, contact="ops@example.org", **{field: 0})
+    raw = complete_yaml(tmp_path, **{field: 0})
 
     with pytest.raises(ValueError, match=field):
         CrawlerConfig.load(raw, domains)
@@ -173,7 +158,7 @@ def test_config_snapshot_is_json_safe_and_overrides_concurrency(tmp_path: Path) 
     domains = tmp_path / "domains.txt"
     domains.write_text("b.test\na.test\n", encoding="utf-8")
     raw = tmp_path / "crawler.yaml"
-    raw = complete_yaml(tmp_path, contact="ops@example.org")
+    raw = complete_yaml(tmp_path)
     snapshot = config_snapshot(CrawlerConfig.load(raw, domains), concurrency=24)
 
     assert snapshot["concurrent_requests"] == 24
@@ -183,7 +168,7 @@ def test_config_snapshot_is_json_safe_and_overrides_concurrency(tmp_path: Path) 
 
 def test_config_reports_all_missing_required_keys(tmp_path: Path) -> None:
     raw = tmp_path / "crawler.yaml"
-    raw.write_text("contact: ops@example.org\n", encoding="utf-8")
+    raw.write_text("assets: content-only\n", encoding="utf-8")
     with pytest.raises(ValueError) as exc_info:
         CrawlerConfig.load(raw, hostnames=frozenset({"a.test"}))
     message = str(exc_info.value)
@@ -194,19 +179,19 @@ def test_config_reports_all_missing_required_keys(tmp_path: Path) -> None:
 
 def test_runtime_snapshot_contains_yaml_performance_controls(tmp_path: Path) -> None:
     config = CrawlerConfig.load(
-        complete_yaml(tmp_path, contact="ops@example.org"),
+        complete_yaml(tmp_path),
         hostnames=frozenset({"a.test"}),
     )
-    tuning = RuntimeTuning("safe-fast", 64, 2, 80, 8, 500, 2.0, 10.0)
+    tuning = RuntimeTuning(64, 2, 80, 8, 10.0)
     snapshot = runtime_config_snapshot(config, tuning)
     assert snapshot["download_timeout_seconds"] == 60.0
     assert snapshot["retry_backoff_base_seconds"] == 2.0
     assert snapshot["progress_interval_seconds"] == 10.0
 
 
-@pytest.mark.parametrize("field", ["robots_txt_obey", "cookies_enabled", "autothrottle_enabled"])
+@pytest.mark.parametrize("field", ["cookies_enabled", "autothrottle_enabled"])
 def test_config_rejects_non_boolean_policy(tmp_path: Path, field: str) -> None:
-    raw = complete_yaml(tmp_path, contact="ops@example.org", **{field: "yes"})
+    raw = complete_yaml(tmp_path, **{field: "yes"})
     with pytest.raises(ValueError, match=field):
         CrawlerConfig.load(raw, hostnames=frozenset({"a.test"}))
 
@@ -214,7 +199,6 @@ def test_config_rejects_non_boolean_policy(tmp_path: Path, field: str) -> None:
 def test_config_rejects_invalid_cross_field_limits(tmp_path: Path) -> None:
     raw = complete_yaml(
         tmp_path,
-        contact="ops@example.org",
         autothrottle_target_concurrency=3.0,
         concurrent_per_host=2,
     )
@@ -223,7 +207,7 @@ def test_config_rejects_invalid_cross_field_limits(tmp_path: Path) -> None:
 
 
 def test_config_loads_refresh_settings(tmp_path: Path) -> None:
-    raw = complete_yaml(tmp_path, contact="ops@example.org", refresh_recent_days=30)
+    raw = complete_yaml(tmp_path, refresh_recent_days=30)
     config = CrawlerConfig.load(raw, hostnames=frozenset({"a.test"}))
 
     assert config.refresh_pagination_empty_pages == 1
@@ -233,7 +217,7 @@ def test_config_loads_refresh_settings(tmp_path: Path) -> None:
 
 
 def test_config_requires_refresh_settings(tmp_path: Path) -> None:
-    path = complete_yaml(tmp_path, contact="ops@example.org")
+    path = complete_yaml(tmp_path)
     values = yaml.safe_load(path.read_text(encoding="utf-8"))
     del values["refresh_recheck_limit"]
     path.write_text(yaml.safe_dump(values), encoding="utf-8")
@@ -243,19 +227,47 @@ def test_config_requires_refresh_settings(tmp_path: Path) -> None:
 
 
 def test_config_rejects_non_positive_refresh_settings(tmp_path: Path) -> None:
-    path = complete_yaml(tmp_path, contact="ops@example.org", refresh_recent_runs=0)
+    path = complete_yaml(tmp_path, refresh_recent_runs=0)
 
     with pytest.raises(ValueError, match="refresh_recent_runs must be positive"):
         CrawlerConfig.load(path, hostnames=frozenset({"a.test"}))
 
 
 def test_refresh_settings_do_not_change_crawl_identity(tmp_path: Path) -> None:
-    base = CrawlerConfig.load(
-        complete_yaml(tmp_path, contact="ops@example.org"), hostnames=frozenset({"a.test"})
-    )
+    base = CrawlerConfig.load(complete_yaml(tmp_path), hostnames=frozenset({"a.test"}))
     changed = CrawlerConfig.load(
-        complete_yaml(tmp_path, contact="ops@example.org", refresh_recent_days=7),
+        complete_yaml(tmp_path, refresh_recent_days=7),
         hostnames=frozenset({"a.test"}),
     )
 
     assert semantic_config_snapshot(base) == semantic_config_snapshot(changed)
+
+
+def test_contact_not_in_semantic_config() -> None:
+    snapshot = semantic_config_snapshot(
+        CrawlerConfig(hostnames=frozenset({"a.test"}), contact="ops@example.org")
+    )
+
+    assert "contact" not in snapshot
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "user_agent_name",
+        "user_agent_version",
+        "access_policy_revision",
+        "robots_txt_obey",
+        "journal_batch_size",
+        "journal_flush_seconds",
+        "max_query_variants_per_path",
+        "contact",
+    ],
+)
+def test_removed_config_keys_rejected(tmp_path: Path, key: str) -> None:
+    path = complete_yaml(tmp_path, **{key: "x"})
+
+    with pytest.raises(ValueError, match=f"unknown crawler settings: {key}"):
+        CrawlerConfig.load(
+            path, environ={"CRAWLER_CONTACT": "ops@example.org"}, hostnames=frozenset({"a.test"})
+        )

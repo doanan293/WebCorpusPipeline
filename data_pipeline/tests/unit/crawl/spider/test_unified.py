@@ -324,14 +324,6 @@ def test_exact_seed_schedules_document_attachment_but_not_html() -> None:
     assert writer.articles[0]["url"] == "https://a.test/one"
 
 
-def test_pagination_counts_only_newly_scheduled_content() -> None:
-    spider, _ = make_spider(recursive_hostnames=frozenset({"a.test"}))
-    seed_duplicate(spider.frontier, "https://a.test/article")
-    request = page_request("https://a.test/news?page=1", discovery_source="html_link")
-    list(spider.parse_response(html_response(request, '<a href="/article">Already seen</a>')))
-    assert spider.frontier.snapshot()["stats"]["frontier/pagination_empty_observation"] == 1
-
-
 def test_wordpress_shortlink_counts_as_new_pagination_content() -> None:
     spider, _ = make_spider(recursive_hostnames=frozenset({"a.test"}))
     request = page_request("https://a.test/news?page=1", discovery_source="html_link")
@@ -353,7 +345,6 @@ def test_wordpress_shortlink_counts_as_new_pagination_content() -> None:
     )
 
     assert "https://a.test/?p=33214" in {child.url for child in children}
-    assert spider.frontier.snapshot()["stats"].get("frontier/pagination_empty_observation", 0) == 0
 
 
 def test_html_schedules_all_assets_in_all_mode() -> None:
@@ -551,28 +542,6 @@ def test_document_responses_never_create_children() -> None:
     children = list(spider.parse_response(resp))
     assert children == []
     assert len(writer.files) == 1
-
-
-def test_robots_disallowed_target_is_recorded_as_skipped() -> None:
-    spider, writer = make_spider(exact_urls=("https://a.test/private",))
-    request = next(spider.start_requests())
-    failure = SimpleNamespace(
-        request=request,
-        value=IgnoreRequest("Forbidden by robots.txt"),
-        type=IgnoreRequest,
-    )
-
-    spider.on_request_error(failure)
-
-    assert writer.errors == []
-    assert writer.skipped == [
-        {
-            "url": "https://a.test/private",
-            "status": "skipped",
-            "reason": "robots_disallowed",
-        }
-    ]
-    assert writer.checkpoints == ["https://a.test/private"]
 
 
 def test_captcha_target_is_recorded_as_blocked_without_error() -> None:

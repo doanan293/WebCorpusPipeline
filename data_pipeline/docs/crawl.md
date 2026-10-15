@@ -27,8 +27,6 @@ uv run data-pipeline crawl run -i config/domains/active.txt -o data/crawl-all \
   chỉ tải các tài nguyên đã ghi. Nguồn chỉ đọc, output mới độc lập. Có thể vẫn có request `robots.txt` của
   host tài nguyên, nhưng không crawl lại HTML hay sitemap. Nguồn phải dùng cùng nội dung `--input`, không được
   đang chạy; đường dẫn đích chưa tồn tại.
-- State của phiên bản cũ dùng `--assets documents` không resume được. Có thể tiếp tục một crawl hợp nhất cũ với
-  chính sách truy cập mới bằng `--retry-policy-skips`.
 
 ## Seed và phạm vi
 
@@ -51,7 +49,8 @@ trong phạm vi tài nguyên riêng, kiểm tra từng bước chuyển hướng
 - **Truy cập tương thích trình duyệt:** dùng User-Agent của trình duyệt; trang JavaScript shell và từ chối có thể
   khắc phục bằng trình duyệt được thử một lần với Playwright.
 - **Chỉ truy cập công khai:** cổng đăng nhập và CAPTCHA là điểm dừng, không bao giờ đăng nhập hay giải CAPTCHA.
-- **Liên hệ vận hành:** `CRAWLER_CONTACT` hợp lệ là bắt buộc và được ghi lại; contact giả bị từ chối trước khi chạy.
+- **Liên hệ vận hành:** `CRAWLER_CONTACT` (email thật, đặt trong `.env`) là bắt buộc và được gửi trong header
+  `From` của mọi request để quản trị site liên hệ được. Đổi email không ảnh hưởng resume.
 - **Cổng mở rộng:** trang trùng (hash nội dung) và trang vỏ (soft 404, form đăng nhập, CAPTCHA, trang rỗng)
   không mở rộng link.
 
@@ -64,18 +63,16 @@ Crawl dừng theo bằng chứng của đồ thị, không theo thời gian:
   hành động/đăng nhập (`action_auth`) bị phân loại và loại trước khi vào frontier.
 - **Phân trang theo novelty:** đi từng bước bằng `select_semantic_next`. Mỗi route family theo dõi vân tay nội dung
   và tập đích, đóng khi cạn: `repeated_content_fingerprint`, `repeated_target_set`, `zero_novelty`
-  (`--pagination-empty-pages`, mặc định 3) và `pagination_closed`.
+  (`--pagination-empty-pages`, mặc định 3).
 
 Cầu chì (cắt crawl và ghi lý do vào `manifest.json`):
 
 | Cờ | Ý nghĩa | Mặc định |
 |---|---|---|
-| `--max-query-variants-per-path` | biến thể query tối đa mỗi path | 20 |
 | `--max-urls-per-host` | URL tối đa mỗi host | 100000 |
 | `--max-total-urls` | tổng URL | 1000000 |
 | `--max-file-bytes` | kích thước tệp tối đa | 100 MiB |
 | `--max-total-file-bytes` | tổng dung lượng tệp | 100 GiB |
-| `--profile` | hồ sơ đồng thời | `safe-fast` |
 | `--concurrency`, `--max-per-host`, `--resource-limit-percent` | ghi đè YAML | theo YAML |
 
 Mặc định trong YAML: 2 request mỗi host, AutoThrottle mục tiêu `2.0`, delay tối đa 5 giây. Tiến trình đang chạy
@@ -91,21 +88,18 @@ trong tmux phải dừng và chạy lại để nhận mã hoặc YAML mới.
 | `files.jsonl`, `files/` | tệp tải về, đặt tên theo `sha256` (chỉ ở chế độ `all`) |
 | `errors.jsonl` | lỗi cuối cùng và lý do loại |
 | `manifest.json` | trạng thái, thời gian, số lượng, chỉ số tài nguyên, chẩn đoán route family, lý do bỏ qua |
-| `state/` | SQLite có thể resume (`index.sqlite3`), khoá và trạng thái job Scrapy |
+| `state/` | SQLite có thể resume (`index.sqlite3`), `manifest.json` gốc và khoá `run.lock` |
 | `final/` | tạo lại khi crawl kết thúc: `articles.jsonl` (chỉ bài `extracted`; bài trùng giữ `duplicate_of` và không có `text`, trừ khi bản gốc không nằm trong file thì văn bản gốc được chèn vào), `urls.txt`, `README.json` (số bài, thời gian, `crawl_id`) |
 | `changes/<run_id>/` | đầu ra của mỗi lần refresh |
 | `logs/`, `archive/` | log của người vận hành và snapshot thủ công; `--resume` không dùng |
 
 ## Gián đoạn và resume
 
-- **Ctrl-C:** Scrapy đóng request đang chạy, lưu hàng đợi, đánh dấu `interrupted`, thoát mã 130.
+- **Ctrl-C:** Scrapy đóng request đang chạy, đánh dấu `interrupted`, thoát mã 130. Hàng đợi không lưu riêng: mọi
+  URL đã lên lịch nằm trong chỉ mục SQLite.
 - **Resume:** chạy lại đúng lệnh với `--resume`; hàng đợi dựng lại từ chỉ mục SQLite, URL đã xong không bị tải lại.
 - `--retry-failed`: thử lại lỗi mạng/timeout cuối cùng (giữ nguyên lỗi HTTP và loại theo chính sách).
-- `--retry-policy-skips`: chuyển chính sách User-Agent/robots cũ và xếp lại chỉ những mục bỏ qua do chính sách,
-  phân loại login, CAPTCHA nhầm, lỗi truyền tải, host không có nội dung. Bài `extracted`/`file_saved` được giữ.
-- `--retry-truncated`: phân loại lại và xếp lại các bản ghi `query_variant_limit` nay được nhận là nội dung hoặc
-  phân trang ngữ nghĩa; các giới hạn khác vẫn bị bỏ qua.
-- `--retry-access-gates`: xếp lại trang từng bị bỏ qua vì CAPTCHA.
+- `--retry-access-gates`: xếp lại trang từng bị bỏ qua vì CAPTCHA hoặc cổng đăng nhập.
 - Mọi cờ `--retry-*` đều yêu cầu `--resume`. `--resume` phải trỏ đúng output và danh sách input gốc; không resume
   output của `discover` hay một danh sách khác.
 

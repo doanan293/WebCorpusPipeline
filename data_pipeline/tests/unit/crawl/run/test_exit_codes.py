@@ -4,7 +4,7 @@ from data_pipeline.crawl.run.exit_codes import TRUNCATION_REASONS, finish_reason
 
 
 def test_frontier_limits_are_truncation_reasons() -> None:
-    assert {"query_variant_limit", "host_url_limit", "total_url_limit"} <= TRUNCATION_REASONS
+    assert {"host_url_limit", "total_url_limit"} <= TRUNCATION_REASONS
 
 
 def test_finished_frontier_limit_returns_truncated() -> None:

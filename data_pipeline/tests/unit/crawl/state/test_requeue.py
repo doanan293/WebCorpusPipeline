@@ -3,84 +3,20 @@ from pathlib import Path
 
 from data_pipeline.crawl.state.export import (
     export,
-    reason_counts,
 )
 from data_pipeline.crawl.state.requeue import (
     requeue_access_gates,
-    requeue_policy_skips,
-    requeue_query_variant_truncations,
     requeue_retryable_failures,
-    requeue_zero_content_bootstrap,
 )
 from tests.unit.crawl.state.test_store import open_state
 
 
-def test_requeue_policy_skips_preserves_successful_records_and_is_idempotent(
-    tmp_path: Path,
-) -> None:
-    state = open_state(tmp_path)
-    successful = {
-        "url": "https://a.test/success",
-        "status": "extracted",
-        "title": "Keep me",
-    }
-    state.complete_url(successful, article={"url": successful["url"], "title": "Keep me"})
-    state.complete_url(
-        {"url": "https://a.test/file.pdf", "status": "file_saved"},
-        file={"url": "https://a.test/file.pdf", "path": "files/file.pdf"},
-    )
-    for reason in ("robots_disallowed", "login_required", "captcha_blocked", "access_denied"):
-        url = f"https://a.test/{reason}"
-        state.complete_url(
-            {"url": url, "status": "skipped", "reason": reason},
-            error={"url": url, "error": reason},
-        )
-    state.complete_url(
-        {"url": "https://a.test/not-found", "status": "failed", "reason": "http_404"},
-        error={"url": "https://a.test/not-found", "error": "http_404"},
-    )
-
-    assert requeue_policy_skips(state, frozenset({"a.test"})) == 4
-    pending = {row["url"] for row in state.iter_pending_scheduled_records()}
-    assert pending == {
-        "https://a.test/robots_disallowed",
-        "https://a.test/login_required",
-        "https://a.test/captcha_blocked",
-        "https://a.test/access_denied",
-    }
-    assert state.is_complete("https://a.test/success")
-    assert state.is_complete("https://a.test/file.pdf")
-    article_payload = state.connection.execute(
-        "SELECT payload FROM articles WHERE url = ?",
-        ("https://a.test/success",),
-    ).fetchone()[0]
-    assert json.loads(article_payload) == {"url": "https://a.test/success", "title": "Keep me"}
-    assert requeue_policy_skips(state, frozenset({"a.test"})) == 0
-    state.close()
-
-
-def test_requeue_zero_content_bootstrap_only_resets_recoverable_roots(tmp_path: Path) -> None:
-    state = open_state(tmp_path)
-    state.complete_url({"url": "https://a.test/", "status": "skipped", "reason": "access_denied"})
-    state.complete_url({"url": "https://b.test/", "status": "extracted"})
-    state.complete_url(
-        {"url": "https://c.test/", "status": "skipped", "reason": "host_out_of_scope"}
-    )
-
-    assert requeue_zero_content_bootstrap(state, frozenset({"a.test", "b.test", "c.test"})) == 1
-    pending = {row["url"] for row in state.iter_pending_scheduled_records()}
-    assert "https://a.test/" in pending
-    assert "https://b.test/" not in pending
-    assert "https://c.test/" not in pending
-    state.close()
-
-
-def test_requeue_access_gates_only_resets_captcha_blocked_pages(tmp_path: Path) -> None:
+def test_retry_access_gates_requeues_captcha_and_login_pages(tmp_path: Path) -> None:
     state = open_state(tmp_path)
     for url, reason in (
         ("https://a.test/false-captcha", "captcha_blocked"),
         ("https://a.test/login", "login_required"),
-        ("https://a.test/query", "query_variant_limit"),
+        ("https://a.test/feed", "feed_trap"),
     ):
         state.merge_url(
             {
@@ -95,13 +31,15 @@ def test_requeue_access_gates_only_resets_captcha_blocked_pages(tmp_path: Path) 
         )
         state.complete_url({"url": url, "status": "skipped", "reason": reason})
 
-    assert requeue_access_gates(state) == 1
+    assert requeue_access_gates(state) == 2
     pending = list(state.iter_pending_scheduled_records())
-    assert [record["url"] for record in pending] == ["https://a.test/false-captcha"]
-    assert pending[0]["status"] == "scheduled"
-    assert "reason" not in pending[0]
-    assert state.is_complete("https://a.test/login")
-    assert state.is_complete("https://a.test/query")
+    assert sorted(str(record["url"]) for record in pending) == [
+        "https://a.test/false-captcha",
+        "https://a.test/login",
+    ]
+    assert all(record["status"] == "scheduled" for record in pending)
+    assert all("reason" not in record for record in pending)
+    assert state.is_complete("https://a.test/feed")
     state.close()
 
 
@@ -121,7 +59,7 @@ def test_requeue_retryable_failures_only_resets_transport_errors(tmp_path: Path)
             "redirect_without_location",
         ),
     )
-    for index, (url, message) in enumerate(failures):
+    for url, message in failures:
         state.merge_url(
             {
                 "url": url,
@@ -130,7 +68,7 @@ def test_requeue_retryable_failures_only_resets_transport_errors(tmp_path: Path)
             }
         )
         state.complete_url(
-            {"url": url, "status": "failed", "completed": index == 0},
+            {"url": url, "status": "failed"},
             error={"url": url, "error": "request_failed", "message": message},
         )
     state.complete_url(
@@ -164,63 +102,4 @@ def test_requeue_retryable_failures_only_resets_transport_errors(tmp_path: Path)
         "https://a.test/missing",
         "https://a.test/server-error",
     ]
-    state.close()
-
-
-def test_requeue_query_variant_truncations_rebuilds_semantic_metadata(
-    tmp_path: Path,
-) -> None:
-    state = open_state(tmp_path)
-    records = (
-        {
-            "url": "https://wp.test/?p=33214",
-            "final_url": "https://wp.test/?p=33214",
-            "status": "skipped",
-            "reason": "query_variant_limit",
-            "discovery_source": "html_link",
-            "response_purpose": "page",
-        },
-        {
-            "url": "https://a.test/news?page=22&tag=undergraduate",
-            "final_url": "https://a.test/news?page=22&tag=undergraduate",
-            "status": "skipped",
-            "reason": "query_variant_limit",
-            "discovery_source": "html_link",
-            "response_purpose": "page",
-        },
-        {
-            "url": "https://a.test/over-host-budget",
-            "status": "skipped",
-            "reason": "host_url_limit",
-        },
-        {
-            "url": "https://a.test/news?sort=oldest",
-            "status": "skipped",
-            "reason": "query_variant_limit",
-            "discovery_source": "html_link",
-            "response_purpose": "page",
-        },
-    )
-    for record in records:
-        state.complete_url(record)
-
-    assert requeue_query_variant_truncations(state) == 2
-    assert requeue_query_variant_truncations(state) == 0
-
-    pending = list(state.iter_pending_scheduled_records())
-    assert [record["url"] for record in pending] == [
-        "https://a.test/news?page=22&tag=undergraduate",
-        "https://wp.test/?p=33214",
-    ]
-    pagination, wordpress = pending
-    assert pagination["link_kind"] == "pagination"
-    assert pagination["family_key"] == ("a.test/news?page={page}&tag=undergraduate")
-    assert pagination["ordinal"] == 22
-    assert wordpress["link_kind"] == "content"
-    assert wordpress.get("family_key") is None
-    assert wordpress.get("ordinal") is None
-    assert all(record["status"] == "scheduled" for record in pending)
-    assert all("reason" not in record for record in pending)
-    assert reason_counts(state, frozenset({"query_variant_limit"})) == {"query_variant_limit": 1}
-    assert reason_counts(state, frozenset({"host_url_limit"})) == {"host_url_limit": 1}
     state.close()

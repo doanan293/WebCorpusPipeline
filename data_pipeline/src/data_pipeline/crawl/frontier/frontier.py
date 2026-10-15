@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any, Literal, cast
-from urllib.parse import parse_qsl, urlencode, urlsplit
+from typing import Any, Literal
+from urllib.parse import parse_qsl, urlsplit
 
 from data_pipeline.core.policies.url import canonicalize_url, classify_frontier_trap
 from data_pipeline.crawl.frontier.assets import AssetGroup, AssetRole
@@ -65,9 +65,6 @@ class FrontierPolicy:
         self._scheduled_urls: set[str] = set()
         self._total_scheduled: int = 0
         self._host_scheduled: dict[str, int] = defaultdict(int)
-        self._query_variants: dict[tuple[str, str], set[str]] = defaultdict(set)
-        self._consecutive_empty_pages: dict[tuple[str, str, str], int] = defaultdict(int)
-        self._closed_branches: set[tuple[str, str, str]] = set()
         self._route_families: dict[str, RouteFamilyState] = {
             f.family_key: f for f in route_families
         }
@@ -132,46 +129,6 @@ class FrontierPolicy:
         self._route_families[observation.family_key] = new_state
         return new_state
 
-    def _pagination_branch(self, url: str) -> tuple[str, str, str] | None:
-        parsed = urlsplit(url)
-        pairs = parse_qsl(parsed.query, keep_blank_values=True)
-        has_page_query = any(query_key_kind(k) == "pagination" for k, _ in pairs)
-        segments = [s for s in parsed.path.split("/") if s]
-        has_page_path = (
-            len(segments) >= _MIN_PAGINATION_SEGMENTS
-            and segments[-2].lower() in {"page", "p", "pages"}
-            and segments[-1].isdigit()
-        )
-
-        if not has_page_query and not has_page_path:
-            return None
-
-        if has_page_path:
-            norm_path = ("/" + "/".join(segments[:-2])) if segments[:-2] else "/"
-        else:
-            norm_path = parsed.path.rstrip("/") or "/"
-
-        filtered_query = urlencode(
-            sorted([(k, v) for k, v in pairs if query_key_kind(k) != "pagination"])
-        )
-        hostname = (parsed.hostname or "").lower().rstrip(".")
-        return (hostname, norm_path, filtered_query)
-
-    def observe_pagination(self, page_url: str, new_content_count: int) -> None:
-        canonical, _, _ = canonicalize_url(page_url)
-        if not canonical:
-            return
-        branch = self._pagination_branch(canonical)
-        if not branch:
-            return
-        if new_content_count == 0:
-            self.stats["frontier/pagination_empty_observation"] += 1
-            self._consecutive_empty_pages[branch] += 1
-            if self._consecutive_empty_pages[branch] >= self.options.pagination_empty_pages:
-                self._closed_branches.add(branch)
-        else:
-            self._consecutive_empty_pages[branch] = 0
-
     def page_role(
         self, url: str, link_kind: LinkKind | None = None
     ) -> Literal["content", "navigation"]:
@@ -229,20 +186,13 @@ class FrontierPolicy:
         if per_host:
             self.stats[f"frontier/host/{hostname}/reject/{reason}"] += 1
 
-    def _policy_rejection(
-        self, candidate: Candidate, canonical: str, hostname: str, role: str
-    ) -> str | None:
+    def _policy_rejection(self, candidate: Candidate, canonical: str, hostname: str) -> str | None:
         """Return the first budget or trap rejection reason, recording its statistics."""
         if candidate.discovery_source == "html_link":
             trap = classify_frontier_trap(canonical)
             if trap and trap not in self.trap_exceptions.get(hostname, set()):
                 self._count_rejection(trap, hostname)
                 return trap
-        if candidate.purpose != "asset" and role == "navigation":
-            branch = self._pagination_branch(canonical)
-            if branch and branch in self._closed_branches:
-                self._count_rejection("pagination_closed", hostname)
-                return "pagination_closed"
         if self._total_scheduled >= self.options.max_total_urls:
             self._count_rejection("total_url_limit", hostname, per_host=False)
             return "total_url_limit"
@@ -282,39 +232,18 @@ class FrontierPolicy:
             return FrontierDecision("record_only", canonical, "already_scheduled", 0)
 
         role = self.page_role(canonical, candidate.link_kind)
-        rejection = self._policy_rejection(candidate, canonical, hostname, role)
+        rejection = self._policy_rejection(candidate, canonical, hostname)
         if rejection is not None:
             return FrontierDecision("reject", canonical, rejection, 0)
 
-        # Query variants are budgeted only for navigation pages found through html links.
-        parsed = urlsplit(canonical)
-        charges_query_variant_budget = bool(
-            candidate.purpose != "asset"
-            and candidate.discovery_source == "html_link"
-            and candidate.link_kind != "pagination"
-            and role == "navigation"
-            and parsed.query
-        )
-        variants: set[str] | None = None
-        if charges_query_variant_budget:
-            variants = self._query_variants[(hostname, parsed.path)]
-            if (
-                parsed.query not in variants
-                and len(variants) >= self.options.max_query_variants_per_path
-            ):
-                self._count_rejection("query_variant_limit", hostname)
-                return FrontierDecision("reject", canonical, "query_variant_limit", 0)
-
         priority = self._priority(candidate, role)
 
-        # Atomically add the canonical URL to all counters, query sets, and stats
+        # Atomically add the canonical URL to all counters and stats
         self._scheduled_urls.add(canonical)
         self._total_scheduled += 1
         self._host_scheduled[hostname] += 1
         self.stats["frontier/scheduled"] += 1
         self.stats[f"frontier/host/{hostname}/scheduled"] += 1
-        if variants is not None:
-            variants.add(parsed.query)
 
         return FrontierDecision("schedule", canonical, None, priority)
 
@@ -333,23 +262,11 @@ class FrontierPolicy:
             self._scheduled_urls.add(canonical)
             self._total_scheduled += 1
             self._host_scheduled[hostname] += 1
-            parsed = urlsplit(canonical)
-            disc_src = record.get("discovery_source")
-            link_kind = cast(LinkKind | None, record.get("link_kind"))
-            if (
-                disc_src == "html_link"
-                and link_kind != "pagination"
-                and self.page_role(canonical, link_kind) == "navigation"
-                and parsed.query
-            ):
-                path_key = (hostname, parsed.path)
-                self._query_variants[path_key].add(parsed.query)
 
     def snapshot(self) -> dict[str, Any]:
         return {
             "total_scheduled": self._total_scheduled,
             "host_scheduled": dict(self._host_scheduled),
-            "closed_pagination_branches": len(self._closed_branches),
             "stats": dict(self.stats),
             "route_families": {
                 "total": len(self._route_families),

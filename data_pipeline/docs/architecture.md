@@ -253,7 +253,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     START["data-pipeline crawl run<br/>-i active.txt -o output"]
-    CONTACT{"CRAWLER_CONTACT hợp lệ,<br/>config/crawler.yaml đủ schema?"}
+    CONTACT{"CRAWLER_CONTACT là email,<br/>config/crawler.yaml đúng schema<br/>(không thiếu, không thừa key)?"}
     FLAGS{"Cờ chế độ"}
     BAD["Từ chối, exit 2<br/>không sửa state"]
 
@@ -265,22 +265,18 @@ flowchart TD
     %% ===== MỚI =====
     FLAGS -- "không có cờ" --> NEWCHK{"output/state<br/>đã tồn tại?"}
     NEWCHK -- "có" --> BAD
-    NEWCHK -- "chưa" --> NEWRUN["Tạo state mới<br/>ghi input_sha256, semantic_config,<br/>Scrapy JOBDIR"]
+    NEWCHK -- "chưa" --> NEWRUN["Tạo state mới<br/>ghi input_sha256, semantic_config"]
 
     %% ===== RESUME =====
     FLAGS -- "--resume" --> RESCHK{"Cùng input_sha256, phase,<br/>state_version, semantic_config?<br/>run.lock không bị giữ?"}
     RESCHK -- "không" --> BAD
     RESCHK -- "có" --> RETRY{"Có cờ --retry-*?"}
     RETRY -- "--retry-failed" --> RQ1["Xếp lại lỗi mạng/timeout cuối<br/>(giữ lỗi HTTP)"]
-    RETRY -- "--retry-truncated" --> RQ2["Xếp lại query_variant_limit<br/>nay là nội dung hoặc phân trang"]
-    RETRY -- "--retry-access-gates" --> RQ3["Xếp lại trang bị bỏ vì CAPTCHA"]
-    RETRY -- "--retry-policy-skips" --> RQ4["Chuyển chính sách truy cập mới,<br/>xếp lại mục bỏ qua do chính sách,<br/>host không có nội dung"]
+    RETRY -- "--retry-access-gates" --> RQ3["Xếp lại trang bị bỏ vì<br/>CAPTCHA hoặc cổng đăng nhập"]
     RETRY -- "không" --> REBUILD
     RQ1 --> REBUILD
-    RQ2 --> REBUILD
     RQ3 --> REBUILD
-    RQ4 --> REBUILD
-    REBUILD["Bỏ JOBDIR cũ, dựng hàng đợi<br/>từ url_records còn scheduled;<br/>URL đã xong không tải lại"]
+    REBUILD["Dựng hàng đợi từ url_records<br/>còn scheduled;<br/>URL đã xong không tải lại"]
 
     %% ===== REFRESH =====
     FLAGS -- "--refresh" --> REFCHK{"Crawl gốc đã kết thúc,<br/>không bị khoá?"}
@@ -311,7 +307,7 @@ flowchart TD
     classDef disc fill:#ede9fe,stroke:#7c3aed,color:#0f172a;
 
     class START,CONTACT,FLAGS,NEWCHK,NEWRUN,RESCHK,REBUILD,REFCHK,REFRUN,REUSECHK,REUSE,LOOP run;
-    class RETRY,RQ1,RQ2,RQ3,RQ4 retry;
+    class RETRY,RQ1,RQ3 retry;
     class BAD bad;
     class DSTART,DPROBE,DMODE disc;
     class DOUT out;

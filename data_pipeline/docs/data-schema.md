@@ -207,8 +207,8 @@ Chỉ mục trạng thái của mọi URL crawler đã gặp, sắp theo URL. Fi
 | Loại liên kết điều hướng | `search_filter` (tìm kiếm, bộ lọc, danh sách), `action_auth` (đăng nhập, giỏ hàng, in, chia sẻ), `calendar_archive` (lưu trữ theo ngày) |
 | Phạm vi | `host_out_of_scope` (host không thuộc seed), `exact_seed_no_expansion` (liên kết trên trang seed exact) |
 | Bẫy URL | `api_endpoint_trap` (`wp-json`), `feed_trap` (feed/rss/atom), `auth_trap`, `calendar_export_trap` (`.ics`), `search_trap`, `action_endpoint_trap` |
-| Hạn mức | `pagination_closed` (nhánh phân trang đóng sau các trang rỗng), `query_variant_limit`, `host_url_limit`, `total_url_limit` |
-| Truy cập | `robots_disallowed`, `login_required`, `captcha_blocked` |
+| Hạn mức | `host_url_limit`, `total_url_limit` |
+| Truy cập | `login_required`, `captcha_blocked` |
 | Tài nguyên | `unsupported_asset_type`, `unexpected_asset_content` (URL tài nguyên trả HTML), `asset_mode_content_only`, `file_size_limit`, `storage_budget`, `non_public_address`, `unsupported_scheme`, `credentials_not_allowed`, `non_default_port`, `redirect_without_location`, `redirect_limit`, `redirect_loop` |
 | Lỗi (`failed`) | `http_<mã>`, `request_failed`, `sitemap_parse_error`; seed không hợp lệ: `unsupported_scheme`, `invalid_hostname`, `invalid_url` |
 | Dữ liệu cũ | `url_length_limit` (do script sửa chữa ghi, mã hiện tại không sinh) |
@@ -268,7 +268,7 @@ Bản gốc ở `state/manifest.json`, được chép ra thư mục đầu ra kh
 | `state_version` | phiên bản schema trạng thái (hiện là 4) |
 | `phase` | `crawl` hoặc `discover` |
 | `input_sha256` | SHA-256 file seed |
-| `semantic_config` | cấu hình ảnh hưởng kết quả: danh sách host, `assets`, `crawl_strategy`, giới hạn URL/byte/chuyển hướng, user agent, `robots_txt_obey`, `access_policy_revision`… Đổi các giá trị này thì không resume được |
+| `semantic_config` | cấu hình ảnh hưởng kết quả: danh sách host, `recursive_hostnames`, `exact_urls`, `assets`, giới hạn URL/byte/chuyển hướng, `browser_user_agent`, `cookies_enabled`, `retry_statuses`… Đổi các giá trị này thì không resume được; `CRAWLER_CONTACT` không thuộc nhóm này |
 | `runtime_history` | mỗi lần resume với tham số chạy khác thêm một mục: `profile`, `max_concurrency`, `max_per_host`, timeout, retry, throttle… |
 | `status` | `running`, `complete`, `complete_with_failures`, `truncated`, `interrupted`, `failed` |
 | `exit_code` | 0 complete, 3 có lỗi, 4 bị cắt bớt, 130 bị ngắt, 1 thất bại (xem [crawl.md](crawl.md#mã-thoát)) |
@@ -276,13 +276,12 @@ Bản gốc ở `state/manifest.json`, được chép ra thư mục đầu ra kh
 | `started_at`, `finished_at` | thời điểm bắt đầu lần đầu và kết thúc |
 | `counts` | `url_status_<trạng thái>` cho từng trạng thái, `total_urls`, `completed_urls`, `articles`, `files`, `errors`, `targets` |
 | `metrics` | `elapsed_seconds`, `average_rate`, `recent_rate`, `peak_queue`, `stats` (thống kê Scrapy thô), `frontier`, `zero_content_hosts`, `refresh` (tóm tắt refresh hoặc `null`); khi lỗi có `error` |
-| `truncation`, `truncation_reasons` | `{lý do: số URL}` cho `file_size_limit`, `storage_budget`, `query_variant_limit`, `host_url_limit`, `total_url_limit`; `null` và `[]` nếu không bị cắt |
-| `discovery` | `{strategy, sitemap_url_limits, hosts}`; mỗi host có `mode` (`pending`, `sitemap`, `sitemap_partial`, `no_sitemap`, `exact`), `robots_complete`, số sitemap thành công/lỗi/vắng, `sitemap_targets`, `html_targets` |
-| `frontier` | `total_scheduled`, `host_scheduled`, `closed_pagination_branches`, `stats`, `route_families` (`total`, `closed`, `closure_reasons`: `repeated_content_fingerprint`, `repeated_target_set`, `zero_novelty`) |
+| `truncation`, `truncation_reasons` | `{lý do: số URL}` cho `file_size_limit`, `storage_budget`, `host_url_limit`, `total_url_limit`; `null` và `[]` nếu không bị cắt |
+| `discovery` | `{strategy, hosts}`; mỗi host có `mode` (`pending`, `sitemap`, `sitemap_partial`, `no_sitemap`, `exact`), `robots_complete`, số sitemap thành công/lỗi/vắng, `sitemap_targets`, `html_targets` |
+| `frontier` | `total_scheduled`, `host_scheduled`, `stats`, `route_families` (`total`, `closed`, `closure_reasons`: `repeated_content_fingerprint`, `repeated_target_set`, `zero_novelty`) |
 | `assets` | `{image\|document\|media: {file_count, unique_bytes}}` (chỉ phase `crawl`) |
 | `skipped` | `{reason: số URL}` trên các bản ghi `skipped` (chỉ phase `crawl`) |
 | `host_completion` | với mỗi host recursive: `status` (`complete` hoặc `zero_content`), `extracted_pages`, `terminal_reasons` |
-| `policy_migrations` | `[{from_revision, to_revision, timestamp}]` khi chính sách truy cập đổi giữa các lần chạy |
 | `last_refresh_run_id` | `run_id` của lần refresh thành công gần nhất |
 
 ### `final/`
@@ -318,7 +317,6 @@ Lý do chọn mục tiêu (`targets_by_reason`): `homepage`, `sitemap`, `navigat
 | `index.sqlite3` | trạng thái resume (WAL); bảng ở dưới |
 | `manifest.json` | bản gốc của manifest |
 | `run.lock` | PID của tiến trình đang chạy |
-| `scrapy-job/` | JOBDIR của Scrapy (hàng đợi theo host, `requests.seen`, `spider.state`); `--resume` và `--refresh` xoá và dựng lại hàng đợi từ SQLite |
 
 | Bảng | Khoá | Nội dung |
 |---|---|---|

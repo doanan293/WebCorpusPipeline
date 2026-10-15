@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any, Final, Literal
+from typing import Any, Literal
 
 from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.frontier.seeds import SeedSet
 
 AssetMode = Literal["content-only", "all"]
-ASSET_POLICY_VERSION: Final[int] = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,7 +14,6 @@ class CrawlOptions:
     assets: AssetMode = "content-only"
     max_file_bytes: int = 100 * 1024 * 1024
     max_total_file_bytes: int = 100 * 1024**3
-    max_query_variants_per_path: int = 20
     pagination_empty_pages: int = 3
     max_urls_per_host: int = 100_000
     max_total_urls: int = 1_000_000
@@ -31,9 +29,7 @@ class CrawlOptions:
 
     def semantic_snapshot(self, seeds: SeedSet | None = None) -> dict[str, object]:
         return {
-            "crawl_strategy": "hybrid-unified",
             **asdict(self),
-            "asset_policy_version": ASSET_POLICY_VERSION,
             "recursive_hostnames": sorted(seeds.recursive_hostnames) if seeds else [],
             "exact_urls": list(seeds.exact_urls) if seeds else [],
         }
@@ -44,7 +40,6 @@ def crawl_options_from_config(config: CrawlerConfig, **overrides: object) -> Cra
         "assets",
         "max_file_bytes",
         "max_total_file_bytes",
-        "max_query_variants_per_path",
         "pagination_empty_pages",
         "max_urls_per_host",
         "max_total_urls",

@@ -12,7 +12,6 @@ from typing import cast
 
 from data_pipeline.core.policies.network import validate_public_web_url
 from data_pipeline.crawl.frontier.assets import AssetRole, classify_asset
-from data_pipeline.crawl.options import ASSET_POLICY_VERSION
 from data_pipeline.crawl.spider.reuse import ReusedAssetTarget
 from data_pipeline.crawl.state.resume import STATE_VERSION
 from data_pipeline.crawl.state.store import CrawlState
@@ -49,9 +48,7 @@ def validate_reuse_source(source_output: Path, input_path: Path) -> tuple[Path, 
         manifest.get("state_version") != STATE_VERSION
         or manifest.get("phase") != "crawl"
         or not isinstance(semantic, dict)
-        or semantic.get("crawl_strategy") != "hybrid-unified"
         or semantic.get("assets") != "content-only"
-        or semantic.get("asset_policy_version") != ASSET_POLICY_VERSION
     ):
         msg = "source is not a compatible content-only crawl"
         raise ValueError(msg)

@@ -15,7 +15,6 @@ def test_query_cross_product_is_bounded_without_losing_detail_pages(tmp_path: Pa
         sorts=4,
         languages=5,
         detail_pages=250,
-        max_query_variants_per_path=20,
     )
     assert result.detail_urls_extracted == 250
     assert result.list_variants_requested <= 20
