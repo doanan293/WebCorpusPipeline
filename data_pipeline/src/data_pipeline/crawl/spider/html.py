@@ -451,7 +451,7 @@ class HtmlHandler:
                 yield from self._next_page_requests(next_link, response.url)
 
     def _record_skipped_link(self, link: ClassifiedLink) -> None:
-        self.writer.record_skipped(
+        self.writer.record_rejected(
             {
                 "url": link.url,
                 "final_url": link.url,
@@ -485,7 +485,7 @@ class HtmlHandler:
                 yield request
             return int(is_content)
         if decision.action == "reject" and decision.canonical_url:
-            self.writer.record_skipped(
+            self.writer.record_rejected(
                 {
                     "url": decision.canonical_url,
                     "final_url": decision.canonical_url,

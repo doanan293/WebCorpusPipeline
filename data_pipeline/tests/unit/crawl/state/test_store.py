@@ -8,6 +8,7 @@ import pytest
 
 from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.output.writer import CrawlWriter
+from data_pipeline.crawl.state.export import reason_counts
 from data_pipeline.crawl.state.store import (
     CrawlState,
 )
@@ -431,4 +432,79 @@ def test_backup_to_copies_the_index(tmp_path: Path) -> None:
     copy = sqlite3.connect(target)
     assert copy.execute("SELECT count(*) FROM url_records").fetchone()[0] == 1
     copy.close()
+    state.close()
+
+
+def _url_record(state: CrawlState, url: str) -> dict[str, object]:
+    row = state.connection.execute(
+        "SELECT payload FROM url_records WHERE url = ?;", (url,)
+    ).fetchone()
+    return json.loads(row[0])
+
+
+def test_extracted_clears_stale_reason(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    writer = CrawlWriter(tmp_path / "output", state, CrawlOptions())
+    state.merge_url({"url": "https://a.test/u", "status": "skipped", "reason": "action_auth"})
+
+    writer.write_article({"url": "https://a.test/u", "title": "U", "text": "body"})
+
+    record = _url_record(state, "https://a.test/u")
+    assert record["status"] == "extracted"
+    assert "reason" not in record
+    writer.close()
+
+
+def test_skip_never_replaces_scheduled_record(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    writer = CrawlWriter(tmp_path / "output", state, CrawlOptions())
+    writer.record_scheduled(
+        {"url": "https://a.test/u", "status": "scheduled", "frontier_action": "scheduled"}
+    )
+
+    writer.record_rejected(
+        {"url": "https://a.test/u", "status": "skipped", "reason": "host_out_of_scope"}
+    )
+
+    assert [r["url"] for r in state.iter_pending_scheduled_records()] == ["https://a.test/u"]
+    writer.close()
+
+
+def test_error_row_removed_when_url_stops_failing(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    writer = CrawlWriter(tmp_path / "output", state, CrawlOptions())
+    writer.write_error({"url": "https://a.test/u", "error": "timeout"})
+    assert state.counts()["errors"] == 1
+
+    writer.write_article({"url": "https://a.test/u", "title": "U", "text": "body"})
+
+    assert state.counts()["errors"] == 0
+    writer.close()
+
+
+def test_rewritten_unique_article_clears_duplicate_of(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    writer = CrawlWriter(tmp_path / "output", state, CrawlOptions())
+    writer.write_article({"url": "https://a.test/1", "title": "One", "text": "same"})
+    writer.write_article({"url": "https://a.test/2", "title": "Two", "text": "same"})
+    assert _url_record(state, "https://a.test/2")["duplicate_of"] == "https://a.test/1"
+
+    writer.write_article({"url": "https://a.test/2", "title": "Two", "text": "now unique"})
+
+    assert "duplicate_of" not in _url_record(state, "https://a.test/2")
+    writer.close()
+
+
+def test_reason_counts_only_count_skipped(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    state.merge_url(
+        {"url": "https://a.test/1", "status": "skipped", "reason": "storage_budget"},
+        completed=True,
+    )
+    state.merge_url(
+        {"url": "https://a.test/2", "status": "failed", "reason": "storage_budget"},
+        completed=True,
+    )
+
+    assert reason_counts(state) == {"storage_budget": 1}
     state.close()

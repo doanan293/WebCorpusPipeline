@@ -123,7 +123,7 @@ class RequestFactory:
             decision = self.frontier.consider(candidate)
             if decision.action == "reject":
                 if decision.canonical_url:
-                    self.writer.record_skipped(
+                    self.writer.record_rejected(
                         {
                             "url": decision.canonical_url,
                             "final_url": decision.canonical_url,
@@ -157,7 +157,7 @@ class RequestFactory:
                         }
                     )
                 elif decision.action == "reject" and decision.canonical_url:
-                    self.writer.record_skipped(
+                    self.writer.record_rejected(
                         {
                             "url": decision.canonical_url,
                             "final_url": decision.canonical_url,
@@ -175,7 +175,7 @@ class RequestFactory:
             ):
                 decision = self.frontier.consider(candidate)
                 if decision.canonical_url:
-                    self.writer.record_skipped(
+                    self.writer.record_rejected(
                         {
                             "url": decision.canonical_url,
                             "final_url": decision.canonical_url,
@@ -190,7 +190,7 @@ class RequestFactory:
         decision = self.frontier.consider(candidate)
         if decision.action == "reject":
             if decision.canonical_url:
-                self.writer.record_skipped(
+                self.writer.record_rejected(
                     {
                         "url": decision.canonical_url,
                         "final_url": decision.canonical_url,

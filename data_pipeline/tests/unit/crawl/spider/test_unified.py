@@ -104,6 +104,9 @@ class FakeCrawlWriter:
         self.skipped.append(record)
         self.state.merge_url(record, completed=True)
 
+    def record_rejected(self, record: dict[str, Any]) -> None:
+        self.record_skipped(record)
+
     def record_absent(self, record: dict[str, Any]) -> None:
         self.discovered.append(record)
         self.state.complete_url(record)

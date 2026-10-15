@@ -195,7 +195,7 @@ def asset_metrics(state: CrawlState) -> dict[str, dict[str, int]]:
 
 def reason_counts(state: CrawlState, reasons: frozenset[str] | None = None) -> dict[str, int]:
     counts: dict[str, int] = {}
-    cursor = state.connection.execute("SELECT payload FROM url_records;")
+    cursor = state.connection.execute("SELECT payload FROM url_records WHERE status = 'skipped';")
     for row in cursor:
         rec = json.loads(row[0])
         r = rec.get("reason")

@@ -568,3 +568,19 @@ def test_refresh_requires_existing_crawl(tmp_path: Path) -> None:
             refresh=True,
         )
     assert not (tmp_path / "missing").exists()
+
+
+def test_average_rate_uses_responses_of_this_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    capture_runner_dependencies(monkeypatch)
+
+    def respond_thirty_times(self: Any) -> None:
+        for crawler in self.crawlers:
+            crawler.stats.set_value("response_received_count", 30)
+
+    monkeypatch.setattr(runner.CrawlerProcess, "start", respond_thirty_times)
+    assert run_unified_for_test(tmp_path) == 0
+
+    metrics = json.loads((tmp_path / "crawl-output/state/manifest.json").read_text())["metrics"]
+    assert metrics["average_rate"] * metrics["elapsed_seconds"] == pytest.approx(30)

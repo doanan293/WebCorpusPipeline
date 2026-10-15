@@ -15,6 +15,8 @@ from data_pipeline.crawl.state.resume import manifest_for_open
 if TYPE_CHECKING:
     from data_pipeline.crawl.frontier.assets import AssetRole
 
+_TERMINAL_STATUSES = frozenset({"extracted", "file_saved"})
+
 
 def _acquire_lock(root: Path) -> Path:
     """Create ``run.lock`` holding this PID; refuse when another live crawl owns the state."""
@@ -151,33 +153,48 @@ class CrawlState:
         )
         temporary.replace(self.manifest_path)
 
-    def _merged_record(self, record: Mapping[str, object]) -> dict[str, object]:
-        row = self.connection.execute(
-            "SELECT payload FROM url_records WHERE url = ?", (str(record["url"]),)
-        ).fetchone()
-        merged = json.loads(row[0]) if row else {}
-        merged.update({key: value for key, value in record.items() if value is not None})
+    @staticmethod
+    def _merged_record(
+        existing: dict[str, object], record: Mapping[str, object]
+    ) -> dict[str, object]:
+        """Overlay ``record`` on ``existing``; an explicit None deletes the key."""
+        merged = dict(existing)
+        for key, value in record.items():
+            if value is None:
+                merged.pop(key, None)
+            else:
+                merged[key] = value
+        if record.get("status") in _TERMINAL_STATUSES:
+            for key in ("reason", "duplicate_of"):
+                if key not in record:
+                    merged.pop(key, None)
         return merged
 
     def merge_url(
-        self, record: Mapping[str, object], *, completed: bool = False
+        self,
+        record: Mapping[str, object],
+        *,
+        completed: bool = False,
+        keep_scheduled: bool = False,
     ) -> dict[str, object]:
+        """Write a URL record; ``keep_scheduled`` leaves a pending scheduled row untouched."""
+        url = str(record["url"])
         existing_row = self.connection.execute(
-            "SELECT payload, status, completed FROM url_records WHERE url = ?",
-            (str(record["url"]),),
+            "SELECT payload, status, completed FROM url_records WHERE url = ?", (url,)
         ).fetchone()
-        if (
-            existing_row
-            and existing_row[2]
-            and existing_row[1] in {"extracted", "file_saved"}
-            and record.get("status") not in {"extracted", "file_saved"}
+        if existing_row and (
+            (
+                existing_row[2]
+                and existing_row[1] in _TERMINAL_STATUSES
+                and record.get("status") not in _TERMINAL_STATUSES
+            )
+            or (keep_scheduled and not existing_row[2] and existing_row[1] == "scheduled")
         ):
             return json.loads(existing_row[0])
 
-        merged = self._merged_record(record)
+        merged = self._merged_record(json.loads(existing_row[0]) if existing_row else {}, record)
         if existing_row is None and self.refresh_run_id is not None:
             merged.setdefault("first_seen_run", self.refresh_run_id)
-        url = str(merged["url"])
         payload = json.dumps(merged, ensure_ascii=False)
         status = str(merged.get("status", "discovered"))
         comp_val = 1 if completed else 0
@@ -192,6 +209,8 @@ class CrawlState:
             """,
             {"url": url, "payload": payload, "status": status, "completed": comp_val},
         )
+        if status != "failed":
+            self.connection.execute("DELETE FROM errors WHERE url = ?;", (url,))
         return merged
 
     def _put_payload(self, table: str, record: Mapping[str, object]) -> None:

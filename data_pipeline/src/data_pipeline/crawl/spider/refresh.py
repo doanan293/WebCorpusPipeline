@@ -229,7 +229,6 @@ class RefreshHandler:
         else:
             if outcome == "modified":
                 state.release_content_owner(url, str(previous))
-                state.update_url_fields(url, {"duplicate_of": None})
             article_data = self.html.article_record(response, analysis, url, content_type)
             stored_article = self.writer.write_article(article_data)
             self.session.record_change(

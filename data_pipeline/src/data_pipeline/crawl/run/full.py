@@ -307,7 +307,7 @@ class _CrawlRun:
         )
 
         counts = state.counts()
-        failed = counts.get("errors", 0)
+        failed = counts.get("url_status_failed", 0)
         host_completion = completion_by_host(state, ctx.seeds.recursive_hostnames)
         zero_content_hosts = sorted(
             hostname
@@ -320,7 +320,7 @@ class _CrawlRun:
             failed, truncated = session.store.failure_counts(session.run_id, TRUNCATION_REASONS)
 
         elapsed_seconds = time.time() - self.start_time
-        avg_rate = counts.get("completed_urls", 0) / max(0.001, elapsed_seconds)
+        avg_rate = int(stats.get("response_received_count", 0)) / max(0.001, elapsed_seconds)
         reporter = getattr(self.crawler, "progress_reporter", None)
         rep_metrics = reporter.metrics() if reporter is not None else {}
 
