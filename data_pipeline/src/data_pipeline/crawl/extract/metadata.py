@@ -5,6 +5,7 @@ import re
 from lxml import etree
 from lxml import html as lxml_html
 
+from data_pipeline.crawl.extract.dates import parse_page_date
 from data_pipeline.crawl.extract.links import normalize_url, normalized_text
 
 _XML_INCOMPATIBLE_CHARACTERS = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
@@ -148,14 +149,21 @@ def extract_published_at(
 
     if len(dates) > 1:
         warnings.append("ambiguous_published_at")
-    return dates[0] if dates else None
+    return _iso_date(dates[0] if dates else None, "published_at", warnings)
 
 
-def extract_modified_at(root: etree._Element) -> str | None:
+def extract_modified_at(root: etree._Element, warnings: list[str]) -> str | None:
     dates = extract_meta_content(root, "property", ("article:modified_time", "og:updated_time"))
     if not dates:
         dates = extract_meta_content(root, "name", ("article:modified_time", "last-modified"))
-    return dates[0] if dates else None
+    return _iso_date(dates[0] if dates else None, "modified_at", warnings)
+
+
+def _iso_date(raw: str | None, field: str, warnings: list[str]) -> str | None:
+    parsed = parse_page_date(raw)
+    if raw and parsed is None:
+        warnings.append(f"unparsed_date:{field}")
+    return parsed
 
 
 def extract_summary(root: etree._Element) -> str | None:

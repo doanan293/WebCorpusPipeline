@@ -59,7 +59,7 @@ trạng thái cuối không còn là `extracted`; bản dùng cho các bước s
 | `language` | str \| null | luôn | giá trị thô của `html@lang`/`xml:lang` hoặc meta `content-language`; không chuẩn hoá (`vi`, `vi-VN`, `en-US`…) |
 | `canonical_url` | str \| null | luôn | `<link rel=canonical>` đầu tiên, đã chuẩn hoá |
 | `author` | str \| null | luôn | meta `author` hoặc `article:author` |
-| `published_at` | str \| null | luôn | chuỗi thô từ meta hoặc `time@datetime`, **không parse, không chuẩn hoá múi giờ** |
+| `published_at` | str \| null | luôn | ISO 8601 có múi giờ, chuẩn hoá từ meta hoặc `time@datetime`; `null` khi không có hoặc không parse được |
 | `modified_at` | str \| null | luôn | như trên, từ `article:modified_time`, `og:updated_time`, `last-modified` |
 | `summary` | str \| null | luôn | meta `description`, `og:description` hoặc `twitter:description` |
 | `content_html` | str | luôn (cả bài trùng) | HTML đã làm sạch của phần nội dung chính |
@@ -84,9 +84,11 @@ trạng thái cuối không còn là `extracted`; bản dùng cho các bước s
   `data-*`; URL tương đối được đổi sang tuyệt đối.
 - **URL trong `links`:** chỉ `http`/`https`, host chữ thường, bỏ cổng mặc định, bỏ fragment và tham số theo dõi
   (`utm_*`, `gclid`, `fbclid`…).
-- **Ngày tháng:** dạng gặp trong dữ liệu thực là `YYYY-MM-DDTHH:MM:SS+HH:MM` (phần lớn `+00:00` hoặc `+07:00`),
-  `YYYY-MM-DD HH:MM:SS` không múi giờ, và một số chuỗi lỗi định dạng. Cần tự parse khi dùng. Bản ghi không có thời
-  điểm tải; thời điểm crawl duy nhất là `source_crawl_finished_at_utc` trong `README.json`.
+- **Ngày tháng:** luôn là `YYYY-MM-DDTHH:MM:SS+HH:MM` (`crawl/extract/dates.py` `parse_page_date`). Dạng NukeViet
+  `2020-02-23+0723:09:00` được đọc là `2020-02-23T23:09:00+07:00`; `Z` thành `+00:00`; giá trị không có múi giờ
+  (`YYYY-MM-DD HH:MM:SS`, `YYYY-MM-DD`) được gán `+07:00`. Chuỗi không parse được cho `null` kèm cảnh báo
+  `unparsed_date:<field>`. Bản ghi không có thời điểm tải; thời điểm crawl duy nhất là
+  `source_crawl_finished_at_utc` trong `README.json`.
 
 #### `headings`
 
@@ -140,6 +142,7 @@ Thứ tự cố định như bảng:
 | `missing_title` | không tìm được tiêu đề, `title` là `""` |
 | `ambiguous_canonical_url` | có nhiều thẻ canonical khác nhau |
 | `ambiguous_published_at` | có nhiều ứng viên ngày đăng khác nhau; dùng ứng viên đầu tiên |
+| `unparsed_date:<field>` | trang có `published_at`/`modified_at` nhưng không parse được; field đó là `null` |
 | `external_asset:<url>` | một cảnh báo cho mỗi tài nguyên nằm ở host khác |
 | `missing_text` | văn bản sinh từ các khối rỗng |
 

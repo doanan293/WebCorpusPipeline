@@ -47,7 +47,7 @@ def analyze_article(source: bytes | str, url: str, encoding: str | None = None) 
     canonical_url = extract_canonical_url(root, base_url, warnings)
     author = extract_author(root)
     published_at = extract_published_at(root, content_el, warnings)
-    modified_at = extract_modified_at(root)
+    modified_at = extract_modified_at(root, warnings)
     summary = extract_summary(root)
 
     assets_list = extract_assets(content_el, base_url, warnings)

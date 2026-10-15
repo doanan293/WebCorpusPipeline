@@ -346,3 +346,12 @@ def test_homepage_target_skips_https_when_only_http_homepage_works(tmp_path: Pat
     assert ("http://a.test/", "homepage") in targets
     assert ("https://a.test/", "homepage") not in targets
     state.close()
+
+
+def test_refresh_recent_uses_parsed_nukeviet_date(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    day = time.strftime("%Y-%m-%d", time.gmtime(NOW - 2 * 86400))
+    put_page(state, "https://a.test/nv", article={"published_at": f"{day}+0710:00:00"})
+
+    assert select_recent(state.connection, RefreshSettings(), [], NOW) == ["https://a.test/nv"]
+    state.close()

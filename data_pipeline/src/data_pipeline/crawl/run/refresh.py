@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
+from data_pipeline.crawl.extract.dates import parse_page_date
 from data_pipeline.crawl.spider.refresh import RefreshSession, RefreshSettings
 from data_pipeline.crawl.state.export import iter_final_articles
 from data_pipeline.crawl.state.refresh_store import (
@@ -36,15 +37,8 @@ def _run_timestamp(run_id: str) -> float:
 
 
 def _timestamp(value: object) -> float | None:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(str(value))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    return parsed.timestamp()
+    parsed = parse_page_date(str(value)) if value else None
+    return datetime.fromisoformat(parsed).timestamp() if parsed else None
 
 
 def _hostname(url: str) -> str:

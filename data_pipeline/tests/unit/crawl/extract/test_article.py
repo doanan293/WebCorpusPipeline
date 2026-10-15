@@ -45,7 +45,7 @@ def test_meta_author_and_modified_and_canonical() -> None:
     result = analyze_article(html, "https://a.test/orig")
     assert result.article["canonical_url"] == "https://a.test/canonical-path"
     assert result.article["author"] == "Nguyen Van A"
-    assert result.article["modified_at"] == "2026-09-08T10:00:00Z"
+    assert result.article["modified_at"] == "2026-09-08T10:00:00+00:00"
     assert result.article["summary"] == "A brief summary"
 
 
