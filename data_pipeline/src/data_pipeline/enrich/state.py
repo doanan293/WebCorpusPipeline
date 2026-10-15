@@ -296,21 +296,6 @@ class WorkState:
         )
         self.conn.commit()
 
-    def downloaded(self, url: str) -> DownloadedFile | None:
-        row = self.conn.execute(
-            "SELECT * FROM inventory WHERE url=? AND status='downloaded'", (url,)
-        ).fetchone()
-        if not row or not row["final_path"]:
-            return None
-        return DownloadedFile(
-            url,
-            Path(row["final_path"]),
-            row["sha256"],
-            row["size"],
-            row["mime_type"] or "application/octet-stream",
-            row["final_url"] or url,
-        )
-
     def next_retry_delay(self) -> float | None:
         row = self.conn.execute(
             "SELECT min(retry_at) FROM inventory WHERE status='retry' AND retry_at IS NOT NULL"

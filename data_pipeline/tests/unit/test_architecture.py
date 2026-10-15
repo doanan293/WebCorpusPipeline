@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import ast
-import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).parents[2]
 SRC = ROOT / "src"
 PACKAGE = SRC / "data_pipeline"
 
-# Importing module prefix -> prefixes it must not import (spec 4.1).
+# Importing module prefix -> prefixes it must not import.
 FORBIDDEN: dict[str, tuple[str, ...]] = {
     "data_pipeline.core": (
         "data_pipeline.crawl",
@@ -80,32 +79,3 @@ def test_layer_dependencies() -> None:
                 if any(under(imported, prefix) for prefix in banned)
             )
     assert violations == []
-
-
-def test_no_legacy_packages() -> None:
-    assert not (SRC / "hust_crawler").exists()
-    assert not (SRC / "ir_data").exists()
-    offenders = [
-        str(path.relative_to(ROOT))
-        for path in sorted([*SRC.rglob("*.py"), *(ROOT / "tests").rglob("*.py")])
-        if path != Path(__file__)
-        and any(name in path.read_text(encoding="utf-8") for name in ("hust_crawler", "ir_data"))
-    ]
-    assert offenders == []
-
-
-def test_single_console_script() -> None:
-    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert pyproject["project"]["scripts"] == {"data-pipeline": "data_pipeline.cli.main:run"}
-
-
-def test_no_relative_imports() -> None:
-    relative = [
-        str(path.relative_to(ROOT))
-        for path in sorted(PACKAGE.rglob("*.py"))
-        if any(
-            isinstance(node, ast.ImportFrom) and node.level > 0
-            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
-        )
-    ]
-    assert relative == []

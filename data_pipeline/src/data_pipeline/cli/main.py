@@ -51,6 +51,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return errors.fail(message)
     except (FileNotFoundError, FileExistsError, ValueError, RuntimeError) as exc:
         return errors.fail(str(exc))
+    except Exception as exc:
+        message = errors.external_failure_message(exc)
+        if message is None:
+            raise
+        return errors.fail(message, exit_code=1)
     return result if isinstance(result, int) else 0
 
 

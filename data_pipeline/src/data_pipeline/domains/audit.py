@@ -8,7 +8,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from data_pipeline.core.policies.network import resolve_hostname
-from data_pipeline.domains.browser import browser_probe_results
 from data_pipeline.domains.probe import (
     ProbeAttempt,
     ProbeResult,
@@ -64,10 +63,12 @@ def run_audit(
             key=lambda item: item.hostname,
         )
         if browser_candidates:
-            results = _apply_browser_attempts(
-                results,
-                browser_probe(browser_candidates),
-            )
+            try:
+                attempts = browser_probe(browser_candidates)
+            except Exception as exc:  # noqa: BLE001 -- a browser that cannot start must not lose the HTTP results
+                results = _record_browser_error(results, f"{type(exc).__name__}: {exc}")
+            else:
+                results = _apply_browser_attempts(results, attempts)
 
     results = _deduplicate_content(_canonicalize_redirects(results))
     results.sort(key=lambda item: item.hostname)
@@ -81,6 +82,16 @@ def run_audit(
     )
     atomic_write_text(report_path, render_report(results))
     return results
+
+
+def _record_browser_error(results: list[ProbeResult], error: str) -> list[ProbeResult]:
+    """Keep each JavaScript shell's HTTP result, noting why the browser could not check it."""
+    return [
+        replace(result, error=f"browser_error: {error}")
+        if result.reason == "javascript_shell"
+        else result
+        for result in results
+    ]
 
 
 def _canonicalize_redirects(results: list[ProbeResult]) -> list[ProbeResult]:
@@ -200,6 +211,16 @@ def audit_domains(
 ) -> dict[str, object]:
     """Probe every candidate host, rewrite the active list and report, and summarise."""
     options = options or AuditOptions()
+    browser_probe = None
+    if options.browser:
+        # Imported only when needed, so --no-browser works without the 'crawl' extra.
+        from data_pipeline.domains.browser import browser_probe_results  # noqa: PLC0415
+
+        browser_probe = partial(
+            browser_probe_results,
+            timeout=options.browser_timeout,
+            workers=options.browser_workers,
+        )
     results = run_audit(
         all_domains,
         active_domains,
@@ -212,15 +233,7 @@ def audit_domains(
             resolve=resolve_hostname,
             fetch=fetch_url,
         ),
-        browser_probe=(
-            partial(
-                browser_probe_results,
-                timeout=options.browser_timeout,
-                workers=options.browser_workers,
-            )
-            if options.browser
-            else None
-        ),
+        browser_probe=browser_probe,
         progress=progress,
     )
     return {

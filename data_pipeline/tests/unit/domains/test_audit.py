@@ -1,6 +1,11 @@
+import importlib
+import sys
 from pathlib import Path
 
-from data_pipeline.domains.audit import run_audit
+import pytest
+
+from data_pipeline.cli import domains as cli_domains
+from data_pipeline.domains.audit import AuditOptions, run_audit
 from data_pipeline.domains.probe import (
     ProbeAttempt,
     ProbeResult,
@@ -178,3 +183,68 @@ def test_run_audit_keeps_shortest_hostname_for_identical_content(tmp_path: Path)
         ("unit-meta.hust.edu.vn", False, "content_duplicate"),
         ("unit.hust.edu.vn", True, "public_response"),
     ]
+
+
+def shell(hostname: str) -> ProbeResult:
+    return ProbeResult(hostname, False, "javascript_shell", scheme="https", status=200)
+
+
+def test_browser_launch_failure_keeps_http_results(tmp_path: Path) -> None:
+    all_path = tmp_path / "all.txt"
+    all_path.write_text("a.hust.edu.vn\nb.hust.edu.vn\n", encoding="utf-8")
+
+    def broken_browser(results: list[ProbeResult]) -> dict[str, ProbeAttempt]:
+        msg = "Executable doesn't exist"
+        raise RuntimeError(msg)
+
+    def probe(hostname: str) -> ProbeResult:
+        if hostname.startswith("a."):
+            return ProbeResult(hostname, True, "public_response", scheme="https", status=200)
+        return shell(hostname)
+
+    results = run_audit(
+        all_path,
+        tmp_path / "active.txt",
+        tmp_path / "report.jsonl",
+        workers=1,
+        probe=probe,
+        browser_probe=broken_browser,
+    )
+
+    assert (tmp_path / "active.txt").read_text() == "a.hust.edu.vn\n"
+    by_host = {item.hostname: item for item in results}
+    assert by_host["b.hust.edu.vn"].reason == "javascript_shell"
+    assert "browser_error: RuntimeError: Executable doesn't exist" in str(
+        by_host["b.hust.edu.vn"].error
+    )
+
+
+def test_no_browser_works_without_playwright(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in ("playwright", "playwright.async_api"):
+        monkeypatch.setitem(sys.modules, name, None)
+    for name in ("data_pipeline.domains.browser", "data_pipeline.domains.audit"):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    fresh = importlib.import_module("data_pipeline.domains.audit")
+    all_path = tmp_path / "all.txt"
+    all_path.write_text("a.hust.edu.vn\n", encoding="utf-8")
+
+    def probe_host(hostname: str, **_: object) -> ProbeResult:
+        return shell(hostname)
+
+    monkeypatch.setattr(fresh, "probe_host", probe_host)
+
+    summary = fresh.audit_domains(
+        all_path, tmp_path / "active.txt", tmp_path / "report.jsonl", AuditOptions(browser=False)
+    )
+
+    assert summary["checked"] == 1
+
+
+def test_progress_goes_to_stderr(capsys: pytest.CaptureFixture[str]) -> None:
+    cli_domains._print_progress(25, 100, 7)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "checked 25/100; active 7" in captured.err

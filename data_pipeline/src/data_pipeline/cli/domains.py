@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -12,7 +13,7 @@ app = typer.Typer(help="Check which HUST hostnames are alive.", no_args_is_help=
 
 
 def _print_progress(checked: int, total: int, active: int) -> None:
-    print(f"checked {checked}/{total}; active {active}", flush=True)
+    print(f"checked {checked}/{total}; active {active}", file=sys.stderr, flush=True)
 
 
 @app.command()

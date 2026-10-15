@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from pymongo.errors import ServerSelectionTimeoutError
 
 from data_pipeline.cli.main import main
 from data_pipeline.core.paths import ProjectPaths, project_paths
 from data_pipeline.core.settings import Settings
-from data_pipeline.corpus import package
+from data_pipeline.corpus import mongo, package
 from data_pipeline.crawl import run as run_package
 from data_pipeline.enrich import session as enrich_session
 from data_pipeline.enrich.download import downloader
@@ -148,3 +150,31 @@ def test_business_errors_print_an_error_line_and_exit_2(
 
     assert main(["corpus", "verify", "--corpus", "x"]) == 2
     assert capsys.readouterr().err.strip() == "Error: bad corpus"
+
+
+def test_mongo_error_is_one_line(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def unreachable(*args: object, **kwargs: object) -> object:
+        msg = "localhost:27017: [Errno 111] Connection refused"
+        raise ServerSelectionTimeoutError(msg)
+
+    monkeypatch.setattr(mongo, "connect", unreachable)
+
+    assert main(["corpus", "prune-mongo", "--keep", "s"]) == 1
+    err = capsys.readouterr().err.strip()
+    assert (
+        err == "Error: ServerSelectionTimeoutError: localhost:27017: [Errno 111] Connection refused"
+    )
+
+
+def test_called_process_error_shows_stderr(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def failing(*args: object, **kwargs: object) -> object:
+        raise subprocess.CalledProcessError(2, ["soffice"], "", "source file could not be loaded")
+
+    monkeypatch.setattr(mongo, "connect", failing)
+
+    assert main(["corpus", "prune-mongo", "--keep", "s"]) == 1
+    assert "source file could not be loaded" in capsys.readouterr().err
