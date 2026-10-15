@@ -19,13 +19,20 @@ không hợp lệ. `build-graph --output <dir>` chỉ dựng đồ thị liên k
 ```bash
 docker compose up -d mongodb
 uv run data-pipeline corpus import-mongo --corpus data/corpus/latest
-uv run data-pipeline corpus query --snapshot <snapshot_id> --url https://hust.edu.vn/ --incoming
+uv run data-pipeline corpus query --snapshot <snapshot_id> --url https://hust.edu.vn/ --direction incoming
+uv run data-pipeline corpus prune-mongo --keep <snapshot_id>   # xoá mọi snapshot khác
 ```
 
 `compose.yaml` chạy MongoDB 8 ở `127.0.0.1:27017`; URI và tên database nằm trong `config/pipeline.yaml`
-(`database`). Mỗi bản ghi mang `snapshot_id` và có `_id` xác định, nên nhập lại không nhân đôi; chỉ dataset có
-trạng thái `ready` được đọc, và snapshot đã `ready` bị bỏ qua. Nhập theo lô (tối đa 100 bản ghi hoặc 4 MB); lỗi
-ghi trạng thái `failed` kèm lý do. `query` liệt kê cạnh đi vào (`--incoming`, mặc định) hoặc đi ra (`--outgoing`).
+(`database`), biến môi trường `MONGO_URI` ghi đè URI. Mỗi bản ghi mang `snapshot_id` và có `_id` xác định, nên nhập
+lại không nhân đôi. Snapshot đã `ready` bị bỏ qua, trừ khi thêm `--force`. Nhập theo lô (tối đa 100 bản ghi hoặc
+4 MB); lỗi ghi trạng thái `failed` kèm lý do.
+
+- `query` từ chối snapshot chưa `ready`; liệt kê cạnh đi vào (`--direction incoming`, mặc định) hoặc đi ra
+  (`outgoing`), tối đa `--limit` dòng (mặc định 100). URL được bỏ `#fragment` như khi dựng đồ thị.
+- `prune-mongo --keep <id>` xoá bản ghi của mọi snapshot khác trong `pages`, `documents`, `images`, `links` và
+  `datasets`; từ chối nếu snapshot giữ lại chưa `ready`.
+- `build-graph` chỉ đọc nguồn crawl, không cần thư mục làm việc enrich.
 
 ## Kaggle
 

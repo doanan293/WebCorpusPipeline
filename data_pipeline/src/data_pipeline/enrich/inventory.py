@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urldefrag, urlsplit
 
+from data_pipeline.core.refs import classify_ref
 from data_pipeline.enrich.models import InventorySummary, SourceProgress, SourceRef
 from data_pipeline.enrich.state import WorkState
 
@@ -64,7 +65,8 @@ def _page_refs(row: dict[str, Any], page: str) -> list[SourceRef]:
         if isinstance(link, dict) and link.get("url"):
             target = _clean(str(link["url"]))
             if _is_doc(target):
-                refs.append(SourceRef(page, target, "hyperlink", str(link.get("text") or "")))
+                relation = classify_ref(target, role=None, kind=None)
+                refs.append(SourceRef(page, target, relation, str(link.get("text") or "")))
     for asset in row.get("assets") or []:
         if isinstance(asset, dict) and asset.get("url"):
             target = _clean(str(asset["url"]))
@@ -73,7 +75,7 @@ def _page_refs(row: dict[str, Any], page: str) -> list[SourceRef]:
                     SourceRef(
                         page,
                         target,
-                        "asset",
+                        classify_ref(target, role=str(asset.get("role") or "asset"), kind=None),
                         "",
                         str(asset.get("alt") or ""),
                         str(asset.get("caption") or ""),

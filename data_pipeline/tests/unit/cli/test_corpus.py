@@ -49,7 +49,7 @@ def test_package_uses_the_default_source_and_work_directories(
 
 
 def test_build_graph_passes_the_output_directory(
-    recorded: dict[str, object], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[Path] = []
 
@@ -58,9 +58,8 @@ def test_build_graph_passes_the_output_directory(
 
     monkeypatch.setattr(graph, "build_graph", build_graph)
 
-    assert main(["corpus", "build-graph", "--output", str(tmp_path / "g"), "--rebind-source"]) == 0
+    assert main(["corpus", "build-graph", "--output", str(tmp_path / "g")]) == 0
     assert calls == [tmp_path / "g"]
-    assert recorded["rebind"] is True
 
 
 def test_verify_prints_the_report_and_succeeds_for_a_valid_corpus(
@@ -84,43 +83,80 @@ def test_verify_exits_3_for_an_invalid_corpus(monkeypatch: pytest.MonkeyPatch) -
     assert main(["corpus", "verify", "--corpus", "c"]) == 3
 
 
-def test_import_mongo_passes_project_settings(
-    project: ProjectPaths,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    calls: list[tuple[Path, Settings]] = []
+class FakeClient:
+    def __init__(self) -> None:
+        self.closed = False
+        self.database = object()
 
-    def import_corpus(corpus: Path, settings: Settings) -> dict[str, int]:
-        calls.append((corpus, settings))
-        return {"documents": 1}
+    def __getitem__(self, name: str) -> object:
+        return self.database
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture
+def client(monkeypatch: pytest.MonkeyPatch) -> FakeClient:
+    fake = FakeClient()
+
+    def connect(settings: Settings) -> FakeClient:
+        return fake
+
+    monkeypatch.setattr(mongo, "connect", connect)
+    return fake
+
+
+def test_import_mongo_passes_force(
+    client: FakeClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[Path, object, bool]] = []
+
+    def import_corpus(corpus: Path, db: object, *, force: bool) -> dict[str, str]:
+        calls.append((corpus, db, force))
+        return {"status": "ready"}
 
     monkeypatch.setattr(mongo, "import_corpus", import_corpus)
 
-    assert main(["corpus", "import-mongo", "--corpus", str(tmp_path / "c")]) == 0
-    assert calls[0][0] == tmp_path / "c"
-    assert calls[0][1].project_root == project.root
-    assert json.loads(capsys.readouterr().out) == {"documents": 1}
+    assert main(["corpus", "import-mongo", "--corpus", str(tmp_path / "c"), "--force"]) == 0
+    assert calls == [(tmp_path / "c", client.database, True)]
+    assert client.closed
 
 
 @pytest.mark.parametrize(
-    ("flags", "direction"),
-    [([], "incoming"), (["--incoming"], "incoming"), (["--outgoing"], "outgoing")],
+    ("flags", "direction", "limit"),
+    [([], "incoming", 100), (["--direction", "outgoing", "--limit", "5"], "outgoing", 5)],
 )
-def test_query_direction(
-    flags: list[str], direction: str, monkeypatch: pytest.MonkeyPatch, project: ProjectPaths
+def test_query_direction_and_limit(
+    client: FakeClient,
+    flags: list[str],
+    direction: str,
+    limit: int,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls: list[tuple[str, str, str]] = []
+    calls: list[tuple[str, str, str, int]] = []
 
-    def query_links(settings: Settings, snapshot: str, url: str, how: str) -> list[object]:
-        calls.append((snapshot, url, how))
+    def query_links(
+        db: object, snapshot: str, url: str, *, direction: str, limit: int
+    ) -> list[object]:
+        calls.append((snapshot, url, direction, limit))
         return []
 
     monkeypatch.setattr(query, "query_links", query_links)
 
     assert main(["corpus", "query", "--snapshot", "s", "--url", "https://a.test/", *flags]) == 0
-    assert calls == [("s", "https://a.test/", direction)]
+    assert calls == [("s", "https://a.test/", direction, limit)]
+
+
+def test_prune_mongo_keeps_the_given_snapshot(
+    client: FakeClient, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def prune_snapshots(db: object, keep: str) -> dict[str, int]:
+        return {"links": 2, "kept": int(keep == "s1")}
+
+    monkeypatch.setattr(mongo, "prune_snapshots", prune_snapshots)
+
+    assert main(["corpus", "prune-mongo", "--keep", "s1"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"links": 2, "kept": 1}
 
 
 def test_publish_defaults_to_the_project_kaggle_config(

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
+from enum import StrEnum
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -13,6 +16,12 @@ app = typer.Typer(
     help="Package, verify, import and publish the processed corpus.", no_args_is_help=True
 )
 
+
+class Direction(StrEnum):
+    incoming = "incoming"
+    outgoing = "outgoing"
+
+
 CorpusOption = Annotated[Path, typer.Option(help="Directory holding a packaged corpus.")]
 
 
@@ -20,16 +29,11 @@ CorpusOption = Annotated[Path, typer.Option(help="Directory holding a packaged c
 def build_graph(
     output: Annotated[Path, typer.Option(help="Directory to write the link graph to.")],
     source: SourceOption = None,
-    work_dir: WorkDirOption = None,
-    rebind_source: RebindOption = False,
 ) -> int:
-    """Build the page/link graph from the crawl and enrichment output."""
+    """Build the page/link graph from the crawl output alone."""
     from data_pipeline.corpus import graph
-    from data_pipeline.enrich import session
 
-    settings = context.build_settings(source, work_dir)
-    with session.open_work_state(settings, rebind=rebind_source):
-        graph.build_graph(settings.source_path, output)
+    graph.build_graph(context.build_settings(source, None).source_path, output)
     return 0
 
 
@@ -60,13 +64,30 @@ def verify(corpus: CorpusOption) -> int:
     return 0 if report["valid"] else 3
 
 
-@app.command("import-mongo")
-def import_mongo(corpus: CorpusOption) -> int:
-    """Import a packaged corpus into MongoDB."""
+@contextmanager
+def _mongo_database() -> Iterator[Any]:
     from data_pipeline.corpus import mongo
 
     settings = context.build_settings(None, None)
-    print(json.dumps(mongo.import_corpus(corpus, settings), indent=2))
+    client = mongo.connect(settings)
+    try:
+        yield client[settings.mongo_database]
+    finally:
+        client.close()
+
+
+@app.command("import-mongo")
+def import_mongo(
+    corpus: CorpusOption,
+    force: Annotated[
+        bool, typer.Option("--force", help="Import again even if the snapshot is ready.")
+    ] = False,
+) -> int:
+    """Import a packaged corpus into MongoDB."""
+    from data_pipeline.corpus import mongo
+
+    with _mongo_database() as db:
+        print(json.dumps(mongo.import_corpus(corpus, db, force=force), indent=2))
     return 0
 
 
@@ -74,20 +95,35 @@ def import_mongo(corpus: CorpusOption) -> int:
 def query(
     snapshot: Annotated[str, typer.Option(help="Snapshot id to query.")],
     url: Annotated[str, typer.Option(help="Page URL whose links to list.")],
-    incoming: Annotated[
-        bool, typer.Option("--incoming", help="List links pointing to the URL.")
-    ] = False,
-    outgoing: Annotated[
-        bool, typer.Option("--outgoing", help="List links leaving the URL.")
-    ] = False,
+    direction: Annotated[
+        Direction, typer.Option(help="incoming: links to the URL; outgoing: links from it.")
+    ] = Direction.incoming,
+    limit: Annotated[int, typer.Option(min=1, help="Most links to print.")] = 100,
 ) -> int:
-    """Query the link graph stored in MongoDB (incoming links by default)."""
+    """Query the link graph of a ready snapshot in MongoDB."""
     from data_pipeline.corpus import query as corpus_query
 
-    direction = "incoming" if incoming or not outgoing else "outgoing"
-    settings = context.build_settings(None, None)
-    result = corpus_query.query_links(settings, snapshot, url, direction)
+    with _mongo_database() as db:
+        result = corpus_query.query_links(
+            db,
+            snapshot,
+            url,
+            direction="incoming" if direction is Direction.incoming else "outgoing",
+            limit=limit,
+        )
     print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+@app.command("prune-mongo")
+def prune_mongo(
+    keep: Annotated[str, typer.Option(help="Snapshot id to keep; every other one is deleted.")],
+) -> int:
+    """Delete every MongoDB snapshot except the one to keep."""
+    from data_pipeline.corpus import mongo
+
+    with _mongo_database() as db:
+        print(json.dumps(mongo.prune_snapshots(db, keep), indent=2))
     return 0
 
 

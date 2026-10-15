@@ -93,16 +93,19 @@ def _replace_batches(collection: Collection[Any], values: Iterable[dict[str, Any
         collection.bulk_write(operations, ordered=False)
 
 
-def import_corpus(path: Path, settings: Settings) -> dict[str, Any]:
+def connect(settings: Settings) -> MongoClient[dict[str, Any]]:
+    return MongoClient(settings.mongo_uri, serverSelectionTimeoutMS=5000)
+
+
+def import_corpus(path: Path, db: Any, *, force: bool = False) -> dict[str, Any]:
+    """Import a verified corpus into ``db``; a ready snapshot is skipped unless ``force``."""
     report = verify_corpus(path)
     if not report["valid"]:
         raise ValueError("invalid corpus: " + "; ".join(report["errors"]))
     snapshot = json.loads((path / "manifest.json").read_text())
     sid = snapshot["snapshot_id"]
-    client = MongoClient(settings.mongo_uri, serverSelectionTimeoutMS=5000)
-    db = client[settings.mongo_database]
     dataset = db.datasets.find_one({"_id": sid})
-    if dataset and dataset.get("status") == "ready":
+    if dataset and dataset.get("status") == "ready" and not force:
         return {"snapshot_id": sid, "status": "already_ready"}
     db.datasets.replace_one(
         {"_id": sid},
@@ -121,17 +124,26 @@ def import_corpus(path: Path, settings: Settings) -> dict[str, Any]:
             ("links.jsonl", "links"),
         ):
             file = path / name
-            if not file.exists():
-                continue
-
-            _replace_batches(db[collection], _snapshot_values(file, collection, sid))
+            if file.exists():
+                _replace_batches(db[collection], _snapshot_values(file, collection, sid))
         db.datasets.update_one({"_id": sid}, {"$set": {"status": "ready", "error": None}})
     except Exception as exc:
         db.datasets.update_one(
             {"_id": sid}, {"$set": {"status": "failed", "error": str(exc)[:1000]}}
         )
         raise
-    else:
-        return {"snapshot_id": sid, "status": "ready"}
-    finally:
-        client.close()
+    return {"snapshot_id": sid, "status": "ready"}
+
+
+def prune_snapshots(db: Any, keep: str) -> dict[str, int]:
+    """Delete every snapshot but ``keep`` (which must be ready); return deletions per collection."""
+    dataset = db.datasets.find_one({"_id": keep})
+    if not dataset or dataset.get("status") != "ready":
+        msg = f"snapshot {keep} is not ready in MongoDB; refusing to prune the others"
+        raise ValueError(msg)
+    removed = {
+        name: db[name].delete_many({"snapshot_id": {"$ne": keep}}).deleted_count
+        for name in COLLECTIONS[1:]
+    }
+    removed["datasets"] = db.datasets.delete_many({"_id": {"$ne": keep}}).deleted_count
+    return removed

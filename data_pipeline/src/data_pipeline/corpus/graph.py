@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urldefrag
 
+from data_pipeline.core.refs import classify_ref
+
 EDGE_BATCH_SIZE = 5000
 
 
@@ -19,6 +21,7 @@ def build_graph(source: Path, output: Path) -> dict[str, Any]:
     # A crawl can contain millions of references.  Keep the deduplication index
     # on disk instead of retaining the complete edge set in Python memory.
     db_path = output / ".graph.sqlite3"
+    db_path.unlink(missing_ok=True)  # left behind by a killed run
     conn = sqlite3.connect(db_path)
     conn.executescript(
         """
@@ -32,8 +35,24 @@ def build_graph(source: Path, output: Path) -> dict[str, Any]:
         CREATE TABLE images (url TEXT PRIMARY KEY);
         """
     )
-    edge_batch = []
-    image_batch = []
+    edge_batch: list[tuple[str, str, str, str, str, str]] = []
+    image_batch: list[tuple[str]] = []
+
+    def add(page: str, item: dict[str, Any], *, role: str | None, kind: str | None) -> None:
+        target = _url(item.get("url"))
+        relation = classify_ref(target, role=role, kind=kind)
+        edge_batch.append(
+            (
+                page,
+                target,
+                relation,
+                str(item.get("text") or "") if kind is not None else "",
+                str(item.get("alt") or ""),
+                str(item.get("caption") or "") if role is not None else "",
+            )
+        )
+        if relation == "image":
+            image_batch.append((target,))
 
     def flush() -> None:
         if edge_batch:
@@ -58,64 +77,11 @@ def build_graph(source: Path, output: Path) -> dict[str, Any]:
                             (page, target, "hyperlink", str(item.get("text") or ""), "", "")
                         )
                 for item in row.get("assets") or []:
-                    if not isinstance(item, dict):
-                        continue
-                    target = _url(item.get("url"))
-                    if not target:
-                        continue
-                    relation = "image" if item.get("role") == "inline_image" else "asset"
-                    edge_batch.append(
-                        (
-                            page,
-                            target,
-                            relation,
-                            "",
-                            str(item.get("alt") or ""),
-                            str(item.get("caption") or ""),
-                        )
-                    )
-                    if relation == "image":
-                        image_batch.append((target,))
+                    if isinstance(item, dict) and _url(item.get("url")):
+                        add(page, item, role=str(item.get("role") or "asset"), kind=None)
                 for item in row.get("observed_refs") or []:
-                    if not isinstance(item, dict):
-                        continue
-                    target = _url(item.get("url"))
-                    kind = str(item.get("kind") or "")
-                    if not target:
-                        continue
-                    relation = (
-                        "image"
-                        if kind == "file"
-                        and target.lower()
-                        .split("?", 1)[0]
-                        .endswith(
-                            (
-                                ".jpg",
-                                ".jpeg",
-                                ".png",
-                                ".gif",
-                                ".webp",
-                                ".svg",
-                                ".bmp",
-                                ".tif",
-                                ".tiff",
-                                ".avif",
-                            )
-                        )
-                        else "observed"
-                    )
-                    edge_batch.append(
-                        (
-                            page,
-                            target,
-                            relation,
-                            str(item.get("text") or ""),
-                            str(item.get("alt") or ""),
-                            "",
-                        )
-                    )
-                    if relation == "image":
-                        image_batch.append((target,))
+                    if isinstance(item, dict) and _url(item.get("url")):
+                        add(page, item, role=None, kind=str(item.get("kind") or ""))
                 if len(edge_batch) >= EDGE_BATCH_SIZE:
                     flush()
         flush()

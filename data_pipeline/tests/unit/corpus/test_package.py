@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from data_pipeline.corpus import package as corpus_package
-from data_pipeline.corpus.mongo import _page_value, _record_id
 from data_pipeline.corpus.package import package_corpus, verify_corpus
 from data_pipeline.enrich.inventory import index_inventory
 from data_pipeline.enrich.models import DownloadedFile, ParseResult
@@ -149,26 +148,3 @@ def test_manifest_counts_lines(tmp_path: Path) -> None:
     assert manifest["counts"]["articles.jsonl"] == 2
     assert manifest["counts"]["documents.jsonl"] == 0
     assert "status" not in manifest
-
-
-def test_mongo_page_keeps_the_duplicate_owner() -> None:
-    page = _page_value(
-        {"url": "https://example.test/copy", "duplicate_of": "https://example.test/a"}
-    )
-    assert page["duplicate_of"] == "https://example.test/a"
-
-
-def test_mongo_page_projection_and_edge_ids_are_bounded_and_distinct() -> None:
-    page = _page_value(
-        {
-            "url": "https://example.test/page",
-            "text": "plain text",
-            "content_html": "x" * 20_000_000,
-            "content_blocks": ["layout"],
-        }
-    )
-    assert page == {"url": "https://example.test/page", "text": "plain text"}
-    base = {"source_url": "a", "target_url": "b", "anchor_text": "x"}
-    assert _record_id({**base, "relation": "hyperlink"}, "links") != _record_id(
-        {**base, "relation": "image"}, "links"
-    )

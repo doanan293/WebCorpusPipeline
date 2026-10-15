@@ -504,8 +504,9 @@ Luôn được tạo lại từ trạng thái của thư mục làm việc lúc 
 
 ## MongoDB
 
-Mặc định `mongodb://127.0.0.1:27017`, database `information_retrieval`. Mỗi bản ghi mang `snapshot_id`; nhập lại
-một snapshot là idempotent (upsert theo `_id`).
+Mặc định `mongodb://127.0.0.1:27017` (ghi đè bằng `MONGO_URI`), database `information_retrieval`. Mỗi bản ghi mang
+`snapshot_id`; nhập lại một snapshot là idempotent (upsert theo `_id`). `corpus prune-mongo --keep <id>` xoá mọi
+snapshot khác.
 
 | Collection | Nguồn | Nội dung |
 |---|---|---|

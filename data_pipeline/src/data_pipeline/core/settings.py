@@ -92,7 +92,8 @@ def load_settings(paths: ProjectPaths, overrides: Mapping[str, Any] | None = Non
         "cloud_workers": d.get("cloud_workers", 1),
         "cloud_poll_seconds": d.get("cloud_poll_seconds", 5),
         "cloud_timeout_seconds": d.get("cloud_timeout_seconds", 1800),
-        "mongo_uri": db.get("mongo_uri", "mongodb://127.0.0.1:27017"),
+        "mongo_uri": os.environ.get("MONGO_URI")
+        or db.get("mongo_uri", "mongodb://127.0.0.1:27017"),
         "mongo_database": db.get("mongo_database", "information_retrieval"),
     }
     values.update(overrides or {})
