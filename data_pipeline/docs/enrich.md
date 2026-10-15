@@ -59,8 +59,9 @@ Văn bản chỉ ra file JSONL khi `corpus package` đóng gói (`documents.json
 - `enrich extract --reparse-cloud` xoá kết quả parse **và tệp cache** của các tài liệu đã qua LlamaParse, nên
   lần parse sau thực sự gọi lại LlamaParse.
 - Nếu một lần chạy dừng, chạy lại đúng lệnh. `status --json` báo số đã tải, đã parse, lỗi, đang chờ,
-  `quota_blocked` và `cloud_failed` (mã thoát 4 khi còn bất kỳ loại nào trong ba loại cuối). `reconcile-job`
-  đối chiếu một job LlamaParse đã ghi.
+  `quota_blocked` và `cloud_failed`. `download`, `extract`, `run` và `status` trả mã thoát 4 khi `pending`,
+  `quota_blocked` hoặc `cloud_failed` lớn hơn 0 (0 khi không còn). `reconcile-job` đối chiếu một job LlamaParse đã
+  ghi.
 
 ## Sau một lần refresh
 

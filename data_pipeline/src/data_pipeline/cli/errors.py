@@ -4,6 +4,8 @@ import sqlite3
 import subprocess
 import sys
 
+from data_pipeline.core.errors import ExternalFailure
+
 _EXTRA_FOR_MODULE = {
     "scrapy": "crawl",
     "scrapy_playwright": "crawl",
@@ -32,6 +34,8 @@ _EXTERNAL_ERROR_MODULES = ("pymongo", "playwright", "sqlite3")
 
 def external_failure_message(exc: Exception) -> str | None:
     """One line describing a failure of an outside system, or None for a program bug."""
+    if isinstance(exc, ExternalFailure):
+        return str(exc)
     if isinstance(exc, subprocess.CalledProcessError):
         detail = (exc.stderr or exc.stdout or "").strip() if isinstance(exc.stderr, str) else ""
         command = " ".join(str(part) for part in exc.cmd) if isinstance(exc.cmd, list) else exc.cmd

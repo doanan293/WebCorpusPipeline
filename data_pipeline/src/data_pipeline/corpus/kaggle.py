@@ -10,10 +10,11 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from data_pipeline.core.errors import ExternalFailure
 from data_pipeline.corpus.package import swap_into_place, verify_corpus
 
 
-class KaggleError(RuntimeError):
+class KaggleError(ExternalFailure):
     """A kaggle CLI call failed; the message carries its stderr."""
 
 

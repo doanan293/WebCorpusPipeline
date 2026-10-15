@@ -273,7 +273,7 @@ Bản gốc ở `state/manifest.json`, được chép ra thư mục đầu ra kh
 | `phase` | `crawl` hoặc `discover` |
 | `input_sha256` | SHA-256 file seed |
 | `semantic_config` | cấu hình ảnh hưởng kết quả: danh sách host, `recursive_hostnames`, `exact_urls`, `assets`, giới hạn URL/byte/chuyển hướng, `browser_user_agent`, `cookies_enabled`, `retry_statuses`… Đổi các giá trị này thì không resume được; `CRAWLER_CONTACT` không thuộc nhóm này |
-| `runtime_history` | mỗi lần resume với tham số chạy khác thêm một mục: `profile`, `max_concurrency`, `max_per_host`, timeout, retry, throttle… |
+| `runtime_history` | mục đầu ghi lúc tạo state, mỗi lần resume với tham số chạy khác thêm một mục: `max_concurrency`, `max_per_host`, `resource_limit_percent`, `concurrent_per_host`, `download_delay_seconds`, timeout, retry, throttle, `refresh_*`, `store_html`… |
 | `status` | `running`, `complete`, `complete_with_failures`, `truncated`, `interrupted`, `failed` |
 | `exit_code` | 0 complete, 3 có lỗi, 4 bị cắt bớt, 130 bị ngắt, 1 thất bại (xem [crawl.md](crawl.md#mã-thoát)) |
 | `resumed_from_status` | trạng thái trước lần resume |
@@ -381,8 +381,9 @@ Nguồn sự thật của giai đoạn enrich (WAL). Thời gian là Unix epoch.
 
 ## Corpus (`data/corpus/<phiên bản>/`)
 
-Gói do `data-pipeline corpus package` tạo ra. Lệnh từ chối đóng gói khi còn tài liệu `pending`, `retry`,
-`in_progress`, `finalizing`, tài liệu đã tải chưa parse, hoặc kết quả `quota_blocked`.
+Gói do `data-pipeline corpus package` tạo ra. Lệnh từ chối đóng gói khi inventory của nguồn chưa xong, hoặc còn tài
+liệu `pending`, `retry`, `in_progress`, `finalizing`, tài liệu đã tải chưa parse, hoặc kết quả `quota_blocked` hay
+`cloud_failed`.
 
 | File | Nguồn |
 |---|---|

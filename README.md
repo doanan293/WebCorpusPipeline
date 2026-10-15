@@ -19,8 +19,8 @@ uv run data-pipeline --help
 ```
 
 Xem [hướng dẫn data pipeline](data_pipeline/README.md) để cài đặt, cấu hình và chạy từng giai đoạn
-(crawl, tải và bóc tách tài liệu, đóng gói corpus, MongoDB, Kaggle). `lucene/` nhận corpus đã xử lý để lập
-chỉ mục và tìm kiếm.
+(crawl, tải và bóc tách tài liệu, đóng gói corpus, MongoDB, Kaggle). `lucene/` hiện chưa đọc corpus này; dự kiến
+sau này `lucene/` sẽ nhận corpus đã xử lý để lập chỉ mục và tìm kiếm.
 
 `data_pipeline/` là một package Python (`src/data_pipeline`) với một lệnh `data-pipeline`, một `pyproject.toml`
 và một `uv.lock`. Extra `crawl` cài crawler, `enrich` thêm công cụ bóc tách tài liệu; nhóm `dev` đã gồm cả hai để
@@ -29,7 +29,8 @@ chạy bộ test.
 ### Kiểm tra mã và pre-commit
 
 Cấu hình ruff, pyrefly (strict) và pytest nằm trong `data_pipeline/pyproject.toml`. Hook pre-commit nằm ở thư
-mục gốc repo, bỏ qua `lucene/`; ruff, pyrefly và pytest chỉ chạy cho thay đổi trong `data_pipeline/`:
+mục gốc repo, bỏ qua `lucene/` và `data_pipeline/data/`; ruff, pyrefly, uv-lock và pytest (pytest chỉ khi push) chỉ
+chạy cho thay đổi trong `data_pipeline/`:
 
 ```bash
 uv run --directory data_pipeline pre-commit install

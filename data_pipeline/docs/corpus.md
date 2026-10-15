@@ -32,7 +32,8 @@ lại không nhân đôi. Snapshot đã `ready` bị bỏ qua, trừ khi thêm `
   (`outgoing`), tối đa `--limit` dòng (mặc định 100). URL được bỏ `#fragment` như khi dựng đồ thị.
 - `prune-mongo --keep <id>` xoá bản ghi của mọi snapshot khác trong `pages`, `documents`, `images`, `links` và
   `datasets`; từ chối nếu snapshot giữ lại chưa `ready`.
-- `build-graph` chỉ đọc nguồn crawl, không cần thư mục làm việc enrich.
+- `build-graph` chỉ nhận `--source` (mặc định `data/crawl/final`) và `--output`; chỉ đọc nguồn crawl, không cần thư
+  mục làm việc enrich.
 
 ## Kaggle
 
@@ -59,4 +60,4 @@ uv run data-pipeline corpus import-mongo --corpus data/corpus/pulled
 `pull` tải đúng phiên bản đã ghim (`owner/slug/<version>`), thử tải cả gói trước và tự chuyển sang tải từng file
 khi endpoint gói không dùng được cho dataset lớn. Bản tải về phải khớp `snapshot_id` của lock, và được thay vào thư
 mục đích một cách nguyên tử như `package`.
-`lucene/` dùng corpus này để lập chỉ mục và tìm kiếm.
+`lucene/` hiện chưa đọc corpus này; dự kiến sau này sẽ dùng nó để lập chỉ mục và tìm kiếm.

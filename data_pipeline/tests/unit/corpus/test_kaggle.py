@@ -110,5 +110,5 @@ def test_kaggle_stderr_in_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr(kaggle.subprocess, "run", failing)
 
-    with pytest.raises(RuntimeError, match="403 Forbidden: not your dataset"):
+    with pytest.raises(kaggle.KaggleError, match="403 Forbidden: not your dataset"):
         kaggle.publish_corpus(make_corpus(tmp_path / "corpus"), write_config(tmp_path))

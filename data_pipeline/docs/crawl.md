@@ -1,6 +1,8 @@
 # Crawl
 
-Lệnh: `data-pipeline crawl run` (crawl chính), `data-pipeline crawl discover` (chẩn đoán sitemap).
+Lệnh: `data-pipeline crawl run` (crawl chính), `data-pipeline crawl discover` (chẩn đoán sitemap),
+`data-pipeline crawl reextract` (trích xuất lại không cần mạng). `run` và `discover` bắt buộc `-i/--input` (file seed,
+không có mặc định) và `-o/--output`; `reextract` chỉ nhận `-o`.
 Cấu hình chính sách và hiệu năng nằm trong `config/crawler.yaml`; file được kiểm tra chặt và phải có
 đủ schema. Chỉ `.env` chứa `CRAWLER_CONTACT` (xem [README](../README.md#cấu-hình)).
 
@@ -24,9 +26,8 @@ uv run data-pipeline crawl run -i config/domains/active.txt -o data/crawl-all \
 - **`all`:** tìm và tải tài nguyên được trang tham chiếu trực tiếp (ảnh, audio/video, tài liệu), qua kiểm tra
   an toàn mạng công khai (DNS an toàn, chặn IP private/loopback) và hạn mức lưu trữ.
 - **`--reuse-content-from`:** sao chép bài và chỉ mục từ một output `content-only` đã xong, tương thích, rồi
-  chỉ tải các tài nguyên đã ghi. Nguồn chỉ đọc, output mới độc lập. Có thể vẫn có request `robots.txt` của
-  host tài nguyên, nhưng không crawl lại HTML hay sitemap. Nguồn phải dùng cùng nội dung `--input`, không được
-  đang chạy; đường dẫn đích chưa tồn tại.
+  chỉ tải các tài nguyên đã ghi. Nguồn chỉ đọc, output mới độc lập. Không crawl lại HTML, sitemap hay
+  `robots.txt`. Nguồn phải dùng cùng nội dung `--input`, không được đang chạy; đường dẫn đích chưa tồn tại.
 
 ## Seed và phạm vi
 
@@ -75,8 +76,11 @@ Cầu chì (cắt crawl và ghi lý do vào `manifest.json`):
 | `--max-total-file-bytes` | tổng dung lượng tệp | 100 GiB |
 | `--concurrency`, `--max-per-host`, `--resource-limit-percent` | ghi đè YAML | theo YAML |
 
-Mặc định trong YAML: 2 request mỗi host, AutoThrottle mục tiêu `2.0`, delay tối đa 5 giây. Tiến trình đang chạy
-trong tmux phải dừng và chạy lại để nhận mã hoặc YAML mới.
+Mặc định trong YAML: 64 request toàn cục, 4 request mỗi host (`concurrent_per_host`), không có delay cố định
+(`download_delay_seconds: 0`), AutoThrottle mục tiêu `4.0` (bắt đầu 0,25 giây, tối đa 5 giây), ngưỡng CPU/RAM 90 %
+(`resource_limit_percent`; lấy mẫu mỗi 5 giây, chỉ giảm tốc sau hai mẫu liên tiếp vượt ngưỡng), `store_html: true`.
+429, `Retry-After`, 5xx và timeout vẫn làm host bị giãn nhịp. Tiến trình đang chạy trong tmux phải dừng và chạy lại
+để nhận mã hoặc YAML mới.
 
 ## Đầu ra (`data/crawl/`)
 

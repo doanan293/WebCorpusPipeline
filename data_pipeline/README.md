@@ -2,7 +2,8 @@
 
 Thu thập, xử lý và chia sẻ corpus các trang web và tài liệu của Đại học Bách khoa Hà Nội (HUST).
 Project này lo phần dữ liệu: crawl, tải và bóc tách tài liệu, đồ thị liên kết, MongoDB và Kaggle. Lập
-chỉ mục và tìm kiếm nằm ở project [`lucene/`](../lucene/README.md). Mọi lệnh chạy trong `data_pipeline/`.
+chỉ mục và tìm kiếm nằm ở project [`lucene/`](../lucene/README.md); `lucene/` hiện chưa đọc corpus này, việc nối hai
+project là dự kiến. Mọi lệnh chạy trong `data_pipeline/`.
 
 ```mermaid
 flowchart LR
@@ -10,7 +11,7 @@ flowchart LR
     B --> C["corpus<br/>đóng gói, verify"]
     C --> D["MongoDB"]
     C --> E["Kaggle"]
-    C --> F["lucene/"]
+    C -. "dự kiến" .-> F["lucene/"]
 ```
 
 ## Cài đặt
@@ -23,9 +24,9 @@ uv run playwright install chromium     # trình duyệt cho trang JavaScript
 cp .env.example .env                   # rồi điền CRAWLER_CONTACT và các khoá API
 ```
 
-Extra của dependency: không có (nền) cho người dùng corpus (`corpus pull|verify|import-mongo|query`);
-`--extra crawl` cho crawler; `--extra enrich` thêm bóc tách tài liệu (gồm cả `crawl`). Lệnh cần extra chưa cài sẽ
-báo cách cài. Nhóm `dev` (pytest, ruff, pyrefly, pre-commit) được `uv sync` cài mặc định.
+Extra của dependency: không có (nền) cho người dùng corpus (`corpus pull|verify|import-mongo|query|prune-mongo`) và
+`domains audit --no-browser`; `--extra crawl` cho crawler và trình duyệt của `domains audit`; `--extra enrich` thêm
+bóc tách tài liệu (gồm cả `crawl`). Lệnh cần extra chưa cài sẽ báo cách cài. Nhóm `dev` (pytest, ruff, pyrefly, pre-commit) được `uv sync` cài mặc định.
 
 ## Bắt đầu nhanh
 
@@ -55,11 +56,23 @@ uv run data-pipeline corpus pull && uv run data-pipeline corpus import-mongo --c
 
 | Nhóm lệnh | Việc làm |
 |---|---|
-| `crawl run`, `crawl discover` | crawl chính (resume, refresh) và chẩn đoán sitemap |
+| `crawl run`, `crawl discover`, `crawl reextract` | crawl chính (resume, refresh), chẩn đoán sitemap, trích xuất lại từ HTML đã lưu |
 | `enrich inventory\|download\|extract\|run\|status\|export\|reconcile-job` | tải và bóc tách tài liệu |
-| `corpus build-graph\|package\|verify\|import-mongo\|query\|publish\|pull` | corpus, MongoDB, Kaggle |
+| `corpus build-graph\|package\|verify\|import-mongo\|query\|prune-mongo\|publish\|pull` | corpus, MongoDB, Kaggle |
 | `domains audit` | kiểm tra host nào còn trả nội dung |
 | `eval extraction` | chấm điểm thuật toán trích xuất nội dung |
+
+### Lỗi và mã thoát chung
+
+| Mã | Khi nào |
+|---|---|
+| 0 | thành công |
+| 1 | hệ thống bên ngoài lỗi (MongoDB, Playwright, SQLite, `kaggle` CLI) hoặc một tiến trình con thất bại (kèm stderr của nó); in một dòng `Error: ...`, không in traceback |
+| 2 | sai cách dùng: thiếu/sai tham số, file không tồn tại, cấu hình hay dữ liệu đầu vào không hợp lệ, thiếu extra; in `Error: ...` hoặc thông báo usage. |
+| 130 | bị ngắt (Ctrl-C) |
+
+Mã riêng của từng lệnh: `crawl run` 3/4 ([docs/crawl.md](docs/crawl.md#mã-thoát)); `corpus verify` 3 khi corpus không
+hợp lệ; `enrich download|extract|run|status` 4 khi còn `pending`, `quota_blocked` hoặc `cloud_failed` lớn hơn 0.
 
 ## Cấu hình
 
@@ -79,7 +92,7 @@ project, không phụ thuộc thư mục bạn đang đứng; đường dẫn b�
 
 | Thư mục | Giai đoạn | Nội dung chính |
 |---|---|---|
-| `data/crawl/` | crawl | `articles.jsonl` thô, `state/` để resume; `final/articles.jsonl` là bản chốt cho bước sau ([docs/crawl.md](docs/crawl.md#đầu-ra-datacrawl)) |
+| `data/crawl/` | crawl | `articles.jsonl` thô, `state/` để resume, `html/` cho `crawl reextract`; `final/articles.jsonl` là bản chốt cho bước sau ([docs/crawl.md](docs/crawl.md#đầu-ra-datacrawl)) |
 | `data/enrichment/` | enrich | tài liệu gốc trong `files/`, văn bản đã bóc tách trong `state.sqlite3` ([docs/enrich.md](docs/enrich.md#đầu-ra-dataenrichment)) |
 | `data/corpus/<phiên bản>/` | corpus | gói hoàn chỉnh: `articles.jsonl`, `documents.jsonl`, `images.jsonl`, `links.jsonl` ([docs/data-schema.md](docs/data-schema.md#corpus-datacorpusphiên-bản)) |
 
@@ -104,7 +117,7 @@ quy tắc phụ thuộc được kiểm tra tự động (`tests/unit/test_archi
 | Tài liệu | Nội dung |
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | cấu trúc package, sơ đồ luồng crawl và luồng xử lý dữ liệu |
-| [docs/crawl.md](docs/crawl.md) | seed, phạm vi, chính sách, frontier, resume, refresh, mã thoát, trích xuất HTML |
+| [docs/crawl.md](docs/crawl.md) | seed, phạm vi, chính sách, frontier, resume, refresh, reextract, mã thoát, trích xuất HTML |
 | [docs/enrich.md](docs/enrich.md) | tải, bóc tách tài liệu, cập nhật sau refresh |
 | [docs/corpus.md](docs/corpus.md) | đóng gói, MongoDB, Kaggle |
 | [docs/domains.md](docs/domains.md) | danh sách host và kiểm tra host |

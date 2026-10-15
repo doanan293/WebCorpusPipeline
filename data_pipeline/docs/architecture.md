@@ -30,23 +30,24 @@ Quy tắc phụ thuộc (kiểm tra tự động bằng `tests/unit/test_archite
 - `core` không import package nào khác; `crawl`, `enrich`, `corpus`, `domains` không import `cli`.
 - `crawl`, `enrich`, `domains` độc lập với nhau; `corpus` chỉ được dùng `enrich`.
 - Trong `crawl`: `run` → `spider` → `state`/`extract`/`frontier`/`runtime`/`output`; `spider` không
-  import `run`; `state` không import `run` hay `spider`; `extract` chỉ phụ thuộc `core`.
+  import `run`; `state` và `frontier` không import `run` hay `spider`; `extract` không import `run`, `spider` hay
+  `state` (chỉ dùng `core` và danh sách định dạng tài liệu trong `frontier/assets`).
 
 Chi tiết từng package con:
 
 | Package | Nội dung |
 |---|---|
 | `crawl/run` | các chế độ chạy: `full` (crawl từ đầu, `--resume`), `refresh`, `reuse`, `discovery`, `reextract`; mã thoát |
-| `crawl/spider` | `UnifiedSpider` và các bộ xử lý: `requests`, `html`, `assets`, `refresh`, `routing` |
+| `crawl/spider` | `UnifiedSpider` và các bộ xử lý: `requests`, `html`, `assets`, `refresh`, `routing`; spider riêng cho `discovery` và `reuse` |
 | `crawl/state` | SQLite `CrawlState`: `store`, `requeue`, `discovery`, `export`, `resume`, `refresh_store`, `html_store` (HTML gốc) |
-| `crawl/extract` | bóc tách HTML: `content`, `metadata`, `sanitize`, `blocks`, `assets`, `links`, `article` |
+| `crawl/extract` | bóc tách HTML: `content`, `metadata`, `dates`, `sanitize`, `blocks`, `assets`, `links`, `article`; `fingerprint` (`change_fingerprint` của refresh), `evaluation` (`eval extraction`) |
 | `crawl/frontier` | frontier, chính sách link, sitemap, seed, chính sách tải asset |
-| `crawl/runtime` | cấu hình Scrapy, middleware, điều chỉnh đồng thời thích ứng, tiến độ |
+| `crawl/runtime` | cấu hình Scrapy, middleware, điều chỉnh đồng thời thích ứng, giám sát CPU/RAM, tiến độ |
 | `enrich` | `inventory` → `download` → `parsing` (cục bộ và LlamaParse) → `export`; `state` SQLite |
 | `corpus` | `package` (đóng gói, verify), `graph` (`links.jsonl`, `images.jsonl`), `mongo`, `kaggle` (publish, pull), `query` |
 | `domains` | `audit`, `probe`, `browser`: thăm dò host và viết lại danh sách host |
-| `core` | `paths`, `env`, `settings`, `hostnames`; `policies`: chuẩn hoá URL, chính sách truy cập và mạng |
-| `cli` | lệnh `data-pipeline` (Typer): `crawl`, `enrich`, `corpus`, `domains`, `eval` |
+| `core` | `paths`, `env`, `settings`, `hostnames`, `refs`; `policies`: chuẩn hoá URL, chính sách truy cập và mạng |
+| `cli` | lệnh `data-pipeline` (Typer): `crawl`, `enrich`, `corpus`, `domains`, `eval`; `errors` đổi lỗi thành một dòng `Error:` và mã thoát |
 
 Các sơ đồ:
 
@@ -62,7 +63,7 @@ yêu cầu của thầy.
 
 ## Tổng quan các giai đoạn
 
-Nét liền là luồng chính, nét đứt là bước tuỳ chọn hoặc lặp lại.
+Nét liền là luồng chính, nét đứt là bước tuỳ chọn, lặp lại hoặc dự kiến (`lucene/` chưa đọc corpus này).
 
 ```mermaid
 flowchart LR
@@ -78,7 +79,7 @@ flowchart LR
     CORPUS["data/corpus/latest/"]
     MONGO["corpus import-mongo<br/>corpus query"]
     KAGGLE["corpus publish<br/>corpus pull"]
-    LUCENE["lucene/"]
+    LUCENE["lucene/<br/>(dự kiến)"]
     EVAL["eval extraction<br/>(sơ đồ 4)"]
 
     ALL --> AUDIT --> ACTIVE --> CRAWL --> FINAL --> ENRICH --> PACK --> CORPUS
@@ -87,7 +88,7 @@ flowchart LR
     CORPUS --> MONGO
     CORPUS -.-> KAGGLE
     KAGGLE -. "máy mới" .-> MONGO
-    CORPUS --> LUCENE
+    CORPUS -. "dự kiến" .-> LUCENE
     EVAL -. "đánh giá crawl/extract" .-> CRAWL
 ```
 
@@ -120,7 +121,7 @@ flowchart TD
         FRONTIER{"Frontier.consider<br/>chuẩn hoá URL"}
         REJECT["Từ chối<br/>ngoài scope, bẫy lịch/lọc/login,<br/>vượt giới hạn host hoặc tổng"]
         KNOWN["record_only<br/>URL đã có trong url_records<br/>KHÔNG fetch"]
-        FETCH["Tải trang<br/>2 request/host, AutoThrottle,<br/>Playwright khi trang JS"]
+        FETCH["Tải trang<br/>4 request/host, AutoThrottle,<br/>Playwright khi trang JS"]
         KIND{"Loại response"}
         ROBOTS["robots.txt, sitemap<br/>lấy danh sách URL"]
         GATE{"Cổng truy cập<br/>login, CAPTCHA, soft 404, rỗng"}
@@ -449,7 +450,7 @@ flowchart TD
     %% ============ ĐÓNG GÓI ============
     subgraph PACK["Đóng gói corpus (package, verify)"]
         direction TB
-        GATE{"Enrichment xong chưa?<br/>không còn tải dở, file chưa parse,<br/>hay quota bị chặn"}
+        GATE{"Enrichment xong chưa?<br/>inventory xong, không còn tải dở,<br/>file chưa parse, cloud_failed<br/>hay quota_blocked"}
         DOCS["Y3, Y4: documents.jsonl<br/>url, sha256, mime, parts text,<br/>trạng thái, cảnh báo,<br/>referrers: trang nguồn và anchor text"]
         REPORT["extraction-report.json<br/>đã tải, đã parse, lỗi, chờ, byte"]
         MANIFEST["manifest.json<br/>sha256 từng file,<br/>snapshot_id = hash của danh sách file,<br/>status ready"]
@@ -473,9 +474,11 @@ flowchart TD
         STATUS["datasets: importing<br/>nhập theo lô, tối đa 100 bản ghi<br/>hoặc 4 MB mỗi lô"]
         COLS[("Collection, mỗi bản ghi mang snapshot_id,<br/>_id xác định nên nhập lại không nhân đôi<br/>pages: metadata và text, bỏ HTML và khối;<br/>documents, images, links: nguyên dòng<br/>index theo snapshot_id, source_url, target_url")]
         DONE["datasets: ready<br/>lỗi thì ghi failed kèm lý do"]
+        PRUNE["prune-mongo --keep id<br/>xoá mọi snapshot khác"]
         IMP --> READY
-        READY -- "rồi" --> SKIP["Bỏ qua, idempotent"]
-        READY -- "chưa" --> STATUS --> COLS --> DONE
+        READY -- "rồi, không --force" --> SKIP["Bỏ qua, idempotent"]
+        READY -- "chưa, hoặc --force" --> STATUS --> COLS --> DONE
+        DONE -.-> PRUNE
     end
     CORPUS --> IMP
 
@@ -494,11 +497,11 @@ flowchart TD
     %% ============ TIÊU THỤ ============
     subgraph USE["Tiêu thụ"]
         direction TB
-        QUERY["corpus query<br/>cạnh đi vào hoặc đi ra một URL,<br/>văn bản của tài liệu,<br/>ảnh nằm trên trang nào"]
-        LUCENE["lucene/<br/>lập chỉ mục và tìm kiếm<br/>từ corpus"]
+        QUERY["corpus query<br/>--direction incoming hoặc outgoing,<br/>--limit N (mặc định 100);<br/>cạnh hyperlink, image, asset, observed"]
+        LUCENE["lucene/ (dự kiến)<br/>chưa đọc corpus này;<br/>sau này lập chỉ mục và tìm kiếm"]
     end
     COLS --> QUERY
-    CORPUS --> LUCENE
+    CORPUS -. "dự kiến" .-> LUCENE
 
     %% ============ MÀU ============
     classDef crawl fill:#dbeafe,stroke:#2563eb,color:#0f172a;
@@ -512,7 +515,7 @@ flowchart TD
     class INV,WORK,DL,DLCHK,DLOK,PARSE,PDF,WORD,SHEET,SLIDE,TEXT,CACHE,CLOUD,CLOUDRES,RESULT,REPARSE,ESTATUS,EEXPORT,ERECON enrich;
     class EDGES,DEDUP,LINKS,IMAGES links;
     class GATE,DOCS,REPORT,MANIFEST,VERIFY pack;
-    class CORPUS,COLS,DONE,PUB,LOCK,PULL,QUERY,LUCENE,IMP,READY,STATUS,SKIP out;
+    class CORPUS,COLS,DONE,PUB,LOCK,PULL,QUERY,LUCENE,IMP,READY,STATUS,SKIP,PRUNE out;
     class STOP,BAD,DLFAIL,PFAIL bad;
 ```
 
@@ -532,8 +535,9 @@ flowchart TD
 
 ## 3. Kiểm tra host (`domains audit`)
 
-Chạy trước crawl để biết host nào còn trả nội dung công khai. Kết quả là `config/domains/active.txt`, đầu vào mặc
-định của `crawl run` và `crawl discover` (xem [domains.md](domains.md)).
+Chạy trước crawl để biết host nào còn trả nội dung công khai. Kết quả là `config/domains/active.txt`, file thường
+truyền cho `crawl run -i` và `crawl discover -i` (hai lệnh này không có input mặc định; xem [domains.md](domains.md)).
+Tiến độ in ra stderr; `--no-browser` không cần extra `crawl`.
 
 ```mermaid
 flowchart TD
@@ -547,11 +551,12 @@ flowchart TD
     REJ["Không hoạt động<br/>empty_response, trang mặc định,<br/>endpoint dịch vụ, non_production,<br/>trang đăng nhập"]
     SHELL["javascript_shell<br/>trang chỉ là vỏ JS"]
     BROWSER{"Playwright<br/>(bỏ bằng --no-browser)"}
+    BERR["browser_error<br/>trình duyệt không khởi động:<br/>giữ kết quả HTTP, ghi error"]
     PUBLIC["public_response<br/>host hoạt động"]
     CANON["Gộp chuyển hướng<br/>host trỏ sang host khác: redirect_duplicate"]
     DEDUP["Gộp trùng nội dung<br/>cùng hash trang: content_duplicate"]
     OUT["Ghi lại all.txt, active.txt (host active),<br/>status.jsonl (active, reason, status,<br/>final_url, title cho mỗi host)"]
-    ERR["probe_error, network_error<br/>một host lỗi không dừng cả lượt"]
+    ERR["probe_error, network_error,<br/>dns_error, non_public_address<br/>một host lỗi không dừng cả lượt"]
 
     ALL --> PROBE
     PROBE -- "ngoại lệ, mất mạng" --> ERR
@@ -564,6 +569,7 @@ flowchart TD
     BODY -- "vỏ JS" --> SHELL --> BROWSER
     BROWSER -- "render ra nội dung" --> PUBLIC
     BROWSER -- "vẫn rỗng hoặc bị chặn" --> REJ
+    BROWSER -- "không khởi động được" --> BERR --> OUT
     BODY -- "có nội dung" --> PUBLIC
     PUBLIC --> CANON --> DEDUP --> OUT
     BADHTTP --> OUT
@@ -576,7 +582,7 @@ flowchart TD
     classDef bad fill:#fee2e2,stroke:#dc2626,color:#0f172a;
     class ALL,PROBE,HTTP,REDIR,BODY,SHELL,BROWSER,CANON,DEDUP step;
     class PUBLIC,OUT out;
-    class BADHTTP,EXT,REJ,ERR bad;
+    class BADHTTP,EXT,REJ,ERR,BERR bad;
 ```
 
 ## 4. Chấm điểm trích xuất (`eval extraction`)
