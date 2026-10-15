@@ -340,3 +340,13 @@ def test_direct_external_asset_is_allowed_but_external_page_is_not() -> None:
     )
     assert asset.action == "schedule"
     assert (page.action, page.reason) == ("reject", "host_out_of_scope")
+
+
+def test_link_to_other_seed_host_is_in_scope() -> None:
+    frontier = FrontierPolicy(SeedSet(frozenset({"a.test", "b.test"}), (), ()), CrawlOptions())
+
+    decision = frontier.consider(
+        candidate("https://b.test/x", discovered_from="https://a.test/page")
+    )
+
+    assert (decision.action, decision.reason) == ("schedule", None)

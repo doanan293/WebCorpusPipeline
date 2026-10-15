@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from data_pipeline.crawl.frontier.assets import AssetRole
 
 _TERMINAL_STATUSES = frozenset({"extracted", "file_saved"})
+_FINAL_STATUSES = _TERMINAL_STATUSES | {"failed", "absent"}
 
 
 def _acquire_lock(root: Path) -> Path:
@@ -251,6 +252,31 @@ class CrawlState:
 
     def put_error(self, record: Mapping[str, object]) -> None:
         self._put_payload("errors", record)
+
+    def is_finished(self, url: str) -> bool:
+        """True once the URL reached a final status, or was fetched and then skipped."""
+        row = self.connection.execute(
+            "SELECT payload, status, completed FROM url_records WHERE url = ?;", (url,)
+        ).fetchone()
+        if row is None or not row[2]:
+            return False
+        if row[1] in _FINAL_STATUSES:
+            return True
+        return row[1] == "skipped" and json.loads(row[0]).get("frontier_action") == "scheduled"
+
+    def insert_url_if_absent(self, record: Mapping[str, object]) -> None:
+        """Write a completed record for a URL the crawl has not seen; never touch a known URL."""
+        self.connection.execute(
+            """
+            INSERT INTO url_records(url, payload, status, completed) VALUES (?, ?, ?, 1)
+            ON CONFLICT(url) DO NOTHING;
+            """,
+            (
+                str(record["url"]),
+                json.dumps(dict(record), ensure_ascii=False),
+                str(record.get("status", "discovered")),
+            ),
+        )
 
     def is_complete(self, url: str) -> bool:
         cursor = self.connection.execute("SELECT completed FROM url_records WHERE url = ?;", (url,))

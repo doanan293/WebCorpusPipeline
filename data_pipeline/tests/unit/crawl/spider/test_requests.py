@@ -50,6 +50,7 @@ def test_resume_yields_request_with_spider_callbacks() -> None:
 def test_resume_skips_urls_already_completed() -> None:
     factory, writer = make_factory()
     writer.state.completed.add("https://a.test/done")
+    writer.state.url_records["https://a.test/done"] = {"status": "extracted"}
 
     requests = list(
         factory.resume([{"url": "https://a.test/done", "response_purpose": "page", "priority": 1}])
@@ -71,3 +72,19 @@ def test_candidate_rejected_by_frontier_returns_none() -> None:
 
     assert factory.for_candidate(candidate) is None
     assert [record["reason"] for record in writer.skipped] == ["host_out_of_scope"]
+
+
+def test_completed_skip_does_not_block_scheduling_final_statuses_only() -> None:
+    factory, writer = make_factory()
+    for url, status in (
+        ("https://a.test/skipped", "skipped"),
+        ("https://a.test/done", "extracted"),
+    ):
+        writer.state.url_records[url] = {"url": url, "status": status}
+        writer.state.completed.add(url)
+
+    def page(url: str) -> Candidate:
+        return Candidate(url, "recursive", None, "page", discovery_source="html_link")
+
+    assert factory.for_candidate(page("https://a.test/skipped")) is not None
+    assert factory.for_candidate(page("https://a.test/done")) is None

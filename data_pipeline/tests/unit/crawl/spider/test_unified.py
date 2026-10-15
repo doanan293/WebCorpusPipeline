@@ -32,6 +32,13 @@ class FakeState:
     def is_complete(self, url: str) -> bool:
         return url in self.completed
 
+    def is_finished(self, url: str) -> bool:
+        record = self.url_records.get(url, {})
+        return url in self.completed and (
+            record.get("status") in {"extracted", "file_saved", "failed", "absent"}
+            or (record.get("status") == "skipped" and record.get("frontier_action") == "scheduled")
+        )
+
     def checkpoint(self, url: str) -> None:
         self.completed.add(url)
 
@@ -106,6 +113,10 @@ class FakeCrawlWriter:
 
     def record_rejected(self, record: dict[str, Any]) -> None:
         self.record_skipped(record)
+
+    def record_navigation_skip(self, record: dict[str, Any]) -> None:
+        if record["url"] not in self.state.url_records:
+            self.record_skipped(record)
 
     def record_absent(self, record: dict[str, Any]) -> None:
         self.discovered.append(record)
@@ -853,3 +864,31 @@ def test_asset_error_record_does_not_replace_article() -> None:
     spider.writer.write_error({"url": "https://cdn.test/a.png", "error": "dns_failure"})
     assert writer.articles[0]["url"] == "https://a.test/p"
     assert writer.errors[0]["url"] == "https://cdn.test/a.png"
+
+
+def test_navigation_skip_uses_canonical_url_and_seed_hosts_only() -> None:
+    spider, writer = make_spider(recursive_hostnames=frozenset({"a.test"}))
+    request = page_request("https://a.test/", discovery_source="seed")
+    html = (
+        "<main><h1>Header</h1><p>Text</p>"
+        '<a href="https://A.test/login/?b=2&amp;a=1#f">Login</a>'
+        '<a href="https://maps.google.com/login">Login</a></main>'
+    )
+
+    list(spider.parse_response(html_response(request, html)))
+
+    skipped = {s["url"]: s["reason"] for s in writer.skipped}
+    assert skipped == {"https://a.test/login/?a=1&b=2": "action_auth"}
+    assert "https://maps.google.com/login" not in writer.state.url_records
+
+
+def test_navigation_skip_does_not_overwrite_known_url() -> None:
+    spider, writer = make_spider(recursive_hostnames=frozenset({"a.test"}))
+    known = {"url": "https://a.test/login", "status": "extracted"}
+    writer.state.url_records["https://a.test/login"] = dict(known)
+    request = page_request("https://a.test/", discovery_source="seed")
+    html = '<main><h1>Header</h1><p>Text</p><a href="/login">Login</a></main>'
+
+    list(spider.parse_response(html_response(request, html)))
+
+    assert writer.state.url_records["https://a.test/login"] == known

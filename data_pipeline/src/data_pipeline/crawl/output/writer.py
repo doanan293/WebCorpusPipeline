@@ -87,6 +87,9 @@ class CrawlWriter:
     def record_skipped(self, record: dict[str, object]) -> None:
         self.state.merge_url(record, completed=True)
 
+    def record_navigation_skip(self, record: dict[str, object]) -> None:
+        self.state.insert_url_if_absent(record)
+
     def record_rejected(self, record: dict[str, object]) -> None:
         """Record a frontier rejection; a URL already scheduled by another route stays pending."""
         self.state.merge_url(record, completed=True, keep_scheduled=True)

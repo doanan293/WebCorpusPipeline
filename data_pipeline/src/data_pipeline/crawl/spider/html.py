@@ -11,6 +11,7 @@ import scrapy
 from scrapy.http import Response
 
 from data_pipeline.core.policies.access import classify_page_gate
+from data_pipeline.core.policies.url import canonicalize_url
 from data_pipeline.crawl.extract.article import analyze_article
 from data_pipeline.crawl.frontier.assets import (
     AssetPolicy,
@@ -451,10 +452,13 @@ class HtmlHandler:
                 yield from self._next_page_requests(next_link, response.url)
 
     def _record_skipped_link(self, link: ClassifiedLink) -> None:
-        self.writer.record_rejected(
+        canonical, hostname, _ = canonicalize_url(link.url, check_traps=False)
+        if canonical is None or hostname not in self.frontier.seeds.allowed_hostnames:
+            return
+        self.writer.record_navigation_skip(
             {
-                "url": link.url,
-                "final_url": link.url,
+                "url": canonical,
+                "final_url": canonical,
                 "status": "skipped",
                 "reason": link.kind,
                 "discovery_source": "html_link",

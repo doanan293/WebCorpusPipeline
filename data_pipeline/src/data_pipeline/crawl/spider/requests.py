@@ -54,7 +54,7 @@ class RequestFactory:
             raise ValueError(msg)
 
         # Skip completed URLs on resume
-        if self.writer.state.is_complete(canonical):
+        if self.writer.state.is_finished(canonical):
             return None
 
         # Persist scheduled decision

@@ -171,12 +171,7 @@ class FrontierPolicy:
             else:
                 in_scope = hostname in seeds.allowed_hostnames
             return None if in_scope else "host_out_of_scope"
-        if candidate.discovered_from:
-            parent_host = (urlsplit(candidate.discovered_from).hostname or "").lower().rstrip(".")
-            in_scope = parent_host in seeds.recursive_hostnames and hostname == parent_host
-        else:
-            in_scope = hostname in seeds.recursive_hostnames
-        return None if in_scope else "host_out_of_scope"
+        return None if hostname in seeds.recursive_hostnames else "host_out_of_scope"
 
     def _count_rejection(self, reason: str, hostname: str, *, per_host: bool = True) -> None:
         self.stats[f"frontier/reject/{reason}"] += 1
