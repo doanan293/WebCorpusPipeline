@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from data_pipeline.cli.main import main
-from data_pipeline.core.paths import ProjectPaths
+from data_pipeline.core.paths import ProjectPaths, project_paths
 from data_pipeline.core.settings import Settings
 from data_pipeline.corpus import graph, kaggle, mongo, package, query
 from data_pipeline.enrich import session as enrich_session
@@ -23,7 +23,8 @@ def recorded(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     def open_work_state(settings: Settings, *, rebind: bool) -> Iterator[object]:
         seen["settings"] = settings
         seen["rebind"] = rebind
-        yield object()
+        seen["state"] = state = object()
+        yield state
 
     monkeypatch.setattr(enrich_session, "open_work_state", open_work_state)
     return seen
@@ -32,10 +33,10 @@ def recorded(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
 def test_package_uses_the_default_source_and_work_directories(
     recorded: dict[str, object], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    calls: list[tuple[Path, Path, Path]] = []
+    calls: list[tuple[Path, object, Path]] = []
 
-    def package_corpus(source: Path, work: Path, output: Path) -> None:
-        calls.append((source, work, output))
+    def package_corpus(source: Path, state: object, output: Path) -> None:
+        calls.append((source, state, output))
 
     monkeypatch.setattr(package, "package_corpus", package_corpus)
 
@@ -43,7 +44,8 @@ def test_package_uses_the_default_source_and_work_directories(
 
     settings = recorded["settings"]
     assert isinstance(settings, Settings)
-    assert calls == [(settings.source_path, settings.work_path, tmp_path / "out")]
+    assert settings.work_path == project_paths().enrichment
+    assert calls == [(settings.source_path, recorded["state"], tmp_path / "out")]
 
 
 def test_build_graph_passes_the_output_directory(

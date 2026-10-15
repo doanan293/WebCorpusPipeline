@@ -33,14 +33,7 @@ def export_enrichment(state: WorkState, destination: Path) -> Path:
             }
             out.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
     summary = state.summary()
-    report = {
-        "downloaded": summary.downloaded,
-        "parsed": summary.parsed,
-        "failed": summary.failed,
-        "pending": summary.pending,
-        "quota_blocked": summary.quota_blocked,
-        "transferred_bytes": summary.transferred_bytes,
-    }
+    report = jsonable(summary)
     (destination / "extraction-report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     )

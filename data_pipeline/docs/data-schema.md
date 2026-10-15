@@ -484,8 +484,7 @@ Có cạnh tự trỏ (trang liên kết tới chính nó).
 | `schema_version` | `"1.0"` |
 | `files` | `{tên file: {sha256, size}}` cho mọi file của gói |
 | `snapshot_id` | SHA-256 của `files` dạng JSON gọn, sắp key; định danh bản corpus (khớp `config/corpus.lock.json` khi đã ghim) |
-| `counts` | hiện luôn `{}` |
-| `status` | `ready` |
+| `counts` | `{tên file .jsonl: số dòng}` |
 
 `corpus verify` kiểm tra lại kích thước, SHA-256 từng file và `snapshot_id`.
 
@@ -498,9 +497,10 @@ Có cạnh tự trỏ (trang liên kết tới chính nó).
 | `failed` | dòng `failures` không còn hẹn thử lại (gồm lỗi tải và lỗi parse) |
 | `pending` | tài liệu còn chờ |
 | `quota_blocked` | tài liệu bị chặn hạn mức LlamaParse |
+| `cloud_failed` | tài liệu có job LlamaParse lỗi |
 | `transferred_bytes` | tổng byte đã tải |
 
-Chưa chạy enrich thì file là `{"status": "not_run"}`.
+Luôn được tạo lại từ trạng thái của thư mục làm việc lúc đóng gói (`WorkState.summary()`), không sao chép từ file cũ.
 
 ## MongoDB
 

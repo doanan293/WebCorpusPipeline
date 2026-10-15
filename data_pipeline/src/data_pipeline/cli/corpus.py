@@ -45,8 +45,8 @@ def package(
     from data_pipeline.enrich import session
 
     settings = context.build_settings(source, work_dir)
-    with session.open_work_state(settings, rebind=rebind_source):
-        corpus_package.package_corpus(settings.source_path, settings.work_path, output)
+    with session.open_work_state(settings, rebind=rebind_source) as state:
+        corpus_package.package_corpus(settings.source_path, state, output)
     return 0
 
 

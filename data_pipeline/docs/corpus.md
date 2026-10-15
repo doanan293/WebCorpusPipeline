@@ -8,9 +8,11 @@ uv run data-pipeline corpus package --output data/corpus/latest   # đóng gói 
 uv run data-pipeline corpus verify --corpus data/corpus/latest    # kiểm tra file, size, checksum, snapshot_id
 ```
 
-`package` từ chối khi pipeline còn việc dở (tải dở, tệp chưa parse hoặc bị chặn hạn mức) và nêu rõ phần còn
-lại. `verify` trả mã 3 khi corpus không hợp lệ. `build-graph --output <dir>` chỉ dựng đồ thị liên kết.
-`snapshot_id` là hash của danh sách file, nên cùng nội dung cho cùng snapshot.
+`package` từ chối khi inventory của nguồn chưa chạy xong, hoặc pipeline còn việc dở (tải dở, tệp chưa parse,
+`cloud_failed` hay `quota_blocked`), và nêu rõ phần còn lại. Gói được dựng trong `<output>.tmp-<pid>` cạnh thư mục
+đích rồi mới thay vào bằng `rename`, nên lỗi giữa chừng để nguyên gói cũ; thư mục có quyền `0755`. Mọi file được
+ghi theo thứ tự URL, nên cùng dữ liệu cho cùng `snapshot_id` bất kể thứ tự xử lý. `verify` trả mã 3 khi corpus
+không hợp lệ. `build-graph --output <dir>` chỉ dựng đồ thị liên kết.
 
 ## MongoDB
 

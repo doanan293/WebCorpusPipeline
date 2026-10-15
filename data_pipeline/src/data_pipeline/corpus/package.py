@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
-import sqlite3
-import tempfile
 from pathlib import Path
 from typing import Any
 
 from data_pipeline.corpus.graph import build_graph
+from data_pipeline.enrich.export import export_enrichment
+from data_pipeline.enrich.inventory import source_key
+from data_pipeline.enrich.state import WorkState
 
 PAYLOAD = (
     "articles.jsonl",
@@ -29,123 +31,51 @@ def _sha(path: Path) -> str:
     return h.hexdigest()
 
 
-def _assert_enrichment_complete(db_path: Path) -> None:
-    """Refuse a release while the resumable pipeline still has unresolved work."""
-
-    conn = sqlite3.connect(db_path)
-    try:
-        pending = conn.execute(
-            "select status,count(*) from inventory "
-            "where status in ('pending','retry','in_progress','finalizing') "
-            "group by status"
-        ).fetchall()
-        if pending:
-            details = ", ".join(f"{status}={count}" for status, count in pending)
-            msg = f"cannot package while downloads are pending: {details}"
-            raise ValueError(msg)
-
-        unparsed = conn.execute(
-            "select count(*) from inventory i "
-            "left join parse_results p on p.url=i.url "
-            "where i.status='downloaded' and p.url is null"
-        ).fetchone()[0]
-        if unparsed:
-            msg = f"cannot package while {unparsed} downloaded files are unparsed"
-            raise ValueError(msg)
-
-        blocked = conn.execute(
-            "select status,count(*) from parse_results "
-            "where status in ('quota_blocked','submission_unknown') group by status"
-        ).fetchall()
-        if blocked:
-            details = ", ".join(f"{status}={count}" for status, count in blocked)
-            msg = f"cannot package while cloud extraction is blocked: {details}"
-            raise ValueError(msg)
-    finally:
-        conn.close()
+def _assert_enrichment_complete(state: WorkState, source: Path) -> None:
+    """Refuse a release that is empty or still has unresolved enrichment work."""
+    if not state.inventory_done(source_key(source)):
+        msg = f"cannot package: inventory has not finished for {source}"
+        raise ValueError(msg)
+    summary = state.summary()
+    if summary.pending:
+        msg = f"cannot package while downloads are pending: {summary.pending}"
+        raise ValueError(msg)
+    unparsed = sum(1 for _ in state.pending_parse())
+    if unparsed:
+        msg = f"cannot package while {unparsed} downloaded files are unparsed"
+        raise ValueError(msg)
 
 
-def package_corpus(source: Path, enrichment: Path, output: Path) -> Path:
+def _line_count(path: Path) -> int:
+    with path.open("rb") as stream:
+        return sum(1 for _ in stream)
+
+
+def _swap_into_place(staging: Path, output: Path) -> None:
+    """Replace ``output`` with ``staging``; the old output survives until the swap succeeds."""
+    previous = output.with_name(f"{output.name}.old-{os.getpid()}")
+    if output.exists():
+        output.replace(previous)
+    staging.replace(output)
+    shutil.rmtree(previous, ignore_errors=True)
+
+
+def package_corpus(source: Path, state: WorkState, output: Path) -> Path:
+    """Build a corpus package next to ``output`` and swap it in atomically."""
     source_dir = source if source.is_dir() else source.parent
-    state_db = enrichment / "state.sqlite3"
-    if state_db.exists():
-        _assert_enrichment_complete(state_db)
-    with tempfile.TemporaryDirectory(prefix="ir-corpus-") as temp:
-        staging = Path(temp)
+    _assert_enrichment_complete(state, source)
+    output = output.resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    staging = output.with_name(f"{output.name}.tmp-{os.getpid()}")
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(mode=0o755)
+    staging.chmod(0o755)
+    try:
         for name in ("articles.jsonl", "urls.txt", "README.json"):
-            src = source_dir / name
-            if src.exists():
-                shutil.copy2(src, staging / name)
-        if state_db.exists():
-            # Export uses the same schema without altering the source crawl.
-
-            conn = sqlite3.connect(state_db)
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute("select * from inventory where status='downloaded'")
-            with (staging / "documents.jsonl").open("w", encoding="utf-8") as doc:
-                for row in rows:
-                    parsed = conn.execute(
-                        "select result_json from parse_results where url=?", (row["url"],)
-                    ).fetchone()
-                    result: dict[str, Any] = json.loads(parsed[0]) if parsed and parsed[0] else {}
-                    parts: list[Any] = result.get("parts", [])
-                    warnings: list[Any] = result.get("warnings", [])
-                    versions: dict[str, Any] = result.get("parser_versions", {})
-                    refs = [
-                        dict(x)
-                        for x in conn.execute(
-                            "select * from refs where target_url=?", (row["url"],)
-                        )
-                    ]
-                    value = {
-                        "url": row["url"],
-                        "final_url": row["final_url"],
-                        "sha256": row["sha256"],
-                        "mime_type": row["mime_type"],
-                        "size": row["size"],
-                        "extraction_status": result.get("status", "pending"),
-                        "parts": parts,
-                        "warnings": warnings,
-                        "parser_versions": versions,
-                        "referrers": refs,
-                    }
-                    doc.write(json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n")
-            conn.close()
-        else:
-            (staging / "documents.jsonl").write_text("")
+            if (source_dir / name).exists():
+                shutil.copy2(source_dir / name, staging / name)
+        export_enrichment(state, staging)
         build_graph(source, staging)
-        report = staging / "extraction-report.json"
-        exported_report = enrichment / "extraction-report.json"
-        if exported_report.exists():
-            shutil.copy2(exported_report, report)
-        elif not report.exists():
-            if state_db.exists():
-                conn = sqlite3.connect(state_db)
-                value = {
-                    "downloaded": conn.execute(
-                        "select count(*) from inventory where status='downloaded'"
-                    ).fetchone()[0],
-                    "parsed": conn.execute(
-                        "select count(*) from parse_results where status='extracted'"
-                    ).fetchone()[0],
-                    "failed": conn.execute(
-                        "select count(*) from failures where retry_at is null"
-                    ).fetchone()[0],
-                    "pending": conn.execute(
-                        "select count(*) from inventory where status in "
-                        "('pending','retry','in_progress','finalizing')"
-                    ).fetchone()[0],
-                    "quota_blocked": conn.execute(
-                        "select count(*) from parse_results where status='quota_blocked'"
-                    ).fetchone()[0],
-                    "transferred_bytes": conn.execute(
-                        "select coalesce(sum(size),0) from inventory where status='downloaded'"
-                    ).fetchone()[0],
-                }
-                conn.close()
-            else:
-                value = {"status": "not_run"}
-            report.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n")
         files = {
             name: {"sha256": _sha(staging / name), "size": (staging / name).stat().st_size}
             for name in PAYLOAD
@@ -158,17 +88,16 @@ def package_corpus(source: Path, enrichment: Path, output: Path) -> Path:
             "schema_version": "1.0",
             "snapshot_id": digest,
             "files": files,
-            "counts": {},
-            "status": "ready",
+            "counts": {
+                name: _line_count(staging / name) for name in files if name.endswith(".jsonl")
+            },
         }
         (staging / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
         )
-        output = output.resolve()
-        output.parent.mkdir(parents=True, exist_ok=True)
-        if output.exists():
-            shutil.rmtree(output)
-        shutil.copytree(staging, output, ignore=shutil.ignore_patterns("_enrichment"))
+        _swap_into_place(staging, output)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
     return output
 
 
