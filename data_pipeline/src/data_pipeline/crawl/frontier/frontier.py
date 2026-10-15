@@ -139,11 +139,7 @@ class FrontierPolicy:
         if "filter" in query_kinds:
             return "navigation"
         if "pagination" in query_kinds:
-            is_wordpress_content_id = link_kind == "content" and all(
-                query_key_kind(key) != "pagination" or key.casefold() == "p" for key, _ in pairs
-            )
-            if not is_wordpress_content_id:
-                return "navigation"
+            return "navigation"
         if is_navigation_path(parsed.path):
             return "navigation"
         if link_kind == "content":

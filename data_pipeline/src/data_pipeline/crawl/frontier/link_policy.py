@@ -117,6 +117,14 @@ NAVIGATION_PATH_SEGMENTS: Final[frozenset[str]] = frozenset(
     }
 )
 
+# Query keys whose pages are facets or portlet actions of a page crawled anyway (spec S1).
+_TRAP_QUERY_PREFIXES: Final[tuple[str, ...]] = ("f.", "spc.")
+_TRAP_QUERY_KEYS: Final[frozenset[str]] = frozenset(
+    {"p_p_id", "p_p_lifecycle", "p_p_state", "p_p_mode", "redirect", "inheritredirect"}
+)
+_LIFERAY_NAMESPACED_KEY_RE: Final[re.Pattern[str]] = re.compile(r"^_\d+_")
+_MAX_ACTION_LABEL_WORDS: Final = 4
+
 _PATH_PAGINATION_RE: Final[re.Pattern[str]] = re.compile(r"/(?:page|p)/(\d+)(?:/)?$", re.IGNORECASE)
 _CALENDAR_DATE_RE: Final[re.Pattern[str]] = re.compile(
     r"/(\d{4})/(\d{1,2})(?:/(\d{1,2}))?(?:/)?$", re.IGNORECASE
@@ -161,6 +169,27 @@ def is_strong_filter_key(key: str) -> bool:
     return len(tokens) > 1 and tokens[0] in FACET_QUERY_NAMESPACES
 
 
+def is_trap_query_key(key: str) -> bool:
+    """Return whether a DSpace facet or Liferay portlet action key makes the URL a trap."""
+    lowered = key.casefold()
+    return (
+        lowered.startswith(_TRAP_QUERY_PREFIXES)
+        or lowered in _TRAP_QUERY_KEYS
+        or _LIFERAY_NAMESPACED_KEY_RE.match(key) is not None
+    )
+
+
+def _is_action_label(text: str) -> bool:
+    """Match auth/action words only as whole words of a short anchor label."""
+    words = text.split()
+    if len(words) > _MAX_ACTION_LABEL_WORDS:
+        return False
+    label = " ".join(words)
+    return any(
+        re.search(rf"(?<!\w){re.escape(token)}(?!\w)", label) for token in ACTION_AUTH_TEXT_TOKENS
+    )
+
+
 def is_navigation_path(path: str) -> bool:
     segments = {segment.casefold() for segment in path.split("/") if segment}
     return bool(segments & NAVIGATION_PATH_SEGMENTS)
@@ -175,9 +204,12 @@ def _query_pagination(
             continue
         if key == "p":
             if "shortlink" in rel_tokens:
-                return "content", None
+                return "search_filter", None
             label = " ".join(text.split())
             if not ({"next", "prev"} & rel_tokens or label == val or label in PAGINATION_LABELS):
+                if len(query_pairs) == 1 and val.isdigit():
+                    # A WordPress shortlink; the slug URL of the same post is crawled anyway.
+                    return "search_filter", None
                 continue
         return "pagination", int(val) if val.isdigit() else None
     return None
@@ -204,9 +236,7 @@ def _classify_navigation(
     rel_tokens = {r.lower() for r in rel}
 
     # 1. Action / Auth check (path and text tokens)
-    if any(token in ACTION_AUTH_PATH_TOKENS for token in segments) or any(
-        token in text for token in ACTION_AUTH_TEXT_TOKENS
-    ):
+    if any(token in ACTION_AUTH_PATH_TOKENS for token in segments) or _is_action_label(text):
         return "action_auth", None
 
     # 2. Calendar / Archive check (date pattern under archive context)
@@ -218,7 +248,7 @@ def _classify_navigation(
 
     # Namespaced/high-cardinality selectors outrank pagination so a facet
     # page cannot evade the query-variant budget by appending a page key.
-    if any(is_strong_filter_key(k) for k in query_dict):
+    if any(is_strong_filter_key(k) or is_trap_query_key(k) for k, _ in query_pairs):
         return "search_filter", None
 
     # 3. Pagination check
@@ -297,6 +327,8 @@ def classify_link(
     group = recognizable_asset(normalized)
     if resource_kind_hint == "file" or group is not None:
         return ClassifiedLink(normalized, "asset", None, None, rel_next=False)
+    if normalized == normalize_url(source_url, source_url):
+        text = ""  # a self link's label describes the current page, not the link target
     kind, ordinal = _classify_navigation(normalized, text.casefold(), rel)
     return ClassifiedLink(
         normalized,

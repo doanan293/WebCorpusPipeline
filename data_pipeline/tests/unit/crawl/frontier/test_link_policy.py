@@ -65,9 +65,9 @@ def test_link_kinds(url: str, text: str, kind: str) -> None:
         ),
         (
             "https://a.test/items?spc.page=7",
-            "pagination",
-            7,
-            "a.test/items?spc.page={page}",
+            "search_filter",
+            None,
+            "a.test/items",
         ),
         (
             "https://a.test/items?f.topic=ai&spc.page=7",
@@ -126,24 +126,13 @@ def test_route_family_preserves_content_ids() -> None:
     )
 
 
-def test_wordpress_shortlink_post_id_is_content() -> None:
+@pytest.mark.parametrize(("text", "rel"), [("", ("shortlink",)), ("FSS tuyển thực tập sinh", ())])
+def test_wordpress_shortlink_post_id_is_search_filter(text: str, rel: tuple[str, ...]) -> None:
     link = classify_link(
-        "https://a.test/?p=33214",
-        source_url="https://a.test/news/an-article/",
-        rel=("shortlink",),
+        "https://a.test/?p=33214", source_url="https://a.test/news/", text=text, rel=rel
     )
 
-    assert (link.kind, link.ordinal, link.family_key) == ("content", None, None)
-
-
-def test_wordpress_post_id_anchor_is_content() -> None:
-    link = classify_link(
-        "https://a.test/?p=33214",
-        source_url="https://a.test/news/",
-        text="FSS tuyển thực tập sinh",
-    )
-
-    assert (link.kind, link.ordinal, link.family_key) == ("content", None, None)
+    assert link.kind == "search_filter"
 
 
 def test_embedded_resource_hint_overrides_extensionless_page_shape() -> None:
@@ -185,7 +174,65 @@ def test_shortlink_relation_overrides_other_pagination_signals() -> None:
         rel=("next", "shortlink"),
     )
 
-    assert (link.kind, link.ordinal, link.family_key) == ("content", None, None)
+    assert link.kind == "search_filter"
+
+
+@pytest.mark.parametrize(
+    ("text", "kind"),
+    [
+        ("Hướng dẫn đăng ký thi VSTEP online", "content"),
+        ("Đăng nhập", "action_auth"),
+        ("Level Design Intern", "content"),
+    ],
+)
+def test_action_text_matches_whole_words_in_short_labels(text: str, kind: str) -> None:
+    link = classify_link("https://a.test/news/item-1", source_url="https://a.test/", text=text)
+
+    assert link.kind == kind
+
+
+def test_self_link_is_not_classified_as_action() -> None:
+    link = classify_link(
+        "https://a.test/news/item-1#top",
+        source_url="https://a.test/news/item-1",
+        text="Đăng nhập",
+    )
+
+    assert link.kind == "content"
+
+
+@pytest.mark.parametrize("query", ["f.author=x&spc.page=1", "spc.sf=dc.title"])
+def test_dspace_facets_are_search_filters(query: str) -> None:
+    link = classify_link(f"https://a.test/browse-items?{query}", source_url="https://a.test/")
+
+    assert link.kind == "search_filter"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "p_p_id=82&p_p_lifecycle=1&_82_struts_action=x",
+        "redirect=/x",
+        "inheritRedirect=true",
+        "_101_INSTANCE_abc_page=2",
+    ],
+)
+def test_liferay_portlet_actions_are_search_filters(query: str) -> None:
+    link = classify_link(f"https://a.test/web/guest/news?{query}", source_url="https://a.test/")
+
+    assert link.kind == "search_filter"
+
+
+@pytest.mark.parametrize(
+    ("url", "kind"),
+    [
+        ("https://clc.test/?p=836", "search_filter"),
+        ("https://clc.test/?p=abc", "content"),
+        ("https://clc.test/page/?p=2&cat=1", "content"),
+    ],
+)
+def test_wordpress_numeric_shortlink_is_search_filter(url: str, kind: str) -> None:
+    assert classify_link(url, source_url="https://clc.test/").kind == kind
 
 
 def test_selects_only_one_semantic_next() -> None:

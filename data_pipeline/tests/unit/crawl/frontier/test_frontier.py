@@ -71,21 +71,10 @@ def test_semantic_pagination_is_not_limited_to_twenty_query_variants() -> None:
     assert all(decision.action == "schedule" for decision in decisions)
 
 
-def test_wordpress_shortlinks_are_not_limited_as_navigation_queries() -> None:
-    frontier = FrontierPolicy(SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions())
-
-    decisions = [
-        frontier.consider(candidate(f"https://a.test/?p={post_id}", link_kind="content"))
-        for post_id in range(1, 22)
-    ]
-
-    assert all(decision.action == "schedule" for decision in decisions)
-
-
 def test_semantic_content_receives_content_priority() -> None:
     frontier = FrontierPolicy(SeedSet(frozenset({"a.test"}), (), ()), CrawlOptions())
 
-    decision = frontier.consider(candidate("https://a.test/?p=33214", link_kind="content"))
+    decision = frontier.consider(candidate("https://a.test/?id=33214", link_kind="content"))
 
     assert decision.priority == 500
 

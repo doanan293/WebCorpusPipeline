@@ -327,7 +327,7 @@ def test_exact_seed_schedules_document_attachment_but_not_html() -> None:
     assert writer.articles[0]["url"] == "https://a.test/one"
 
 
-def test_wordpress_shortlink_counts_as_new_pagination_content() -> None:
+def test_wordpress_shortlink_is_not_fetched() -> None:
     spider, _ = make_spider(recursive_hostnames=frozenset({"a.test"}))
     request = page_request("https://a.test/news?page=1", discovery_source="html_link")
     request.meta.update(
@@ -347,7 +347,7 @@ def test_wordpress_shortlink_counts_as_new_pagination_content() -> None:
         )
     )
 
-    assert "https://a.test/?p=33214" in {child.url for child in children}
+    assert "https://a.test/?p=33214" not in {child.url for child in children}
 
 
 def test_html_schedules_all_assets_in_all_mode() -> None:
