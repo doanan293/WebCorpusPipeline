@@ -67,11 +67,8 @@ def test_refresh_fetches_hubs_and_new_pages_only(tmp_path: Path) -> None:
         f"{URL}/bai/n3",
         f"{URL}/tin-tuc?page=3",
     }
-    assert {u for u, c in changes.items() if c == "modified"} == {
-        f"{URL}/bai/a5",
-        f"{URL}/tin-tuc",
-        f"{URL}/tin-tuc?page=2",
-    }
+    # Hubs are refetched and stored but never reported as modified.
+    assert {u for u, c in changes.items() if c == "modified"} == {f"{URL}/bai/a5"}
     assert {str(a["url"]) for a in read_jsonl(run_dir / "articles.jsonl")} == set(changes)
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["outcomes"]["not_modified"] == 1

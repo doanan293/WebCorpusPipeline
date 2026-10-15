@@ -162,3 +162,18 @@ def test_final_export_inlines_owner_text_for_stub(tmp_path: Path) -> None:
     assert "duplicate_of" not in article
     assert {key: article[key] for key in full} == full
     writer.close()
+
+
+def test_changes_export_inlines_owner_text(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    writer = CrawlWriter(tmp_path / "output", state, CrawlOptions())
+    full = {"title": "T", "text": "Same text", "content_html": "<p>Same text</p>"}
+    writer.write_article({"url": "https://a.test/owner", **full})
+    writer.write_article({"url": "https://a.test/stub", **full})
+
+    articles = dict(iter_final_articles(state, ["https://a.test/stub"]))
+
+    article = json.loads(articles["https://a.test/stub"])
+    assert "duplicate_of" not in article
+    assert (article["text"], article["content_html"]) == ("Same text", "<p>Same text</p>")
+    writer.close()

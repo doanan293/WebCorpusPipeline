@@ -19,7 +19,7 @@ LinkKind = Literal[
 ]
 
 PAGINATION_QUERY_KEYS: Final[frozenset[str]] = frozenset(
-    {"page", "p", "paged", "pg", "offset", "start", "skip"}
+    {"page", "p", "paged", "pg", "offset", "start", "skip", "pagenumber"}
 )
 PRESENTATION_QUERY_KEYS: Final[frozenset[str]] = frozenset(
     {
@@ -125,7 +125,9 @@ _TRAP_QUERY_KEYS: Final[frozenset[str]] = frozenset(
 _LIFERAY_NAMESPACED_KEY_RE: Final[re.Pattern[str]] = re.compile(r"^_\d+_")
 _MAX_ACTION_LABEL_WORDS: Final = 4
 
-_PATH_PAGINATION_RE: Final[re.Pattern[str]] = re.compile(r"/(?:page|p)/(\d+)(?:/)?$", re.IGNORECASE)
+_PATH_PAGINATION_RE: Final[re.Pattern[str]] = re.compile(
+    r"/(?:(?:page|p)/|page-)(\d+)(?:/)?$", re.IGNORECASE
+)
 _CALENDAR_DATE_RE: Final[re.Pattern[str]] = re.compile(
     r"/(\d{4})/(\d{1,2})(?:/(\d{1,2}))?(?:/)?$", re.IGNORECASE
 )

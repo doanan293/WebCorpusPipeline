@@ -389,7 +389,7 @@ def test_release_content_owner_promotes_first_duplicate(tmp_path: Path) -> None:
     assert articles["https://a.test/b"]["text"] == "Shared text"
     assert "duplicate_of" not in articles["https://a.test/b"]
     assert articles["https://a.test/c"]["duplicate_of"] == "https://a.test/b"
-    assert (state.url_record("https://a.test/b") or {})["duplicate_of"] is None
+    assert "duplicate_of" not in (state.url_record("https://a.test/b") or {})
     assert (state.url_record("https://a.test/c") or {})["duplicate_of"] == "https://a.test/b"
     assert state.claim_content(old_id, "https://a.test/z") == "https://a.test/b"
     state.close()

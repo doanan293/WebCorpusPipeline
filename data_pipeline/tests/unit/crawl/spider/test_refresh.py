@@ -17,6 +17,7 @@ from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.output.writer import CrawlWriter
 from data_pipeline.crawl.spider.refresh import RefreshSession, RefreshSettings
 from data_pipeline.crawl.spider.unified import UnifiedSpider
+from data_pipeline.crawl.state.export import iter_final_articles
 from data_pipeline.crawl.state.refresh_store import RefreshStore
 from data_pipeline.crawl.state.store import CrawlState
 
@@ -187,7 +188,7 @@ def test_unchanged_page_records_no_change_and_fetches_nothing(tmp_path: Path) ->
     writer.close()
 
 
-def test_changed_hub_is_modified_and_only_new_link_is_fetched(tmp_path: Path) -> None:
+def test_changed_hub_is_stored_and_only_new_link_is_fetched(tmp_path: Path) -> None:
     writer = open_writer(tmp_path)
     known_page(writer, "https://a.test/tin-tuc", LIST_V1)
     known_page(writer, "https://a.test/bai/1", ARTICLE_1)
@@ -200,7 +201,7 @@ def test_changed_hub_is_modified_and_only_new_link_is_fetched(tmp_path: Path) ->
     assert (writer.state.url_record("https://a.test/bai/2") or {})["first_seen_run"] == RUN_ID
     assert "cập nhật bài hai" in article_text(writer, "https://a.test/tin-tuc")
     list(spider.parse_response(page(follow_ups[0], ARTICLE_2)))
-    assert changes(store) == {"https://a.test/bai/2": "new", "https://a.test/tin-tuc": "modified"}
+    assert changes(store) == {"https://a.test/bai/2": "new"}
     writer.close()
 
 
@@ -336,4 +337,74 @@ def test_sitemap_refetch_schedules_only_new_pages(tmp_path: Path) -> None:
 
     assert [r.url for r in follow_ups] == ["https://a.test/bai/2"]
     assert outcome(store, "https://a.test/sitemap.xml") == "fetched"
+    writer.close()
+
+
+COUNTED_V1 = (
+    "<main><h1>Thông báo</h1><p>Hạn nộp hồ sơ học bổng là ngày 16 Tháng Năm, 2024.</p>"
+    "<p>Lượt xem: 5944</p></main>"
+)
+
+
+def refetch(
+    tmp_path: Path, url: str, old: str, new: str, reason: str = "recent", status: int = 200
+) -> tuple[CrawlWriter, RefreshStore]:
+    writer = open_writer(tmp_path)
+    known_page(writer, url, old)
+    spider, store = refresh_spider(writer, [(url, reason)])
+    [request] = list(spider.start_requests())
+    list(spider.parse_response(page(request, new, status=status)))
+    return writer, store
+
+
+def test_navigation_refetch_is_fetched_not_modified(tmp_path: Path) -> None:
+    writer, store = refetch(tmp_path, "https://a.test/tin-tuc", LIST_V1, LIST_V2, "navigation")
+
+    assert outcome(store, "https://a.test/tin-tuc") == "fetched"
+    assert changes(store) == {}
+    assert "cập nhật bài hai" in article_text(writer, "https://a.test/tin-tuc")
+    writer.close()
+
+
+def test_counter_change_is_not_modified(tmp_path: Path) -> None:
+    url = "https://a.test/thong-bao"
+    new = COUNTED_V1.replace("5944", "5996").replace("16 Tháng Năm", "16 May")
+    writer, store = refetch(tmp_path, url, COUNTED_V1, new)
+
+    assert outcome(store, url) == "unchanged"
+    assert changes(store) == {}
+    writer.close()
+
+
+def test_real_edit_is_modified(tmp_path: Path) -> None:
+    url = "https://a.test/thong-bao"
+    writer, store = refetch(tmp_path, url, COUNTED_V1, COUNTED_V1.replace("học bổng", "nhập học"))
+
+    assert outcome(store, url) == "modified"
+    assert changes(store) == {url: "modified"}
+    writer.close()
+
+
+def test_duplicate_refetch_is_not_classified(tmp_path: Path) -> None:
+    writer = open_writer(tmp_path)
+    known_page(writer, "https://a.test/bai/1", ARTICLE_1)
+    known_page(writer, "https://a.test/bai/1-copy", ARTICLE_1)
+    spider, store = refresh_spider(writer, [("https://a.test/bai/1-copy", "recent")])
+    [request] = list(spider.start_requests())
+
+    list(spider.parse_response(page(request, ARTICLE_2)))
+
+    assert outcome(store, "https://a.test/bai/1-copy") == "fetched"
+    assert changes(store) == {}
+    writer.close()
+
+
+def test_404_on_refetch_is_removed_and_dropped_from_final(tmp_path: Path) -> None:
+    url = "https://a.test/thong-bao"
+    writer, store = refetch(tmp_path, url, COUNTED_V1, "<h1>Not Found</h1>", status=404)
+
+    assert outcome(store, url) == "removed"
+    assert changes(store) == {url: "removed"}
+    assert (writer.state.url_record(url) or {})["status"] == "absent"
+    assert [u for u, _ in iter_final_articles(writer.state)] == []
     writer.close()

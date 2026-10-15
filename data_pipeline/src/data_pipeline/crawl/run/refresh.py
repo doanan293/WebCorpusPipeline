@@ -277,6 +277,7 @@ def complete_refresh_run(
         **store.target_summary(session.run_id),
         "new": sum(1 for change in changes if change["change"] == "new"),
         "modified": sum(1 for change in changes if change["change"] == "modified"),
+        "removed": sum(1 for change in changes if change["change"] == "removed"),
     }
     store.finish_run(session.run_id, status, summary)
     if status not in {"interrupted", "failed"}:

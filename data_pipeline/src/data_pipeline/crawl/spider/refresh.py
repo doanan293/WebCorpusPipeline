@@ -14,6 +14,7 @@ from data_pipeline.core.policies.access import classify_page_gate
 from data_pipeline.core.policies.url import canonicalize_url
 from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.extract.article import analyze_article
+from data_pipeline.crawl.extract.fingerprint import change_fingerprint
 from data_pipeline.crawl.frontier.seeds import SeedMode
 from data_pipeline.crawl.frontier.sitemaps import SitemapParseError, parse_sitemap
 from data_pipeline.crawl.options import CrawlOptions
@@ -59,14 +60,20 @@ def response_validators(headers: Any) -> dict[str, str]:
     return values
 
 
-def classify_refetch(
-    previous_content_id: str | None, content_id: str, gate_reason: str | None
-) -> str:
+# Targets refetched as hubs: their own text changes with every new post and is not news.
+_HUB_REASONS = frozenset({"homepage", "navigation", "pagination_head", "pagination_next"})
+_GONE_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.GONE})
+
+
+def classify_refetch(previous_text: str | None, text: str, gate_reason: str | None) -> str:
+    """Classify a content page refetch by comparing change fingerprints of its two texts."""
     if gate_reason is not None:
         return f"gate_{gate_reason}"
-    if previous_content_id is None:
+    if previous_text is None:
         return "new"
-    return "unchanged" if previous_content_id == content_id else "modified"
+    if change_fingerprint(previous_text) == change_fingerprint(text):
+        return "unchanged"
+    return "modified"
 
 
 class RefreshSession:
@@ -178,6 +185,9 @@ class RefreshHandler:
         if response.status == HTTPStatus.NOT_MODIFIED:
             self.session.finish_target(url, "not_modified")
             return
+        if response.status in _GONE_STATUSES and response.meta.get("previous_content_id"):
+            self._removed(url, str(response.meta["previous_content_id"]))
+            return
         if response.status >= HTTPStatus.MULTIPLE_CHOICES:
             self.session.finish_target(url, f"http_{response.status}")
             return
@@ -211,33 +221,10 @@ class RefreshHandler:
         gate = classify_page_gate(
             status=response.status, url=response.url, html=response.text, text=text
         )
-        previous = response.meta.get("previous_content_id")
-        outcome = classify_refetch(
-            previous, content_id_for(text), None if gate.expandable else gate.reason
-        )
-        if outcome.startswith("gate_"):
-            self.session.finish_target(url, outcome)
+        if not gate.expandable:
+            self.session.finish_target(url, f"gate_{gate.reason}")
             return
-        state = self.writer.state
-        if outcome == "unchanged":
-            stored_article: dict[str, Any] = {
-                "url": url,
-                "text": text,
-                "content_id": previous,
-                "duplicate_of": response.meta.get("previous_duplicate_of"),
-            }
-        else:
-            if outcome == "modified":
-                state.release_content_owner(url, str(previous))
-            article_data = self.html.article_record(response, analysis, url, content_type)
-            stored_article = self.writer.write_article(article_data)
-            self.session.record_change(
-                url,
-                outcome,
-                page_role=str(article_data["page_role"]),
-                content_id=str(stored_article["content_id"]),
-                previous_content_id=previous,
-            )
+        stored_article, outcome = self._store_refetch(response, analysis, url, content_type, text)
         self.html.store_validators(url, response, last_checked_run=self.session.run_id)
         self.session.finish_target(url, outcome)
         yield from self.html.expand(
@@ -247,3 +234,55 @@ class RefreshHandler:
             url,
             cast(SeedMode, response.meta.get("seed_mode", "recursive")),
         )
+
+    def _store_refetch(
+        self, response: Response, analysis: Any, url: str, content_type: str, text: str
+    ) -> tuple[dict[str, Any], str]:
+        """Store a refetched page and return it with its outcome; record real changes only."""
+        state = self.writer.state
+        previous = response.meta.get("previous_content_id")
+        if previous is not None and previous == content_id_for(text):
+            unchanged: dict[str, Any] = {
+                "url": url,
+                "text": text,
+                "content_id": previous,
+                "duplicate_of": response.meta.get("previous_duplicate_of"),
+            }
+            return unchanged, "unchanged"
+        previous_article = state.article(url) if previous is not None else None
+        if previous is not None:
+            state.release_content_owner(url, str(previous))
+        article_data = self.html.article_record(response, analysis, url, content_type)
+        stored = self.writer.write_article(article_data)
+        is_hub = (
+            response.meta.get("refresh_reason") in _HUB_REASONS
+            or article_data["page_role"] == "navigation"
+        )
+        was_duplicate = bool(response.meta.get("previous_duplicate_of"))
+        if is_hub or was_duplicate or stored.get("duplicate_of"):
+            return stored, "fetched"
+        previous_text = None if previous_article is None else str(previous_article.get("text"))
+        outcome = classify_refetch(previous_text, text, None)
+        if outcome != "unchanged":
+            self.session.record_change(
+                url,
+                outcome,
+                page_role=str(article_data["page_role"]),
+                content_id=str(stored["content_id"]),
+                previous_content_id=previous,
+            )
+        return stored, outcome
+
+    def _removed(self, url: str, previous_content_id: str) -> None:
+        """A once-extracted page answers 404/410: report it removed and drop it from final/."""
+        state = self.writer.state
+        previous = state.article(url) or {}
+        state.release_content_owner(url, previous_content_id)
+        state.mark_absent(url)
+        self.session.record_change(
+            url,
+            "removed",
+            page_role=str(previous.get("page_role") or "content"),
+            content_id=previous_content_id,
+        )
+        self.session.finish_target(url, "removed")

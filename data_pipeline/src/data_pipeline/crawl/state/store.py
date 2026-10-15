@@ -9,7 +9,12 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from data_pipeline.crawl.state.export import asset_metrics, export_final, skipped_reasons
+from data_pipeline.crawl.state.export import (
+    DUPLICATE_DROPPED_FIELDS,
+    asset_metrics,
+    export_final,
+    skipped_reasons,
+)
 from data_pipeline.crawl.state.resume import manifest_for_open
 
 if TYPE_CHECKING:
@@ -308,6 +313,24 @@ class CrawlState:
             (json.dumps(record, ensure_ascii=False), url),
         )
 
+    def article(self, url: str) -> dict[str, object] | None:
+        row = self.connection.execute(
+            "SELECT payload FROM articles WHERE url = ?;", (url,)
+        ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def mark_absent(self, url: str) -> None:
+        """Record that a page is gone; it no longer appears in final/."""
+        record = self.url_record(url)
+        if record is None:
+            return
+        record["status"] = "absent"
+        self.connection.execute(
+            "UPDATE url_records SET payload = ?, status = 'absent', completed = 1 WHERE url = ?;",
+            (json.dumps(record, ensure_ascii=False), url),
+        )
+        self.connection.commit()
+
     def release_content_owner(self, url: str, content_id: str) -> None:
         """Hand ownership of content_id from url to its first duplicate, if any."""
         owner = self.connection.execute(
@@ -318,7 +341,12 @@ class CrawlState:
         article_row = self.connection.execute(
             "SELECT payload FROM articles WHERE url = ?;", (url,)
         ).fetchone()
-        old_text = json.loads(article_row[0]).get("text") if article_row else None
+        old_article: dict[str, Any] = json.loads(article_row[0]) if article_row else {}
+        owner_content = {
+            field: old_article[field]
+            for field in ("text", *DUPLICATE_DROPPED_FIELDS)
+            if field in old_article
+        }
         dependents = [
             str(row[0])
             for row in self.connection.execute(
@@ -352,8 +380,8 @@ class CrawlState:
                     record = self.url_record(dependent) or {"url": dependent}
                     if dependent == new_owner:
                         article.pop("duplicate_of", None)
-                        article["text"] = old_text
-                        record["duplicate_of"] = None
+                        article.update(owner_content)
+                        record.pop("duplicate_of", None)
                     else:
                         article["duplicate_of"] = new_owner
                         record["duplicate_of"] = new_owner

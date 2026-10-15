@@ -119,15 +119,20 @@ và robots.txt của chúng) cùng các bài gần đây: đăng/sửa trong `re
 trả `304`.
 
 - Trước mỗi run, chỉ mục được sao sang `archive/pre-refresh-<run_id>/`.
-- Bài cũ không bao giờ bị xoá: hub/bài nay lỗi, chuyển hướng đi nơi khác hoặc giống soft 404 vẫn giữ nội dung cũ,
-  lỗi chỉ ghi cho run đó.
+- Hub/bài nay lỗi, chuyển hướng đi nơi khác hoặc giống soft 404 vẫn giữ nội dung cũ, lỗi chỉ ghi cho run đó. Riêng
+  trang đã trích xuất mà nay trả `404`/`410` được ghi change `removed`, chuyển sang `absent` và rời khỏi `final/`.
+- Chỉ bài nội dung mới có thể `modified`, và chỉ khi `change_fingerprint` đổi: văn bản sau khi thay chữ số bằng `0`,
+  gộp tên tháng tiếng Việt/Anh và bỏ dòng bắt đầu bằng `Lượt xem`, `Lượt tải`, `Viewed`, `Views`. Bài chỉ đổi số đếm
+  hay ngày là `unchanged`. Hub (trang chủ, navigation, trang phân trang) và bài trùng được lưu bản mới với kết quả
+  `fetched`, không ghi change. `content_id` vẫn là sha256 chính xác của văn bản, dùng để khử trùng.
 - `--refresh` không kết hợp được với `--resume`, `--reuse-content-from` hay `--retry-*`. Nếu bị ngắt, chạy lại
   cùng lệnh để tiếp tục đúng run đó.
 
-Mỗi run xong ghi `changes/<run_id>/`: `changes.jsonl` (mỗi URL một dòng: `change` là `new` hoặc `modified`,
-`page_role`, `content_id`, và `previous_content_id` với trang sửa), `articles.jsonl` (bản ghi đầy đủ, cùng schema
-với `final/articles.jsonl`), `summary.json` (số target theo lý do, kết quả `not_modified`/`unchanged`/`modified`/
-`http_500`…, số mới và sửa, `crawl_id`). `final/` được dựng lại như thường; `final/README.json` ghi `crawl_id` và
+Mỗi run xong ghi `changes/<run_id>/`: `changes.jsonl` (mỗi URL một dòng: `change` là `new`, `modified` hoặc
+`removed`, `page_role`, `content_id`, và `previous_content_id` với trang sửa), `articles.jsonl` (bản ghi đầy đủ của
+trang mới và sửa, cùng schema với `final/articles.jsonl`; bài trùng được chèn nội dung của bài gốc), `summary.json`
+(số target theo lý do, kết quả `not_modified`/`unchanged`/`fetched`/`modified`/`removed`/`http_500`…, số mới, sửa và
+bị gỡ, `crawl_id`). `final/` được dựng lại như thường; `final/README.json` ghi `crawl_id` và
 `last_refresh_run_id`. Bốn thiết lập `refresh_*` trong `config/crawler.yaml` là thiết lập runtime, không ảnh
 hưởng khả năng resume.
 

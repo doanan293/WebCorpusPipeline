@@ -305,13 +305,13 @@ refresh, SQLite được sao lưu vào `archive/pre-refresh-<run_id>/index.sqlit
 
 | File | Nội dung |
 |---|---|
-| `changes.jsonl` | `{run_id, url, change, page_role, content_id, previous_content_id}`; `change` là `new` (trang mới) hoặc `modified` (văn bản đổi, có `previous_content_id`). Trang không đổi không được ghi |
-| `articles.jsonl` | bài (dạng `final/`) của các URL thay đổi còn `extracted` |
-| `summary.json` | `run_id`, `crawl_id`, `status`, `started_at`, `finished_at`, `targets_by_reason`, `outcomes`, `new`, `modified` |
+| `changes.jsonl` | `{run_id, url, change, page_role, content_id, previous_content_id}`; `change` là `new` (trang mới), `modified` (bài nội dung có `change_fingerprint` đổi, có `previous_content_id`) hoặc `removed` (trang đã có nay trả 404/410; `content_id` là bản cũ). Trang không đổi, hub và bài trùng không được ghi |
+| `articles.jsonl` | bài (dạng `final/`) của các URL thay đổi còn `extracted`; bài trùng được chèn nội dung của bài gốc khi bài gốc không có trong file này |
+| `summary.json` | `run_id`, `crawl_id`, `status`, `started_at`, `finished_at`, `targets_by_reason`, `outcomes`, `new`, `modified`, `removed` |
 
 Lý do chọn mục tiêu (`targets_by_reason`): `homepage`, `sitemap`, `navigation`, `pagination_head`, `recent`,
-`pagination_next`. Kết quả (`outcomes`): `new`, `unchanged`, `modified`, `not_modified` (304), `fetched`
-(robots/sitemap), `http_<mã>`, `sitemap_parse_error`, `non_html`, `gate_soft_404`, `gate_login`, `gate_captcha`,
+`pagination_next`. Kết quả (`outcomes`): `new`, `unchanged`, `modified`, `removed` (404/410), `not_modified` (304),
+`fetched` (robots/sitemap, hub và bài trùng), `http_<mã>`, `sitemap_parse_error`, `non_html`, `gate_soft_404`, `gate_login`, `gate_captcha`,
 `gate_empty`, `access_gate`, `request_failed`, `pending`.
 
 ### `state/`

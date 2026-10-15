@@ -18,6 +18,7 @@ def article(slug: str, version: int, published: str, extra: str = "") -> str:
         f'<html><head><meta property="article:published_time" content="{published}"></head>'
         f"<body><main><h1>Bài {slug}</h1><p>Nội dung bài {slug} phiên bản {version}. "
         "Đây là đoạn văn bản đủ dài để trích xuất bài viết một cách ổn định.</p>"
+        f"{'<p>Bài đã được bổ sung lịch thi mới.</p>' if version > 1 else ''}"
         f"{extra}</main></body></html>"
     )
 

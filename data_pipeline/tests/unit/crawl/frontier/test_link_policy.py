@@ -250,3 +250,13 @@ def test_selects_only_one_semantic_next() -> None:
     selected = select_semantic_next(links, current_ordinal=2)
     assert selected is not None
     assert selected.url.endswith("page=3")
+
+
+@pytest.mark.parametrize(
+    ("url", "ordinal"),
+    [("https://a.test/tin-tuc/page-3", 3), ("https://a.test/news.aspx?PageNumber=4", 4)],
+)
+def test_page_n_path_and_pagenumber_are_pagination(url: str, ordinal: int) -> None:
+    link = classify_link(url, source_url="https://a.test/tin-tuc", text=str(ordinal))
+
+    assert (link.kind, link.ordinal) == ("pagination", ordinal)

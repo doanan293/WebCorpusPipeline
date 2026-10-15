@@ -73,19 +73,21 @@ DUPLICATE_DROPPED_FIELDS = ("content_html", "content_blocks", "headings", "obser
 def iter_final_articles(
     state: CrawlState, urls: Iterable[str] | None = None
 ) -> Iterator[tuple[str, str]]:
-    """Yield (url, payload) for extracted articles, inlining excluded owner text."""
+    """Yield (url, payload) for extracted articles, inlining the content of owners not yielded."""
     query = """
         SELECT a.url, a.payload
         FROM articles AS a
         JOIN url_records AS r ON r.url = a.url
         WHERE r.status = 'extracted'
     """
+    selection: frozenset[str] | None = None
     if urls is None:
         rows: Iterable[tuple[str, str]] = state.connection.execute(query + " ORDER BY a.url;")
     else:
+        selection = frozenset(urls)
 
         def selected() -> Iterator[tuple[str, str]]:
-            for url in sorted(set(urls)):
+            for url in sorted(selection):
                 row = state.connection.execute(query + " AND a.url = ?;", (url,)).fetchone()
                 if row is not None:
                     yield row
@@ -93,13 +95,16 @@ def iter_final_articles(
         rows = selected()
     owner_content: dict[str, dict[str, object]] = {}
     for url, payload in rows:
-        yield url, _inline_owner_text(state, payload, owner_content)
+        yield url, _inline_owner_text(state, payload, owner_content, selection)
 
 
 def _inline_owner_text(
-    state: CrawlState, payload: str, owner_content: dict[str, dict[str, object]]
+    state: CrawlState,
+    payload: str,
+    owner_content: dict[str, dict[str, object]],
+    selection: frozenset[str] | None,
 ) -> str:
-    """Fill a duplicate stub with its owner's content when the owner is excluded from export."""
+    """Fill a duplicate stub with its owner's content when the owner is not in the same export."""
     if '"duplicate_of"' not in payload:
         return payload
     article = json.loads(payload)
@@ -109,7 +114,8 @@ def _inline_owner_text(
     owner_status = state.connection.execute(
         "SELECT status FROM url_records WHERE url = ?", (owner_url,)
     ).fetchone()
-    if owner_status is not None and owner_status[0] == "extracted":
+    owner_exported = owner_status is not None and owner_status[0] == "extracted"
+    if owner_exported and (selection is None or owner_url in selection):
         return payload
     if owner_url not in owner_content:
         owner_row = state.connection.execute(

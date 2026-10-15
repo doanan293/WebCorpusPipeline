@@ -178,9 +178,11 @@ flowchart TD
         RRESP{"Kết quả fetch lại"}
         R304["304 không đổi<br/>không trích xuất, không xét link"]
         RFAIL["Lỗi, 5xx, soft 404, login<br/>GIỮ NGUYÊN bài cũ<br/>chỉ ghi lỗi vào target"]
-        RCMP{"So content_id<br/>mới với cũ"}
-        RSAME["unchanged<br/>chỉ ghi last_checked_run"]
-        RMOD["modified<br/>chuyển quyền chủ nội dung,<br/>ghi đè bài, ghi change"]
+        RGONE["removed<br/>404/410 trên trang đã có,<br/>status absent, bỏ khỏi final/,<br/>ghi change"]
+        RCMP{"content_id giống?<br/>nếu khác: hub, bài trùng<br/>hay change_fingerprint?"}
+        RSAME["unchanged<br/>chỉ đổi số đếm hoặc ngày;<br/>ghi last_checked_run"]
+        RHUB["fetched<br/>hub hoặc bài trùng:<br/>lưu bản mới, không ghi change"]
+        RMOD["modified<br/>fingerprint khác: chuyển quyền<br/>chủ nội dung, ghi đè bài, ghi change"]
         RNEW["new<br/>URL chưa từng thấy,<br/>đóng dấu first_seen_run, ghi change"]
         RPAGE["Phân trang trong refresh<br/>đi tiếp CHỈ KHI trang có link mới,<br/>dừng ở trang trống đầu tiên"]
 
@@ -191,14 +193,17 @@ flowchart TD
         TARGETS --> RREQ --> RRESP
         RRESP -- "304" --> R304
         RRESP -- "lỗi hoặc bị chặn" --> RFAIL
+        RRESP -- "404, 410" --> RGONE
         RRESP -- "200" --> RCMP
         RCMP -- "giống" --> RSAME
+        RCMP -- "hub, bài trùng" --> RHUB
         RCMP -- "khác" --> RMOD
     end
 
     EXPORT -. "crawl đã kết thúc" .-> PRE
     RSAME -- "vẫn xét link" --> EXPAND
     RMOD --> EXPAND
+    RHUB --> EXPAND
     EXPAND -- "link mới sinh ra URL mới" --> RNEW
     RNEW -. "crawl như URL mới ở trên" .-> FETCH
     RMOD --> STATE
@@ -208,6 +213,7 @@ flowchart TD
     %% ============ KẾT THÚC REFRESH ============
     RDONE{"Hết target và<br/>hết URL mới?"}
     RFAIL --> RDONE
+    RGONE --> RDONE
     R304 --> RDONE
     RNEW --> RDONE
     RDONE -- "xong" --> CHANGES["changes/run_id/<br/>changes.jsonl, articles.jsonl,<br/>summary.json"]
@@ -229,7 +235,7 @@ flowchart TD
     classDef bad fill:#fee2e2,stroke:#dc2626,color:#0f172a;
 
     class SEEDS,BOOT,EMPTY,EXIT,FINTR full;
-    class PRE,CONT,BACKUP,SELECT,TARGETS,RREQ,RRESP,R304,RCMP,RSAME,RMOD,RNEW,RPAGE,RDONE,INTR refresh;
+    class PRE,CONT,BACKUP,SELECT,TARGETS,RREQ,RRESP,R304,RCMP,RSAME,RHUB,RMOD,RGONE,RNEW,RPAGE,RDONE,INTR refresh;
     class FRONTIER,KNOWN,FETCH,KIND,ROBOTS,GATE,EXTRACT,DUP,EXPAND,PAGE,ASSET,ASSETREF,ASSETDL,STATE shared;
     class EXPORT,EXPORTED,CHANGES,FINAL,NEXT out;
     class REJECT,SKIPPED,RFAIL,PREFAIL bad;
@@ -241,7 +247,8 @@ flowchart TD
 |---|---|
 | Làm sao không fetch lại bài cũ? | `Frontier.consider` trả `record_only` cho URL chuẩn hoá đã có trong `url_records`. Chỉ tập hub và bài gần đây của refresh được fetch lại, bằng request riêng. |
 | Làm sao biết bài bị sửa? | So `content_id` (sha256 của văn bản trích xuất) trước và sau khi fetch lại. Header `ETag`/`Last-Modified` giúp hub không đổi nhận 304. |
-| Bài cũ có bị mất khi fetch lại lỗi? | Không. Lỗi, 5xx, soft 404, login chỉ ghi vào `refresh_targets`; bản cũ giữ nguyên. |
+| Bài cũ có bị mất khi fetch lại lỗi? | Không. Lỗi, 5xx, soft 404, login chỉ ghi vào `refresh_targets`; bản cũ giữ nguyên. Chỉ 404/410 trên trang đã trích xuất mới làm bài thành `absent` (change `removed`). |
+| Đổi số lượt xem có bị coi là sửa? | Không. Bài nội dung so `change_fingerprint` (bỏ chữ số, tên tháng, dòng `Lượt xem`/`Views`); hub và bài trùng không bao giờ là `modified`. |
 | Khi nào dừng? | Hàng đợi rỗng: hết target và không còn URL mới. Phân trang dừng ở trang đầu tiên không có link mới. Các giới hạn host/tổng vẫn là cầu chì. |
 | Đầu ra của refresh? | `changes/<run_id>/` (`changes.jsonl`, `articles.jsonl`, `summary.json`) và `final/` được tạo lại đầy đủ. |
 

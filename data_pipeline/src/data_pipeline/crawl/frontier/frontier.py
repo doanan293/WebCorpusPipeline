@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -152,7 +153,7 @@ class FrontierPolicy:
             len(segments) >= _MIN_PAGINATION_SEGMENTS
             and segments[-2] in {"page", "p", "pages"}
             and segments[-1].isdigit()
-        ):
+        ) or re.fullmatch(r"page-\d+", segments[-1]):
             return "navigation"
         return "content"
 
