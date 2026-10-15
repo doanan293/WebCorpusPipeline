@@ -8,10 +8,31 @@ from lxml import etree
 from data_pipeline.crawl.extract.links import normalized_text
 
 _HEADINGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
+_INLINE_TAGS = frozenset(
+    {"a", "b", "strong", "em", "i", "span", "u", "small", "sup", "sub", "mark", "code", "br"}
+)
 
 
 def _text(node: etree._Element) -> str:
     return normalized_text(list(node.itertext()))
+
+
+def _inline_source(node: etree._Element) -> str:
+    """Concatenate an element's text as it reads, with ``<br>`` as a line break."""
+    if node.tag.lower() == "br":
+        return "\n"
+    parts = [node.text or ""]
+    for child in node:
+        if isinstance(child.tag, str):
+            parts.append(_inline_source(child))
+        parts.append(child.tail or "")
+    return "".join(parts)
+
+
+def _lines(source: str) -> str:
+    """Collapse whitespace within each line and drop empty lines."""
+    lines = (" ".join(line.split()) for line in source.split("\n"))
+    return "\n".join(line for line in lines if line)
 
 
 def _row_cells(tr: etree._Element) -> list[str]:
@@ -36,7 +57,7 @@ class _BlockCollector:
         if tag in _HEADINGS:
             self._heading(node, int(tag[1]))
         elif tag == "p":
-            self._text_block("paragraph", node)
+            self._paragraph_from(_inline_source(node))
         elif tag in {"ul", "ol"}:
             self._list(node, ordered=tag == "ol")
         elif tag == "blockquote":
@@ -121,15 +142,20 @@ class _BlockCollector:
         )
 
     def _container(self, node: etree._Element) -> None:
-        if node.text and node.text.strip():
-            self._paragraph_from([node.text])
+        # Text, tails and inline children form one paragraph until a block child ends it.
+        run: list[str] = [node.text or ""]
         for child in node:
-            self.walk(child)
-            if child.tail and child.tail.strip():
-                self._paragraph_from([child.tail])
+            if isinstance(child.tag, str) and child.tag.lower() in _INLINE_TAGS:
+                run.append(_inline_source(child))
+            elif isinstance(child.tag, str):
+                self._paragraph_from("".join(run))
+                run = []
+                self.walk(child)
+            run.append(child.tail or "")
+        self._paragraph_from("".join(run))
 
-    def _paragraph_from(self, pieces: list[str]) -> None:
-        text = normalized_text(pieces)
+    def _paragraph_from(self, source: str) -> None:
+        text = _lines(source)
         if text:
             self._add(type="paragraph", text=text)
 
