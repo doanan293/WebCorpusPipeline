@@ -1,22 +1,21 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.runtime.profiles import resolve_runtime_tuning
 
 
-def config(**overrides: object) -> CrawlerConfig:
-    return CrawlerConfig(
-        hostnames=frozenset({"a.test"}),
-        contact="ops@example.org",
-        **overrides,  # pyrefly: ignore[bad-argument-type]
-    )
+def config() -> CrawlerConfig:
+    return CrawlerConfig(hostnames=frozenset({"a.test"}), contact="ops@example.org")
 
 
 def test_runtime_tuning_uses_config_values() -> None:
     tuning = resolve_runtime_tuning(
-        config=config(
+        config=replace(
+            config(),
             concurrent_requests=11,
             concurrent_per_host=3,
             resource_limit_percent=65,
