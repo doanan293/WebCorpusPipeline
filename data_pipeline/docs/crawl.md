@@ -92,7 +92,7 @@ trong tmux phải dừng và chạy lại để nhận mã hoặc YAML mới.
 | `errors.jsonl` | lỗi cuối cùng và lý do loại |
 | `manifest.json` | trạng thái, thời gian, số lượng, chỉ số tài nguyên, chẩn đoán route family, lý do bỏ qua |
 | `state/` | SQLite có thể resume (`index.sqlite3`), khoá và trạng thái job Scrapy |
-| `final/` | tạo lại khi crawl kết thúc: `articles.jsonl` (chỉ bài `extracted`, bài trùng được chèn sẵn văn bản của bản gốc), `urls.txt`, `README.json` (số bài, thời gian, `crawl_id`) |
+| `final/` | tạo lại khi crawl kết thúc: `articles.jsonl` (chỉ bài `extracted`; bài trùng giữ `duplicate_of` và không có `text`, trừ khi bản gốc không nằm trong file thì văn bản gốc được chèn vào), `urls.txt`, `README.json` (số bài, thời gian, `crawl_id`) |
 | `changes/<run_id>/` | đầu ra của mỗi lần refresh |
 | `logs/`, `archive/` | log của người vận hành và snapshot thủ công; `--resume` không dùng |
 
@@ -180,4 +180,4 @@ sitemap ứng viên, mở rộng sitemap index lồng nhau, không đuôi và `.
 không giới hạn số lượng. Host không có sitemap không được crawl link HTML. Chế độ khám phá của mỗi host nằm trong
 `manifest.json` (`discovery.hosts`): `sitemap`, `sitemap_partial`, `no_sitemap`, `exact`.
 
-Đầu ra (`data/discovery/`): `urls.txt`, `url_records.jsonl`, `manifest.json` (`"phase": "discover"`), `state/`.
+Đầu ra (`data/discovery/`): `urls.txt`, `errors.jsonl`, `manifest.json` (`"phase": "discover"`), `state/`.

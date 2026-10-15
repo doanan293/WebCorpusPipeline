@@ -43,12 +43,53 @@ Chi tiết từng package con:
 | `crawl/frontier` | frontier, chính sách link, sitemap, seed, chính sách tải asset |
 | `crawl/runtime` | cấu hình Scrapy, middleware, điều chỉnh đồng thời thích ứng, tiến độ |
 | `enrich` | `inventory` → `download` → `parsing` (cục bộ và LlamaParse) → `export`; `state` SQLite |
+| `corpus` | `package` (đóng gói, verify), `graph` (`links.jsonl`, `images.jsonl`), `mongo`, `kaggle` (publish, pull), `query` |
+| `domains` | `audit`, `probe`, `browser`: thăm dò host và viết lại danh sách host |
+| `core` | `paths`, `env`, `settings`, `hostnames`; `policies`: chuẩn hoá URL, chính sách truy cập và mạng |
+| `cli` | lệnh `data-pipeline` (Typer): `crawl`, `enrich`, `corpus`, `domains`, `eval` |
 
-Hai sơ đồ nối với nhau: sơ đồ 1 **sinh ra** `final/` (và `changes/<run_id>/` khi refresh),
-sơ đồ 2 **tiêu thụ** chúng để tạo corpus theo yêu cầu của thầy.
+Các sơ đồ:
 
-1. [Luồng crawl](#1-luồng-crawl-từ-đầu-và-crawl-tăng-dần): crawl từ đầu và phát hiện không crawl lại.
-2. [Luồng xử lý dữ liệu](#2-luồng-xử-lý-dữ-liệu-theo-yêu-cầu-của-thầy): từ `final/` đến corpus, MongoDB và Kaggle.
+- [Tổng quan](#tổng-quan-các-giai-đoạn): thứ tự các lệnh từ danh sách host đến corpus.
+- [Sơ đồ 1](#1-luồng-crawl-từ-đầu-và-crawl-tăng-dần): một lượt crawl, từ đầu và refresh.
+- [Sơ đồ 1b](#1b-các-chế-độ-chạy-crawl): chọn chế độ chạy: mới, resume, retry, refresh, reuse, discover.
+- [Sơ đồ 2](#2-luồng-xử-lý-dữ-liệu-theo-yêu-cầu-của-thầy): từ `final/` đến corpus, MongoDB và Kaggle.
+- [Sơ đồ 3](#3-kiểm-tra-host-domains-audit): kiểm tra host, chạy trước crawl.
+- [Sơ đồ 4](#4-chấm-điểm-trích-xuất-eval-extraction): chấm điểm thuật toán trích xuất.
+
+Sơ đồ 1 **sinh ra** `final/` (và `changes/<run_id>/` khi refresh), sơ đồ 2 **tiêu thụ** chúng để tạo corpus theo
+yêu cầu của thầy.
+
+## Tổng quan các giai đoạn
+
+Nét liền là luồng chính, nét đứt là bước tuỳ chọn hoặc lặp lại.
+
+```mermaid
+flowchart LR
+    ALL["config/domains/all.txt<br/>host ứng viên"]
+    AUDIT["domains audit<br/>(sơ đồ 3)"]
+    ACTIVE["config/domains/active.txt<br/>status.jsonl"]
+    DISC["crawl discover<br/>chỉ robots và sitemap"]
+    CRAWL["crawl run<br/>(sơ đồ 1, 1b)"]
+    FINAL["data/crawl/final/<br/>changes/run_id/"]
+    REFRESH["crawl run --refresh"]
+    ENRICH["enrich run<br/>inventory, download, extract"]
+    PACK["corpus package<br/>corpus verify"]
+    CORPUS["data/corpus/latest/"]
+    MONGO["corpus import-mongo<br/>corpus query"]
+    KAGGLE["corpus publish<br/>corpus pull"]
+    LUCENE["lucene/"]
+    EVAL["eval extraction<br/>(sơ đồ 4)"]
+
+    ALL --> AUDIT --> ACTIVE --> CRAWL --> FINAL --> ENRICH --> PACK --> CORPUS
+    ACTIVE -.-> DISC
+    FINAL -.-> REFRESH -.-> FINAL
+    CORPUS --> MONGO
+    CORPUS -.-> KAGGLE
+    KAGGLE -. "máy mới" .-> MONGO
+    CORPUS --> LUCENE
+    EVAL -. "đánh giá crawl/extract" .-> CRAWL
+```
 
 ---
 
@@ -87,7 +128,12 @@ flowchart TD
         DUP{"content_id đã có chủ?"}
         EXPAND["Phân loại link trong trang<br/>nội dung, phân trang, tài nguyên"]
         PAGE["Phân trang theo route family<br/>đi tiếp khi còn link mới"]
-        ASSET["Tài nguyên<br/>content-only: chỉ ghi tham chiếu"]
+        ASSET{"Tài nguyên<br/>chế độ --assets?"}
+        ASSETREF["content-only (mặc định)<br/>chỉ ghi tham chiếu:<br/>discovered_not_downloaded"]
+        ASSETDL["all<br/>kiểm tra DNS an toàn, kích thước,<br/>hạn mức dung lượng;<br/>lưu files/ theo sha256 nội dung,<br/>ghi files.jsonl, file_saved"]
+        ASSET -- "content-only" --> ASSETREF
+        ASSET -- "all" --> ASSETDL
+        ASSETDL --> STATE
         STATE[("SQLite state/index.sqlite3<br/>url_records, articles,<br/>content_owner")]
 
         FRONTIER -- "bị loại" --> REJECT
@@ -115,7 +161,10 @@ flowchart TD
     %% ============ KẾT THÚC CRAWL TỪ ĐẦU ============
     EMPTY{"Hàng đợi rỗng?"}
     FETCH -.-> EMPTY
-    EMPTY -- "xong" --> EXPORT["Xuất kết quả<br/>urls.txt, articles.jsonl,<br/>url_records.jsonl, manifest.json,<br/>final/"]
+    EMPTY -- "xong" --> EXPORT["Xuất kết quả<br/>urls.txt, articles.jsonl,<br/>url_records.jsonl, errors.jsonl,<br/>files.jsonl, manifest.json, final/"]
+    EXPORT --> EXIT{"Mã thoát"}
+    EXIT -- "0: sạch<br/>3: có URL lỗi<br/>4: chạm giới hạn" --> EXPORTED["Crawl kết thúc"]
+    EMPTY -- "Ctrl-C" --> FINTR["interrupted, exit 130<br/>chạy lại với --resume (sơ đồ 1b)"]
 
     %% ============ REFRESH ============
     subgraph REFRESH["Refresh (data-pipeline crawl run --refresh)"]
@@ -179,10 +228,10 @@ flowchart TD
     classDef out fill:#dcfce7,stroke:#16a34a,color:#0f172a;
     classDef bad fill:#fee2e2,stroke:#dc2626,color:#0f172a;
 
-    class SEEDS,BOOT,EMPTY full;
+    class SEEDS,BOOT,EMPTY,EXIT,FINTR full;
     class PRE,CONT,BACKUP,SELECT,TARGETS,RREQ,RRESP,R304,RCMP,RSAME,RMOD,RNEW,RPAGE,RDONE,INTR refresh;
-    class FRONTIER,KNOWN,FETCH,KIND,ROBOTS,GATE,EXTRACT,DUP,EXPAND,PAGE,ASSET,STATE shared;
-    class EXPORT,CHANGES,FINAL,NEXT out;
+    class FRONTIER,KNOWN,FETCH,KIND,ROBOTS,GATE,EXTRACT,DUP,EXPAND,PAGE,ASSET,ASSETREF,ASSETDL,STATE shared;
+    class EXPORT,EXPORTED,CHANGES,FINAL,NEXT out;
     class REJECT,SKIPPED,RFAIL,PREFAIL bad;
 ```
 
@@ -195,6 +244,86 @@ flowchart TD
 | Bài cũ có bị mất khi fetch lại lỗi? | Không. Lỗi, 5xx, soft 404, login chỉ ghi vào `refresh_targets`; bản cũ giữ nguyên. |
 | Khi nào dừng? | Hàng đợi rỗng: hết target và không còn URL mới. Phân trang dừng ở trang đầu tiên không có link mới. Các giới hạn host/tổng vẫn là cầu chì. |
 | Đầu ra của refresh? | `changes/<run_id>/` (`changes.jsonl`, `articles.jsonl`, `summary.json`) và `final/` được tạo lại đầy đủ. |
+
+## 1b. Các chế độ chạy crawl
+
+`crawl run` kiểm tra cờ và state đã lưu trước khi vào sơ đồ 1. Mọi lỗi kiểm tra đều thoát mã 2 và không sửa state.
+`crawl discover` là lệnh riêng, chỉ đọc robots và sitemap.
+
+```mermaid
+flowchart TD
+    START["data-pipeline crawl run<br/>-i active.txt -o output"]
+    CONTACT{"CRAWLER_CONTACT hợp lệ,<br/>config/crawler.yaml đủ schema?"}
+    FLAGS{"Cờ chế độ"}
+    BAD["Từ chối, exit 2<br/>không sửa state"]
+
+    START --> CONTACT
+    CONTACT -- "không" --> BAD
+    CONTACT -- "có" --> FLAGS
+    FLAGS -- "--refresh kèm --resume,<br/>--reuse-content-from hoặc --retry-*;<br/>--retry-* thiếu --resume" --> BAD
+
+    %% ===== MỚI =====
+    FLAGS -- "không có cờ" --> NEWCHK{"output/state<br/>đã tồn tại?"}
+    NEWCHK -- "có" --> BAD
+    NEWCHK -- "chưa" --> NEWRUN["Tạo state mới<br/>ghi input_sha256, semantic_config,<br/>Scrapy JOBDIR"]
+
+    %% ===== RESUME =====
+    FLAGS -- "--resume" --> RESCHK{"Cùng input_sha256, phase,<br/>state_version, semantic_config?<br/>run.lock không bị giữ?"}
+    RESCHK -- "không" --> BAD
+    RESCHK -- "có" --> RETRY{"Có cờ --retry-*?"}
+    RETRY -- "--retry-failed" --> RQ1["Xếp lại lỗi mạng/timeout cuối<br/>(giữ lỗi HTTP)"]
+    RETRY -- "--retry-truncated" --> RQ2["Xếp lại query_variant_limit<br/>nay là nội dung hoặc phân trang"]
+    RETRY -- "--retry-access-gates" --> RQ3["Xếp lại trang bị bỏ vì CAPTCHA"]
+    RETRY -- "--retry-policy-skips" --> RQ4["Chuyển chính sách truy cập mới,<br/>xếp lại mục bỏ qua do chính sách,<br/>host không có nội dung"]
+    RETRY -- "không" --> REBUILD
+    RQ1 --> REBUILD
+    RQ2 --> REBUILD
+    RQ3 --> REBUILD
+    RQ4 --> REBUILD
+    REBUILD["Bỏ JOBDIR cũ, dựng hàng đợi<br/>từ url_records còn scheduled;<br/>URL đã xong không tải lại"]
+
+    %% ===== REFRESH =====
+    FLAGS -- "--refresh" --> REFCHK{"Crawl gốc đã kết thúc,<br/>không bị khoá?"}
+    REFCHK -- "không" --> BAD
+    REFCHK -- "có" --> REFRUN["Phần Refresh của sơ đồ 1"]
+
+    %% ===== REUSE =====
+    FLAGS -- "--assets all<br/>--reuse-content-from nguồn" --> REUSECHK{"Nguồn content-only đã xong,<br/>cùng input, không đang chạy;<br/>output chưa tồn tại?"}
+    REUSECHK -- "không" --> BAD
+    REUSECHK -- "có" --> REUSE["Sao chép bài và chỉ mục từ nguồn (chỉ đọc),<br/>chỉ tải các tài nguyên đã ghi;<br/>không crawl lại HTML hay sitemap"]
+
+    LOOP["Vòng crawl của sơ đồ 1<br/>Frontier, Tải trang, Xử lý trang"]
+    NEWRUN --> LOOP
+    REBUILD --> LOOP
+    REUSE --> LOOP
+
+    %% ===== DISCOVER =====
+    DSTART["data-pipeline crawl discover<br/>-i active.txt -o data/discovery"]
+    DPROBE["Mỗi host: robots.txt và các sitemap ứng viên,<br/>mở rộng sitemap index, .xml.gz;<br/>không theo link HTML, không trích xuất"]
+    DMODE["discovery.hosts mode:<br/>sitemap, sitemap_partial, no_sitemap, exact"]
+    DOUT["urls.txt (bảng targets), errors.jsonl,<br/>manifest.json phase discover, state/"]
+    DSTART --> DPROBE --> DMODE --> DOUT
+
+    classDef run fill:#dbeafe,stroke:#2563eb,color:#0f172a;
+    classDef retry fill:#ffedd5,stroke:#ea580c,color:#0f172a;
+    classDef out fill:#dcfce7,stroke:#16a34a,color:#0f172a;
+    classDef bad fill:#fee2e2,stroke:#dc2626,color:#0f172a;
+    classDef disc fill:#ede9fe,stroke:#7c3aed,color:#0f172a;
+
+    class START,CONTACT,FLAGS,NEWCHK,NEWRUN,RESCHK,REBUILD,REFCHK,REFRUN,REUSECHK,REUSE,LOOP run;
+    class RETRY,RQ1,RQ2,RQ3,RQ4 retry;
+    class BAD bad;
+    class DSTART,DPROBE,DMODE disc;
+    class DOUT out;
+```
+
+| Chế độ | Khi nào dùng |
+|---|---|
+| không cờ | crawl lần đầu vào một output mới |
+| `--resume` | tiếp tục sau Ctrl-C (exit 130) hoặc sự cố; có thể thêm một hoặc nhiều `--retry-*` |
+| `--refresh` | cập nhật tăng dần sau khi crawl đã kết thúc |
+| `--assets all --reuse-content-from` | nâng một crawl `content-only` đã xong thành bản có tệp tài nguyên |
+| `crawl discover` | chẩn đoán sitemap: xem host nào có sitemap và sitemap liệt kê bao nhiêu URL |
 
 ---
 
@@ -237,28 +366,58 @@ flowchart TD
         direction TB
         INV["inventory<br/>đọc articles.jsonl theo luồng,<br/>lập danh sách tài liệu duy nhất theo URL<br/>và bảng refs: trang nguồn, anchor text"]
         WORK[("data/enrichment/state.sqlite3<br/>inventory, refs, parse_results,<br/>failures, cloud_jobs")]
-        DL["download<br/>64 luồng toàn cục, 2 mỗi host,<br/>retry, nối tiếp bằng Range khi ETag mạnh,<br/>kiểm MIME từ nội dung, lưu theo sha256"]
-        PARSE{"extract<br/>chọn parser theo định dạng"}
+        DL["download<br/>64 luồng toàn cục, 2 mỗi host,<br/>tải vào parts/sha256(url).part,<br/>nối tiếp bằng Range khi ETag mạnh"]
+        DLCHK{"Phản hồi hợp lệ?<br/>HTTP 2xx, MIME từ nội dung<br/>là tài liệu"}
+        DLOK["files/sha256(url).ext<br/>inventory: downloaded"]
+        DLFAIL["inventory: retry (có retry_at)<br/>hoặc failed; bảng failures<br/>stage download"]
+        PARSE{"extract<br/>chọn parser theo định dạng<br/>(8 luồng cục bộ)"}
         PDF["PDF<br/>PyMuPDF"]
-        WORD["DOCX: python-docx<br/>DOC: LibreOffice chuyển sang DOCX"]
-        SHEET["XLSX, XLS<br/>openpyxl, xlrd"]
-        SLIDE["PPTX: python-pptx<br/>PPT: LibreOffice chuyển sang PPTX"]
-        CLOUD["LlamaParse fast<br/>chỉ cho trang PDF trực quan không có chữ,<br/>xoay key khi hết quota,<br/>trang trắng không gọi API"]
+        WORD["DOCX: python-docx<br/>DOC, ODT: LibreOffice chuyển sang DOCX"]
+        SHEET["XLSX, ODS: openpyxl<br/>XLS: xlrd"]
+        SLIDE["PPTX: python-pptx<br/>PPT, ODP: LibreOffice chuyển sang PPTX"]
+        TEXT["TXT, CSV, RTF<br/>đọc thẳng"]
+        PFAIL["Parser lỗi<br/>parse_results: failed,<br/>failures stage parse"]
+        CACHE{"cache/ có kết quả<br/>cho đúng tệp và tập trang?"}
+        CLOUD["LlamaParse fast<br/>chỉ trang PDF trực quan không có chữ;<br/>tối đa cloud_workers job song song,<br/>xoay key khi hết quota"]
+        CLOUDRES{"Kết quả cloud"}
         RESULT["Kết quả mỗi URL<br/>text theo page, sheet, slide hoặc document,<br/>trạng thái, cảnh báo, phiên bản parser"]
         INV --> WORK
-        WORK --> DL --> PARSE
+        WORK --> DL --> DLCHK
+        DLCHK -- "có" --> DLOK --> PARSE
+        DLCHK -- "lỗi, 404, không phải tài liệu" --> DLFAIL
+        DLFAIL -. "chạy lại download" .-> DL
         PARSE --> PDF
         PARSE --> WORD
         PARSE --> SHEET
         PARSE --> SLIDE
-        PDF -- "không có chữ" --> CLOUD
+        PARSE --> TEXT
+        PARSE -- "ngoại lệ" --> PFAIL
+        PDF -- "trang có hình, không có chữ" --> CACHE
+        CACHE -- "có" --> RESULT
+        CACHE -- "chưa" --> CLOUD --> CLOUDRES
+        CLOUDRES -- "extracted: ghi cache,<br/>trang có chữ thay trang cục bộ" --> RESULT
+        CLOUDRES -- "cloud_failed: không cache,<br/>lần chạy sau thử lại" --> RESULT
+        CLOUDRES -- "quota_blocked: hết mọi key" --> RESULT
         PDF --> RESULT
         WORD --> RESULT
         SHEET --> RESULT
         SLIDE --> RESULT
-        CLOUD --> RESULT
+        TEXT --> RESULT
         RESULT --> WORK
+        REPARSE["extract --reparse-cloud<br/>xoá kết quả đã qua LlamaParse<br/>để parse lại"]
+        REPARSE -.-> WORK
     end
+
+    %% ============ LỆNH PHỤ CỦA ENRICH ============
+    subgraph ENRICHOPS["Lệnh phụ của enrich"]
+        direction TB
+        ESTATUS["enrich status<br/>đã tải, đã parse, lỗi, chờ, bị chặn quota;<br/>exit 4 khi còn việc"]
+        EEXPORT["enrich export --output dir<br/>documents.jsonl, extraction-report.json"]
+        ERECON["enrich reconcile-job<br/>đối chiếu một job LlamaParse đã ghi"]
+    end
+    WORK -.-> ESTATUS
+    WORK -.-> EEXPORT
+    WORK -.-> ERECON
     IN --> INV
 
     %% ============ Y4, Y5, Y6: ĐỒ THỊ ============
@@ -298,7 +457,7 @@ flowchart TD
         IMP["import-mongo<br/>verify trước khi nhập"]
         READY{"snapshot_id đã ready?"}
         STATUS["datasets: importing<br/>nhập theo lô, tối đa 100 bản ghi<br/>hoặc 4 MB mỗi lô"]
-        COLS[("Collection, mỗi bản ghi mang snapshot_id,<br/>_id xác định nên nhập lại không nhân đôi<br/>pages, documents, images, links<br/>index theo snapshot_id, source_url, target_url")]
+        COLS[("Collection, mỗi bản ghi mang snapshot_id,<br/>_id xác định nên nhập lại không nhân đôi<br/>pages: metadata và text, bỏ HTML và khối;<br/>documents, images, links: nguyên dòng<br/>index theo snapshot_id, source_url, target_url")]
         DONE["datasets: ready<br/>lỗi thì ghi failed kèm lý do"]
         IMP --> READY
         READY -- "rồi" --> SKIP["Bỏ qua, idempotent"]
@@ -321,7 +480,7 @@ flowchart TD
     %% ============ TIÊU THỤ ============
     subgraph USE["Tiêu thụ"]
         direction TB
-        QUERY["Truy vấn và demo<br/>cạnh đi vào một trang hoặc tài liệu,<br/>văn bản của tài liệu,<br/>ảnh nằm trên trang nào"]
+        QUERY["corpus query<br/>cạnh đi vào hoặc đi ra một URL,<br/>văn bản của tài liệu,<br/>ảnh nằm trên trang nào"]
         LUCENE["lucene/<br/>lập chỉ mục và tìm kiếm<br/>từ corpus"]
     end
     COLS --> QUERY
@@ -336,11 +495,11 @@ flowchart TD
     classDef bad fill:#fee2e2,stroke:#dc2626,color:#0f172a;
 
     class IN,ALGO,META,REC crawl;
-    class INV,WORK,DL,PARSE,PDF,WORD,SHEET,SLIDE,CLOUD,RESULT enrich;
+    class INV,WORK,DL,DLCHK,DLOK,PARSE,PDF,WORD,SHEET,SLIDE,TEXT,CACHE,CLOUD,CLOUDRES,RESULT,REPARSE,ESTATUS,EEXPORT,ERECON enrich;
     class EDGES,DEDUP,LINKS,IMAGES links;
     class GATE,DOCS,REPORT,MANIFEST,VERIFY pack;
     class CORPUS,COLS,DONE,PUB,LOCK,PULL,QUERY,LUCENE,IMP,READY,STATUS,SKIP out;
-    class STOP,BAD bad;
+    class STOP,BAD,DLFAIL,PFAIL bad;
 ```
 
 ### Điểm cần nhớ (xử lý dữ liệu)
@@ -354,3 +513,72 @@ flowchart TD
 | Sau một lần refresh thì làm gì? | Chạy `inventory --source changes/<run_id>` để chỉ nhận phần mới, rồi `download`, `extract`, `package --source final`. Tài liệu đã tải hoặc đã parse được bỏ qua nhờ checkpoint. |
 | Chạy lại có hỏng dữ liệu không? | Không. `_id` xác định theo nội dung bản ghi và `snapshot_id`; snapshot đã `ready` thì bị bỏ qua. |
 | Người mới clone làm gì? | `pull` theo `corpus.lock.json`, bật MongoDB, `import-mongo`, rồi truy vấn. Không phải crawl hay tải lại tài liệu. |
+
+---
+
+## 3. Kiểm tra host (`domains audit`)
+
+Chạy trước crawl để biết host nào còn trả nội dung công khai. Kết quả là `config/domains/active.txt`, đầu vào mặc
+định của `crawl run` và `crawl discover` (xem [domains.md](domains.md)).
+
+```mermaid
+flowchart TD
+    ALL["config/domains/all.txt<br/>mọi hostname ứng viên"]
+    PROBE["Thăm dò song song (--workers)<br/>DNS an toàn: chặn IP private, loopback;<br/>HTTPS rồi HTTP, có retry (--retries)"]
+    HTTP{"Mã HTTP"}
+    BADHTTP["Không hoạt động<br/>access_denied, login_only, rate_limited,<br/>not_found, gone, server_error,<br/>client_error, redirect_error"]
+    REDIR{"Chuyển hướng<br/>(HTTP, meta, JS)?"}
+    EXT["external_redirect<br/>ra ngoài hust.edu.vn"]
+    BODY{"Nội dung trang"}
+    REJ["Không hoạt động<br/>empty_response, trang mặc định,<br/>endpoint dịch vụ, non_production,<br/>trang đăng nhập"]
+    SHELL["javascript_shell<br/>trang chỉ là vỏ JS"]
+    BROWSER{"Playwright<br/>(bỏ bằng --no-browser)"}
+    PUBLIC["public_response<br/>host hoạt động"]
+    CANON["Gộp chuyển hướng<br/>host trỏ sang host khác: redirect_duplicate"]
+    DEDUP["Gộp trùng nội dung<br/>cùng hash trang: content_duplicate"]
+    OUT["Ghi lại all.txt, active.txt (host active),<br/>status.jsonl (active, reason, status,<br/>final_url, title cho mỗi host)"]
+    ERR["probe_error, network_error<br/>một host lỗi không dừng cả lượt"]
+
+    ALL --> PROBE
+    PROBE -- "ngoại lệ, mất mạng" --> ERR
+    PROBE --> HTTP
+    HTTP -- "401, 403, 429, 4xx, 5xx" --> BADHTTP
+    HTTP -- "2xx, 3xx" --> REDIR
+    REDIR -- "ra ngoài phạm vi" --> EXT
+    REDIR -- "trong phạm vi hoặc không" --> BODY
+    BODY -- "bị loại" --> REJ
+    BODY -- "vỏ JS" --> SHELL --> BROWSER
+    BROWSER -- "render ra nội dung" --> PUBLIC
+    BROWSER -- "vẫn rỗng hoặc bị chặn" --> REJ
+    BODY -- "có nội dung" --> PUBLIC
+    PUBLIC --> CANON --> DEDUP --> OUT
+    BADHTTP --> OUT
+    EXT --> OUT
+    REJ --> OUT
+    ERR --> OUT
+
+    classDef step fill:#dbeafe,stroke:#2563eb,color:#0f172a;
+    classDef out fill:#dcfce7,stroke:#16a34a,color:#0f172a;
+    classDef bad fill:#fee2e2,stroke:#dc2626,color:#0f172a;
+    class ALL,PROBE,HTTP,REDIR,BODY,SHELL,BROWSER,CANON,DEDUP step;
+    class PUBLIC,OUT out;
+    class BADHTTP,EXT,REJ,ERR bad;
+```
+
+## 4. Chấm điểm trích xuất (`eval extraction`)
+
+Đánh giá thuật toán tìm khối nội dung (Y1) trên các trang mẫu có đáp án, không cần mạng.
+
+```mermaid
+flowchart LR
+    FIX["--fixtures thư mục<br/>mỗi mẫu: tên.html và tên.json<br/>(url, title, text mong đợi)"]
+    RUN["analyze_article<br/>cùng mã trích xuất với crawl"]
+    SCORE["So token của text<br/>precision, recall, F1;<br/>title_ok: tiêu đề khớp đúng"]
+    OUT["--output báo cáo JSON<br/>fixtures, rows, mean_f1"]
+    FIX --> RUN --> SCORE --> OUT
+
+    classDef step fill:#dbeafe,stroke:#2563eb,color:#0f172a;
+    classDef out fill:#dcfce7,stroke:#16a34a,color:#0f172a;
+    class FIX,RUN,SCORE step;
+    class OUT out;
+```
