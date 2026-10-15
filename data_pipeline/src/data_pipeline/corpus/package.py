@@ -51,7 +51,7 @@ def _line_count(path: Path) -> int:
         return sum(1 for _ in stream)
 
 
-def _swap_into_place(staging: Path, output: Path) -> None:
+def swap_into_place(staging: Path, output: Path) -> None:
     """Replace ``output`` with ``staging``; the old output survives until the swap succeeds."""
     previous = output.with_name(f"{output.name}.old-{os.getpid()}")
     if output.exists():
@@ -95,7 +95,7 @@ def package_corpus(source: Path, state: WorkState, output: Path) -> Path:
         (staging / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
         )
-        _swap_into_place(staging, output)
+        swap_into_place(staging, output)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     return output
@@ -110,6 +110,10 @@ def verify_corpus(path: Path) -> dict[str, Any]:
         value = json.loads(manifest.read_text())
     except Exception as exc:  # noqa: BLE001 -- any unreadable manifest is reported as invalid, not raised
         return {"valid": False, "errors": [f"invalid manifest: {exc}"]}
+    listed = set(value.get("files", {})) | {"manifest.json"}
+    errors.extend(
+        f"unlisted file {item.name}" for item in sorted(path.iterdir()) if item.name not in listed
+    )
     for name, meta in value.get("files", {}).items():
         file = path / name
         if not file.exists():

@@ -3,24 +3,34 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
-from data_pipeline.corpus.package import verify_corpus
+from data_pipeline.corpus.package import swap_into_place, verify_corpus
+
+
+class KaggleError(RuntimeError):
+    """A kaggle CLI call failed; the message carries its stderr."""
 
 
 def _run(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603 -- fixed argv, no shell
-        args, cwd=cwd, check=True, capture_output=True, text=True, env=None
-    )
+    try:
+        return subprocess.run(  # noqa: S603 -- fixed argv, no shell
+            args, cwd=cwd, check=True, capture_output=True, text=True, env=None
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        msg = f"{' '.join(args[:3])} failed: {detail}"
+        raise KaggleError(msg) from exc
 
 
 def _metadata(config: dict[str, Any], folder: Path) -> Path:
     required = ("owner", "slug", "title", "subtitle", "description", "license_name")
-    missing = [key for key in required if not str(config.get(key, ".")).strip()]
+    missing = [key for key in required if not str(config.get(key, "")).strip()]
     if missing:
         raise ValueError("Kaggle metadata missing: " + ", ".join(missing))
     value = {
@@ -63,9 +73,10 @@ def publish_corpus(
     config = json.loads(config_path.read_text())
     with tempfile.TemporaryDirectory(prefix="ir-kaggle-") as temp:
         staging = Path(temp)
-        for item in corpus.iterdir():
-            if item.is_file():
-                shutil.copy2(item, staging / item.name)
+        # Only the files the manifest lists (verified above) are published, never strays.
+        manifest = json.loads((corpus / "manifest.json").read_text())
+        for name in [*manifest["files"], "manifest.json"]:
+            shutil.copy2(corpus / name, staging / name)
         _metadata(config, staging)
         if update:
             if not message:
@@ -98,19 +109,18 @@ def publish_corpus(
 
 def pull_corpus(lock_path: Path, destination: Path) -> Path:
     lock = json.loads(lock_path.read_text())
-    owner = lock.get("owner")
-    slug = lock.get("slug")
-    if not owner or not slug:
-        msg = "corpus lock needs owner and slug"
+    owner, slug, version = lock.get("owner"), lock.get("slug"), lock.get("version")
+    if not owner or not slug or not version:
+        msg = "corpus lock needs owner, slug and version"
         raise ValueError(msg)
     destination = destination.resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="ir-kaggle-pull-") as temp:
         staging = Path(temp)
-        dataset = f"{owner}/{slug}"
+        dataset = f"{owner}/{slug}/{version}"
         try:
             _run(["kaggle", "datasets", "download", dataset, "-p", str(staging), "--unzip"])
-        except subprocess.CalledProcessError:
+        except KaggleError:
             # Kaggle can expose individual files while its bulk archive endpoint
             # still returns 404 for large datasets. Download each file instead.
             for name in _dataset_files(dataset):
@@ -137,7 +147,12 @@ def pull_corpus(lock_path: Path, destination: Path) -> Path:
         if not report["valid"] or report["snapshot_id"] != lock.get("snapshot_id"):
             msg = "downloaded corpus does not match pinned lock"
             raise ValueError(msg)
-        if destination.exists():
-            shutil.rmtree(destination)
-        shutil.copytree(corpus, destination)
+        staged = destination.with_name(f"{destination.name}.tmp-{os.getpid()}")
+        shutil.rmtree(staged, ignore_errors=True)
+        try:
+            shutil.copytree(corpus, staged)
+            staged.chmod(0o755)
+            swap_into_place(staged, destination)
+        finally:
+            shutil.rmtree(staged, ignore_errors=True)
     return destination

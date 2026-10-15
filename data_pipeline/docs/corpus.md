@@ -36,6 +36,10 @@ Metadata dataset ở `config/kaggle-dataset.json`; `KAGGLE_API_TOKEN` đọc t�
 uv run data-pipeline corpus publish --corpus data/corpus/latest [--update] [--message "ghi chú"]
 ```
 
+`publish` kiểm tra corpus trước (`verify` từ chối mọi file không có trong manifest, như `.env` lỡ để trong thư mục)
+và chỉ upload các file manifest liệt kê cùng `manifest.json`. Thiếu key trong `config/kaggle-dataset.json` thì báo
+rõ key nào; lỗi của `kaggle` CLI được báo kèm stderr của nó.
+
 `config/corpus.lock.json` ghim owner, slug, version và snapshot ID đã công bố; cập nhật mỗi khi có phiên bản mới.
 Máy mới kéo đúng bản đó và nhập mà không phải crawl lại:
 
@@ -45,5 +49,7 @@ docker compose up -d mongodb
 uv run data-pipeline corpus import-mongo --corpus data/corpus/pulled
 ```
 
-`pull` thử tải cả gói trước và tự chuyển sang tải từng file khi endpoint gói không dùng được cho dataset lớn.
+`pull` tải đúng phiên bản đã ghim (`owner/slug/<version>`), thử tải cả gói trước và tự chuyển sang tải từng file
+khi endpoint gói không dùng được cho dataset lớn. Bản tải về phải khớp `snapshot_id` của lock, và được thay vào thư
+mục đích một cách nguyên tử như `package`.
 `lucene/` dùng corpus này để lập chỉ mục và tìm kiếm.
