@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from data_pipeline.core.settings import Settings
@@ -33,7 +33,26 @@ def extract_documents(
         except Exception as exc:  # noqa: BLE001 -- a parser crash is recorded as that file's failure
             return file, None, exc
 
-    with ThreadPoolExecutor(max_workers=settings.local_workers) as workers:
+    def parse_cloud(file: DownloadedFile, local: LocalResult, missing: list[int]) -> ParseResult:
+        with tempfile.TemporaryDirectory(prefix="ir-parse-") as temp:
+            subset = Path(temp) / "subset.pdf"
+            mapping = build_pdf_subset(file.path, missing, subset)
+            return parse_cloud_subset(subset, local, mapping, state, settings, keys)
+
+    def finish_cloud(
+        file: DownloadedFile, local: LocalResult, key: str, remote: ParseResult
+    ) -> None:
+        if remote.status in {"extracted", "cloud_failed"}:
+            write_cached(cache_root, key, remote)
+        state.mark_parse(file.url, merge_parts(local, remote), cache_root / f"{key}.json")
+
+    # LlamaParse jobs mostly wait on the server, so up to cloud_workers of them run at once while
+    # local parsing continues; results are written back on this thread.
+    in_cloud: dict[Future[ParseResult], tuple[DownloadedFile, LocalResult, str]] = {}
+    with (
+        ThreadPoolExecutor(max_workers=settings.local_workers) as workers,
+        ThreadPoolExecutor(max_workers=settings.cloud_workers) as cloud,
+    ):
         for file, local, error in workers.map(parse_local_safe, pending):
             if local is None:
                 state.record_failure(file.url, "parse", str(error))
@@ -63,12 +82,9 @@ def extract_documents(
             key = cache_key(file.sha256, missing, local.parser_version, CLOUD_CACHE_REVISION)
             remote = read_cached(cache_root, key)
             if remote is None:
-                with tempfile.TemporaryDirectory(prefix="ir-parse-") as temp:
-                    subset = Path(temp) / "subset.pdf"
-                    mapping = build_pdf_subset(file.path, missing, subset)
-                    remote = parse_cloud_subset(subset, local, mapping, state, settings, keys)
-                if remote.status in {"extracted", "cloud_failed"}:
-                    write_cached(cache_root, key, remote)
-            merged = merge_parts(local, remote)
-            state.mark_parse(file.url, merged, cache_root / f"{key}.json")
+                in_cloud[cloud.submit(parse_cloud, file, local, missing)] = (file, local, key)
+            else:
+                finish_cloud(file, local, key, remote)
+        for future in as_completed(in_cloud):
+            finish_cloud(*in_cloud[future], future.result())
     return state.summary()

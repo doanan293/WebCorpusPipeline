@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import threading
 import time
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
@@ -55,6 +56,8 @@ class WorkState:
         self._lock_fd: int | None = lock_fd
         self._connection_open = True
         self.source_fingerprint = source_fingerprint
+        # LlamaParse workers record their jobs from other threads.
+        self._write_lock = threading.Lock()
 
     @classmethod
     @contextmanager
@@ -77,7 +80,7 @@ class WorkState:
             os.close(lock_fd)
             msg = f"work directory is already in use: {root}"
             raise RuntimeError(msg) from None
-        conn = sqlite3.connect(root / "state.sqlite3", timeout=30)
+        conn = sqlite3.connect(root / "state.sqlite3", timeout=30, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
@@ -442,25 +445,26 @@ class WorkState:
         status: str = "accepted",
         payload: str | None = None,
     ) -> None:
-        self.conn.execute(
-            "INSERT INTO "
-            "cloud_jobs(request_id,url,file_id,job_id,key_label,key_fingerprint,status,payload,"
-            "updated) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(request_id) DO UPDATE SET "
-            "file_id=excluded.file_id,job_id=excluded.job_id,status=excluded.status,"
-            "payload=excluded.payload,updated=excluded.updated",
-            (
-                request_id,
-                url,
-                file_id,
-                job_id,
-                key_label,
-                key_fingerprint,
-                status,
-                payload,
-                time.time(),
-            ),
-        )
-        self.conn.commit()
+        with self._write_lock:
+            self.conn.execute(
+                "INSERT INTO "
+                "cloud_jobs(request_id,url,file_id,job_id,key_label,key_fingerprint,status,payload,"
+                "updated) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(request_id) DO UPDATE SET "
+                "file_id=excluded.file_id,job_id=excluded.job_id,status=excluded.status,"
+                "payload=excluded.payload,updated=excluded.updated",
+                (
+                    request_id,
+                    url,
+                    file_id,
+                    job_id,
+                    key_label,
+                    key_fingerprint,
+                    status,
+                    payload,
+                    time.time(),
+                ),
+            )
+            self.conn.commit()
 
     def cloud_job(self, request_id: str):
         row = self.conn.execute(

@@ -11,7 +11,7 @@ download:
   checkpoint_bytes: 1048576
 parser:
   local_workers: 8
-  cloud_workers: 1
+  cloud_workers: 8
   cloud_poll_seconds: 5
   cloud_timeout_seconds: 1800
 database:
