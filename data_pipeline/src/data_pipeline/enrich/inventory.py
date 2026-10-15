@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-import mimetypes
 from pathlib import Path
+from typing import Any
 from urllib.parse import urldefrag, urlsplit
 
-from data_pipeline.enrich.models import Candidate, InventorySummary, SourceRef
+from data_pipeline.enrich.models import InventorySummary, SourceProgress, SourceRef
 from data_pipeline.enrich.state import WorkState
 
 DOC_EXT = {
@@ -22,18 +22,10 @@ DOC_EXT = {
     ".rtf",
     ".csv",
 }
-IMG_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp", ".tif", ".tiff", ".avif"}
 
 
 def _clean(value: str) -> str:
     return urldefrag(value.strip())[0]
-
-
-def _hint(url: str) -> str | None:
-    suffix = Path(urlsplit(url).path.lower()).suffix
-    return mimetypes.guess_type(url)[0] or (
-        "application/" + suffix[1:] if suffix in DOC_EXT else None
-    )
 
 
 def _is_doc(url: str) -> bool:
@@ -58,67 +50,77 @@ def _modified_pages(changes_path: Path) -> set[str]:
     return pages
 
 
-def index_inventory(source: Path, state: WorkState, batch_size: int = 500) -> InventorySummary:
-    articles = source / "articles.jsonl" if source.is_dir() else source
-    if not articles.exists():
-        raise FileNotFoundError(articles)
-    key = source_key(source)
-    offset = state.cursor(key)
-    if offset == 0 and not state.inventory_done(key):
-        modified = _modified_pages(articles.parent / "changes.jsonl")
-        if modified:
-            state.delete_refs_from(modified)
-    candidates: dict[str, Candidate] = {}
+def _summary(state: WorkState) -> InventorySummary:
+    return InventorySummary(
+        state.conn.execute("SELECT count(*) FROM inventory").fetchone()[0],
+        state.conn.execute("SELECT count(*) FROM refs").fetchone()[0],
+    )
+
+
+def _page_refs(row: dict[str, Any], page: str) -> list[SourceRef]:
+    """Return the links and assets of one page that point at a document candidate."""
     refs: list[SourceRef] = []
-    with articles.open("rb") as stream:
-        stream.seek(offset)
-        while True:
-            line = stream.readline()
-            if not line:
-                break
-            row = json.loads(line)
-            page = _clean(str(row.get("url") or row.get("final_url") or ""))
-            if not page:
-                continue
-            for link in row.get("links") or []:
-                if not isinstance(link, dict) or not link.get("url"):
-                    continue
-                target = _clean(str(link["url"]))
+    for link in row.get("links") or []:
+        if isinstance(link, dict) and link.get("url"):
+            target = _clean(str(link["url"]))
+            if _is_doc(target):
                 refs.append(SourceRef(page, target, "hyperlink", str(link.get("text") or "")))
-                if _is_doc(target):
-                    candidates.setdefault(target, Candidate(target, _hint(target)))
-            for asset in row.get("assets") or []:
-                if not isinstance(asset, dict) or not asset.get("url"):
-                    continue
-                target = _clean(str(asset["url"]))
-                ext = Path(urlsplit(target).path.lower()).suffix
-                relation = (
-                    "image" if ext in IMG_EXT or asset.get("role") == "inline_image" else "asset"
-                )
+    for asset in row.get("assets") or []:
+        if isinstance(asset, dict) and asset.get("url"):
+            target = _clean(str(asset["url"]))
+            if _is_doc(target):
                 refs.append(
                     SourceRef(
                         page,
                         target,
-                        relation,
+                        "asset",
                         "",
                         str(asset.get("alt") or ""),
                         str(asset.get("caption") or ""),
                     )
                 )
-                if _is_doc(target):
-                    candidates.setdefault(target, Candidate(target, _hint(target)))
+    return refs
+
+
+def index_inventory(source: Path, state: WorkState, batch_size: int = 500) -> InventorySummary:
+    articles = source / "articles.jsonl" if source.is_dir() else source
+    if not articles.exists():
+        raise FileNotFoundError(articles)
+    key = source_key(source)
+    stat = articles.stat()
+    stored = state.source_progress(key)
+    same_file = stored is not None and (stored.size, stored.mtime_ns) == (
+        stat.st_size,
+        stat.st_mtime_ns,
+    )
+    if same_file and stored is not None and stored.done:
+        return _summary(state)
+    # A rewritten file starts over: a stored byte offset would land mid-line.
+    offset = stored.cursor if same_file and stored is not None else 0
+    if offset == 0:
+        modified = _modified_pages(articles.parent / "changes.jsonl")
+        if modified:
+            state.delete_refs_from(modified)
+
+    def progress(cursor: int, *, done: bool = False) -> SourceProgress:
+        return SourceProgress(key, stat.st_size, stat.st_mtime_ns, cursor, done)
+
+    candidates: set[str] = set()
+    refs: list[SourceRef] = []
+    with articles.open("rb") as stream:
+        stream.seek(offset)
+        while line := stream.readline():
+            row = json.loads(line)
+            page = _clean(str(row.get("url") or row.get("final_url") or ""))
+            if not page:
+                continue
+            page_refs = _page_refs(row, page)
+            refs.extend(page_refs)
+            candidates.update(ref.target_url for ref in page_refs)
             if stream.tell() - offset >= batch_size * 1024:
-                state.add_inventory_batch(
-                    list(candidates.values()), refs, stream.tell(), source_key=key
-                )
+                state.add_inventory_batch(sorted(candidates), refs, progress(stream.tell()))
                 candidates.clear()
                 refs.clear()
                 offset = stream.tell()
-        state.add_inventory_batch(
-            list(candidates.values()), refs, stream.tell(), done=True, source_key=key
-        )
-    return InventorySummary(
-        state.conn.execute("SELECT count(*) FROM inventory").fetchone()[0],
-        state.conn.execute("SELECT count(*) FROM refs").fetchone()[0],
-        completed=True,
-    )
+        state.add_inventory_batch(sorted(candidates), refs, progress(stream.tell(), done=True))
+    return _summary(state)

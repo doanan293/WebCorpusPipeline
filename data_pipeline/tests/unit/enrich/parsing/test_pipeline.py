@@ -54,7 +54,7 @@ def test_cloud_parses_run_concurrently_up_to_cloud_workers(
     monkeypatch.setattr(pipeline, "build_pdf_subset", build_pdf_subset)
     monkeypatch.setattr(pipeline, "parse_cloud_subset", parse_cloud_subset)
 
-    with WorkState.open(tmp_path / "work", "fp") as state:
+    with WorkState.open(tmp_path / "work", "c1") as state:
         monkeypatch.setattr(state, "pending_parse", lambda: iter(files))
         pipeline.extract_documents(
             state, Settings(tmp_path, cloud_workers=workers), api_keys=[("K1", "s")]
@@ -95,7 +95,7 @@ def test_failed_cloud_parse_is_not_cached_so_the_next_run_retries(
     monkeypatch.setattr(pipeline, "build_pdf_subset", build_pdf_subset)
     monkeypatch.setattr(pipeline, "parse_cloud_subset", parse_cloud_subset)
 
-    with WorkState.open(tmp_path / "work", "fp") as state:
+    with WorkState.open(tmp_path / "work", "c1") as state:
         monkeypatch.setattr(state, "pending_parse", lambda: iter([file]))
         pipeline.extract_documents(state, Settings(tmp_path), api_keys=[("K1", "s")])
 

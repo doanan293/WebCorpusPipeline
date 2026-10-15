@@ -1,9 +1,26 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
+
+import typer
 
 from data_pipeline.core.paths import ProjectPaths, project_paths
 from data_pipeline.core.settings import Settings, load_settings
+
+SourceOption = Annotated[
+    Path | None, typer.Option(help="Crawl output to read (default: data/crawl/final).")
+]
+WorkDirOption = Annotated[
+    Path | None, typer.Option(help="Enrichment work directory (default: data/enrichment).")
+]
+JsonOption = Annotated[bool, typer.Option("--json", help="Print the summary as JSON.")]
+RebindOption = Annotated[
+    bool,
+    typer.Option(
+        "--rebind-source", help="move the work directory to the crawl the source belongs to"
+    ),
+]
 
 
 def current_paths() -> ProjectPaths:

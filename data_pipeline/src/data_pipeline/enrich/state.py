@@ -12,27 +12,15 @@ from pathlib import Path
 from typing import Any
 
 from data_pipeline.enrich.models import (
-    Candidate,
     DownloadedFile,
     DownloadJob,
     ParseResult,
     RunSummary,
+    SourceProgress,
     SourceRef,
     jsonable,
 )
 from data_pipeline.enrich.parsing.serializers import parse_result_from_dict
-
-
-def fingerprint_source(source: Path) -> str:
-    files = sorted(p for p in source.rglob("*") if p.is_file()) if source.is_dir() else [source]
-    h = hashlib.sha256()
-    for path in files:
-        h.update(str(path.relative_to(source) if source.is_dir() else path.name).encode())
-        h.update(str(path.stat().st_size).encode())
-        with path.open("rb") as f:
-            while chunk := f.read(1024 * 1024):
-                h.update(chunk)
-    return h.hexdigest()
 
 
 def read_crawl_id(source: Path) -> str | None:
@@ -51,11 +39,10 @@ def read_crawl_id(source: Path) -> str | None:
 
 
 class WorkState:
-    def __init__(self, root: Path, conn: sqlite3.Connection, lock_fd: int, source_fingerprint: str):
+    def __init__(self, root: Path, conn: sqlite3.Connection, lock_fd: int):
         self.root, self.conn = root, conn
         self._lock_fd: int | None = lock_fd
         self._connection_open = True
-        self.source_fingerprint = source_fingerprint
         # LlamaParse workers record their jobs from other threads.
         self._write_lock = threading.Lock()
 
@@ -64,11 +51,11 @@ class WorkState:
     def open(
         cls,
         root: Path,
-        source_fingerprint: str,
+        crawl_id: str,
         *,
-        crawl_id: str | None = None,
         rebind: bool = False,
     ) -> Iterator[WorkState]:
+        """Open the work directory of one crawl; ``rebind`` moves it to another crawl."""
         root.mkdir(parents=True, exist_ok=True)
         lock_path = root / ".writer.lock"
         lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
@@ -84,20 +71,17 @@ class WorkState:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
-        obj = cls(root, conn, lock_fd, source_fingerprint)
+        obj = cls(root, conn, lock_fd)
         obj._init_schema()
-        old = obj._meta("source_fingerprint")
-        same_crawl = crawl_id is not None and obj._meta("crawl_id") == crawl_id
-        if old and old != source_fingerprint and not (same_crawl or rebind):
+        bound = obj._meta("crawl_id")
+        if bound is not None and bound != crawl_id and not rebind:
             obj.close()
             msg = (
-                "source fingerprint changed; use a new work directory, "
-                "or pass --rebind-source if the source is a refresh of the same crawl"
+                f"work directory belongs to crawl {bound}, not {crawl_id}; use a new work "
+                "directory, or pass --rebind-source to switch it to this crawl"
             )
             raise ValueError(msg)
-        obj._set_meta("source_fingerprint", source_fingerprint)
-        if crawl_id is not None:
-            obj._set_meta("crawl_id", crawl_id)
+        obj._set_meta("crawl_id", crawl_id)
         try:
             yield obj
         finally:
@@ -121,7 +105,7 @@ class WorkState:
         self.conn.executescript("""
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS inventory (
-          url TEXT PRIMARY KEY, mime_hint TEXT, status TEXT NOT NULL DEFAULT 'pending',
+          url TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'pending',
           attempts INTEGER NOT NULL DEFAULT 0, part_path TEXT, final_path TEXT,
           sha256 TEXT, size INTEGER, mime_type TEXT, final_url TEXT, etag TEXT,
           expected_size INTEGER, retry_at REAL, error TEXT, updated REAL NOT NULL
@@ -134,8 +118,8 @@ class WorkState:
         );
         CREATE INDEX IF NOT EXISTS refs_target ON refs(target_url);
         CREATE TABLE IF NOT EXISTS parse_results (
-          url TEXT PRIMARY KEY, source_sha256 TEXT NOT NULL, status TEXT NOT NULL,
-          result_json TEXT, cache_path TEXT, error TEXT, updated REAL NOT NULL
+          url TEXT PRIMARY KEY, status TEXT NOT NULL,
+          result_json TEXT, cache_path TEXT, updated REAL NOT NULL
         );
         CREATE TABLE IF NOT EXISTS cloud_jobs (
           request_id TEXT PRIMARY KEY, url TEXT NOT NULL, file_id TEXT, job_id TEXT,
@@ -146,13 +130,9 @@ class WorkState:
           url TEXT NOT NULL, stage TEXT NOT NULL, reason TEXT NOT NULL,
           retry_at REAL, updated REAL NOT NULL, PRIMARY KEY(url,stage)
         );
-        CREATE TABLE IF NOT EXISTS inventory_cursor (
-          id INTEGER PRIMARY KEY CHECK(id=1),
-          cursor INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0
-        );
-        INSERT OR IGNORE INTO inventory_cursor(id) VALUES (1);
         CREATE TABLE IF NOT EXISTS inventory_sources (
-          path TEXT PRIMARY KEY, cursor INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0
+          path TEXT PRIMARY KEY, size INTEGER NOT NULL, mtime_ns INTEGER NOT NULL,
+          cursor INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0
         );
         """)
         self.conn.commit()
@@ -169,26 +149,23 @@ class WorkState:
         )
         self.conn.commit()
 
-    def cursor(self, source_key: str) -> int:
+    def source_progress(self, source_key: str) -> SourceProgress | None:
         row = self.conn.execute(
-            "SELECT cursor FROM inventory_sources WHERE path=?", (source_key,)
+            "SELECT size, mtime_ns, cursor, done FROM inventory_sources WHERE path=?",
+            (source_key,),
         ).fetchone()
-        return int(row[0]) if row else 0
+        if row is None:
+            return None
+        return SourceProgress(source_key, int(row[0]), int(row[1]), int(row[2]), bool(row[3]))
 
     def add_inventory_batch(
-        self,
-        candidates: list[Candidate],
-        refs: list[SourceRef],
-        cursor: int,
-        *,
-        done: bool = False,
-        source_key: str,
+        self, candidates: list[str], refs: list[SourceRef], progress: SourceProgress
     ) -> None:
         now = time.time()
         with self.conn:
             self.conn.executemany(
-                "INSERT OR IGNORE INTO inventory(url,mime_hint,updated) VALUES(?,?,?)",
-                [(c.url, c.mime_hint, now) for c in candidates],
+                "INSERT OR IGNORE INTO inventory(url,updated) VALUES(?,?)",
+                [(url, now) for url in candidates],
             )
             self.conn.executemany(
                 "INSERT OR IGNORE INTO "
@@ -199,27 +176,21 @@ class WorkState:
                 ],
             )
             self.conn.execute(
-                "INSERT INTO inventory_sources(path,cursor,done) VALUES(?,?,?) "
-                "ON CONFLICT(path) DO UPDATE SET cursor=excluded.cursor,done=excluded.done",
-                (source_key, cursor, int(done)),
+                "INSERT INTO inventory_sources(path,size,mtime_ns,cursor,done) VALUES(?,?,?,?,?) "
+                "ON CONFLICT(path) DO UPDATE SET size=excluded.size,mtime_ns=excluded.mtime_ns,"
+                "cursor=excluded.cursor,done=excluded.done",
+                (
+                    progress.path,
+                    progress.size,
+                    progress.mtime_ns,
+                    progress.cursor,
+                    int(progress.done),
+                ),
             )
 
     def inventory_done(self, source_key: str) -> bool:
-        row = self.conn.execute(
-            "SELECT done FROM inventory_sources WHERE path=?", (source_key,)
-        ).fetchone()
-        return bool(row and row[0])
-
-    def migrate_legacy_cursor(self, source_key: str) -> None:
-        if self.conn.execute("SELECT 1 FROM inventory_sources LIMIT 1").fetchone():
-            return
-        row = self.conn.execute("SELECT cursor, done FROM inventory_cursor WHERE id=1").fetchone()
-        if row and (row[0] or row[1]):
-            with self.conn:
-                self.conn.execute(
-                    "INSERT INTO inventory_sources(path,cursor,done) VALUES(?,?,?)",
-                    (source_key, row[0], row[1]),
-                )
+        progress = self.source_progress(source_key)
+        return progress is not None and progress.done
 
     def delete_refs_from(self, source_urls: Iterable[str]) -> None:
         with self.conn:
@@ -319,12 +290,6 @@ class WorkState:
             row["final_url"] or url,
         )
 
-    def pending_downloads(self) -> int:
-        return self.conn.execute(
-            "SELECT count(*) FROM inventory WHERE status IN "
-            "('pending','retry','in_progress','finalizing')"
-        ).fetchone()[0]
-
     def next_retry_delay(self) -> float | None:
         row = self.conn.execute(
             "SELECT min(retry_at) FROM inventory WHERE status='retry' AND retry_at IS NOT NULL"
@@ -350,14 +315,13 @@ class WorkState:
 
     def mark_parse(self, url: str, result: ParseResult, cache_path: Path | None = None) -> None:
         self.conn.execute(
-            "INSERT INTO parse_results(url,source_sha256,status,result_json,cache_path,updated) "
-            "VALUES(?,?,?,?,?,?) ON CONFLICT(url) DO UPDATE SET "
-            "source_sha256=excluded.source_sha256,status=excluded.status,"
+            "INSERT INTO parse_results(url,status,result_json,cache_path,updated) "
+            "VALUES(?,?,?,?,?) ON CONFLICT(url) DO UPDATE SET "
+            "status=excluded.status,"
             "result_json=excluded.result_json,cache_path=excluded.cache_path,"
             "updated=excluded.updated",
             (
                 url,
-                result.source_sha256,
                 result.status,
                 json.dumps(jsonable(result), ensure_ascii=False),
                 str(cache_path) if cache_path else None,
@@ -421,13 +385,10 @@ class WorkState:
             ),
         )
 
-    def refs_for(self, target: str | None = None) -> list[dict[str, Any]]:
-        if target:
-            rows = self.conn.execute(
-                "SELECT * FROM refs WHERE target_url=? ORDER BY source_url", (target,)
-            )
-        else:
-            rows = self.conn.execute("SELECT * FROM refs ORDER BY source_url,target_url")
+    def refs_for(self, target: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT * FROM refs WHERE target_url=? ORDER BY source_url", (target,)
+        )
         return [dict(r) for r in rows]
 
     def inventory_rows(self):
@@ -465,12 +426,6 @@ class WorkState:
                 ),
             )
             self.conn.commit()
-
-    def cloud_job(self, request_id: str):
-        row = self.conn.execute(
-            "SELECT * FROM cloud_jobs WHERE request_id=?", (request_id,)
-        ).fetchone()
-        return dict(row) if row else None
 
 
 def read_cloud_job_status(work_dir: Path, request_id: str, job_id: str) -> str:

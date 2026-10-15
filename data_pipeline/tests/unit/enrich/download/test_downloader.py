@@ -18,7 +18,7 @@ from data_pipeline.enrich.download.downloader import (
     run_downloads,
 )
 from data_pipeline.enrich.download.transport import Response
-from data_pipeline.enrich.models import Candidate, DownloadJob
+from data_pipeline.enrich.models import DownloadJob, SourceProgress
 from data_pipeline.enrich.state import WorkState
 
 PDF = b"%PDF-1.4\n" + b"0123456789" * 10
@@ -63,7 +63,7 @@ def settings(tmp_path: Path) -> Settings:
 
 @pytest.fixture
 def state(tmp_path: Path):
-    with WorkState.open(tmp_path / "work", "fingerprint") as opened:
+    with WorkState.open(tmp_path / "work", "c1") as opened:
         yield opened
 
 
@@ -215,7 +215,7 @@ def test_run_downloads_downloads_pending_files_and_schedules_retries(
     state: WorkState, settings: Settings
 ) -> None:
     good, bad = "https://a.test/good.pdf", "https://b.test/bad.pdf"
-    state.add_inventory_batch([Candidate(good), Candidate(bad)], [], 0, done=True, source_key="s")
+    state.add_inventory_batch([good, bad], [], SourceProgress("s", 0, 0, 0, done=True))
     replies = {good: lambda: reply(200, PDF, url=good), bad: lambda: reply(503, b"", url=bad)}
 
     class Transport:

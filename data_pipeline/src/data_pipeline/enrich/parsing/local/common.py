@@ -1,19 +1,9 @@
 from __future__ import annotations
 
-import hashlib
 import re
 import unicodedata
-from pathlib import Path
 
 from data_pipeline.enrich.models import DownloadedFile, ExtractedPart, LocalResult
-
-
-def file_sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        while chunk := f.read(1024 * 1024):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def useful_text(value: str) -> bool:
@@ -24,4 +14,4 @@ def useful_text(value: str) -> bool:
 def result(
     file: DownloadedFile, parts: list[ExtractedPart], parser: str, warnings: list[str] | None = None
 ) -> LocalResult:
-    return LocalResult(file.sha256 or file_sha256(file.path), parts, warnings or [], parser)
+    return LocalResult(file.sha256, parts, warnings or [], parser)

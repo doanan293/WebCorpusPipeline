@@ -3,7 +3,6 @@ download:
   per_host: 2
   host_delay_seconds: 0.25
   max_file_bytes: 104857600
-  max_storage_bytes: 107374182400
   request_timeout_seconds: 60
   retries: 3
   max_redirects: 20

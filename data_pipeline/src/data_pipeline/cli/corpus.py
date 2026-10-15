@@ -7,19 +7,12 @@ from typing import Annotated
 import typer
 
 from data_pipeline.cli import context
-from data_pipeline.cli.enrich import REBIND_HELP
+from data_pipeline.cli.context import RebindOption, SourceOption, WorkDirOption
 
 app = typer.Typer(
     help="Package, verify, import and publish the processed corpus.", no_args_is_help=True
 )
 
-SourceOption = Annotated[
-    Path | None, typer.Option(help="Crawl output to read (default: data/crawl/final).")
-]
-WorkDirOption = Annotated[
-    Path | None, typer.Option(help="Enrichment work directory (default: data/enrichment).")
-]
-RebindOption = Annotated[bool, typer.Option("--rebind-source", help=REBIND_HELP)]
 CorpusOption = Annotated[Path, typer.Option(help="Directory holding a packaged corpus.")]
 
 

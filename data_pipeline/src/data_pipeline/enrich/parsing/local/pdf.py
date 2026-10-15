@@ -21,10 +21,6 @@ def parse_pdf(file: DownloadedFile) -> LocalResult:
     return result(file, parts, f"pymupdf/{fitz.VersionBind}", warnings)
 
 
-def has_useful_text(text: str) -> bool:
-    return useful_text(text)
-
-
 def cloud_part_indices(local: LocalResult) -> list[int]:
     return [p.index for p in local.parts if not useful_text(p.text) and p.has_visual_content]
 

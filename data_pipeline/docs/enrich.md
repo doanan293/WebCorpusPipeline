@@ -33,7 +33,8 @@ Văn bản chỉ ra file JSONL khi `corpus package` đóng gói (`documents.json
 ## Hành vi
 
 - **Inventory** đọc `articles.jsonl` theo luồng, lập danh sách tài liệu duy nhất theo URL và bảng `refs` (trang
-  nguồn, anchor text, alt, caption). Mỗi file nguồn có một con trỏ riêng.
+  nguồn, anchor text, alt, caption) **chỉ cho các liên kết trỏ tới tài liệu**. Mỗi file nguồn có một con trỏ riêng
+  kèm kích thước và mtime: file bị ghi lại thì đọc lại từ đầu, file đã đọc xong thì bỏ qua ngay.
 - **Download** tối đa 64 luồng toàn cục và 2 mỗi host (xem `config/pipeline.yaml`). Tệp hoàn tất được kiểm
   tra cục bộ và bỏ qua ở lần sau. Tệp `.part` dang dở chỉ được nối tiếp khi ETag mạnh và phản hồi `Range` hợp lệ
   khớp nhau; nếu không, chỉ tệp đó bắt đầu lại. MIME được kiểm bằng nội dung, tệp lưu theo `sha256`.
@@ -61,6 +62,6 @@ uv run data-pipeline corpus package --source data/crawl/final --output data/corp
 uv run data-pipeline corpus import-mongo --corpus data/corpus/latest
 ```
 
-Thư mục làm việc gắn với một crawl qua `crawl_id` trong `README.json` hoặc `summary.json` của nguồn: các nguồn
-refresh của cùng crawl được chấp nhận. Một nguồn thay đổi cần `--rebind-source` để nhận một cách tường minh
-(cần một lần với thư mục làm việc tạo trước tính năng refresh, ví dụ `enrich status --rebind-source`).
+Thư mục làm việc gắn với một crawl qua `crawl_id` trong `README.json` hoặc `summary.json` của nguồn (bắt buộc):
+`final/` và mọi `changes/<run_id>/` của cùng crawl đều được nhận. Nguồn của một crawl khác bị từ chối; dùng
+`--rebind-source` khi thật sự muốn chuyển thư mục làm việc sang crawl đó.

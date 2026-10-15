@@ -8,22 +8,10 @@ from typing import Annotated
 import typer
 
 from data_pipeline.cli import context
+from data_pipeline.cli.context import JsonOption, RebindOption, SourceOption, WorkDirOption
 from data_pipeline.enrich.models import RunSummary, jsonable
 
 app = typer.Typer(help="Download crawled documents and extract their text.", no_args_is_help=True)
-
-REBIND_HELP = (
-    "accept a changed source for this work directory (needed once after upgrading, "
-    "or when the source is not a refresh of the same crawl)"
-)
-SourceOption = Annotated[
-    Path | None, typer.Option(help="Crawl output to read (default: data/crawl/final).")
-]
-WorkDirOption = Annotated[
-    Path | None, typer.Option(help="Enrichment work directory (default: data/enrichment).")
-]
-JsonOption = Annotated[bool, typer.Option("--json", help="Print the summary as JSON.")]
-RebindOption = Annotated[bool, typer.Option("--rebind-source", help=REBIND_HELP)]
 
 
 def _summary(summary: RunSummary, as_json: bool) -> int:
@@ -35,7 +23,7 @@ def _summary(summary: RunSummary, as_json: bool) -> int:
             "downloaded={downloaded} parsed={parsed} failed={failed} "
             "pending={pending} quota_blocked={quota_blocked}".format(**value)
         )
-    return summary.exit_code or (4 if summary.pending or summary.quota_blocked else 0)
+    return 4 if summary.pending or summary.quota_blocked else 0
 
 
 @app.command()

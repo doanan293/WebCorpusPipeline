@@ -354,14 +354,13 @@ Nguồn sự thật của giai đoạn enrich (WAL). Thời gian là Unix epoch.
 
 | Bảng | Khoá | Cột và ý nghĩa |
 |---|---|---|
-| `meta` | `key` | `source_fingerprint`: SHA-256 của tên, kích thước và nội dung file crawl nguồn; `crawl_id` nếu nguồn có |
-| `inventory` | `url` | một dòng mỗi URL tài liệu: `mime_hint` (đoán từ URL), `status`, `attempts`, `part_path`, `final_path`, `sha256` (nội dung), `size`, `mime_type`, `final_url`, `etag` (chỉ ETag mạnh), `expected_size`, `retry_at`, `error` (vd. `HTTP 404`, `response is not a document`), `updated` |
-| `refs` | 6 cột | cạnh trang → đích: `source_url`, `target_url`, `relation`, `anchor_text`, `alt`, `caption`; index theo `target_url` |
-| `parse_results` | `url` | `source_sha256`, `status`, `result_json` (kết quả parse), `cache_path` (nếu dùng LlamaParse), `error` (không dùng; lỗi nằm trong `warnings`), `updated` |
+| `meta` | `key` | `crawl_id` của crawl mà thư mục làm việc gắn với |
+| `inventory` | `url` | một dòng mỗi URL tài liệu: `status`, `attempts`, `part_path`, `final_path`, `sha256` (nội dung), `size`, `mime_type`, `final_url`, `etag` (chỉ ETag mạnh), `expected_size`, `retry_at`, `error` (vd. `HTTP 404`, `response is not a document`), `updated` |
+| `refs` | 6 cột | cạnh trang → tài liệu (chỉ đích là tài liệu): `source_url`, `target_url`, `relation` (`hyperlink` hoặc `asset`), `anchor_text`, `alt`, `caption`; index theo `target_url` |
+| `parse_results` | `url` | `status`, `result_json` (kết quả parse), `cache_path` (nếu dùng LlamaParse), `updated` |
 | `cloud_jobs` | `request_id` | job LlamaParse: `url` (đường dẫn tệp tạm, không phải URL tài liệu), `file_id`, `job_id`, `key_label`, `key_fingerprint` (16 ký tự hex đầu của SHA-256 khoá), `status`, `payload` (lỗi, tối đa 500 ký tự), `updated` |
 | `failures` | (`url`, `stage`) | `stage` (`download`, `parse`), `reason`, `retry_at`, `updated` |
-| `inventory_sources` | `path` | con trỏ đọc mỗi `articles.jsonl` nguồn: `cursor` (byte offset), `done` |
-| `inventory_cursor` | `id` = 1 | bản cũ của `inventory_sources`, được chuyển sang khi mở |
+| `inventory_sources` | `path` | con trỏ đọc mỗi `articles.jsonl` nguồn: `size`, `mtime_ns` (file đổi thì đọc lại từ đầu), `cursor` (byte offset), `done` |
 
 **Trạng thái**
 

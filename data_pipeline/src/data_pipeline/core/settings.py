@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -16,13 +16,12 @@ from data_pipeline.core.paths import ProjectPaths
 @dataclass(frozen=True)
 class Settings:
     project_root: Path
-    work_dir: Path = Path("data/enrichment")
-    source: Path = Path("data/crawl/final")
+    work_dir: Path | None = None
+    source: Path | None = None
     concurrency: int = 64
     per_host: int = 2
     host_delay_seconds: float = 0.25
     max_file_bytes: int = 104857600
-    max_storage_bytes: int = 107374182400
     timeout_seconds: float = 60
     retries: int = 3
     max_redirects: int = 20
@@ -34,15 +33,16 @@ class Settings:
     cloud_timeout_seconds: float = 1800
     mongo_uri: str = "mongodb://127.0.0.1:27017"
     mongo_database: str = "information_retrieval"
-    extra: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @property
     def source_path(self) -> Path:
-        return self.source if self.source.is_absolute() else self.project_root / self.source
+        """``source``, or the project's ``data/crawl/final``."""
+        return self.source or ProjectPaths(self.project_root).crawl_final
 
     @property
     def work_path(self) -> Path:
-        return self.work_dir if self.work_dir.is_absolute() else self.project_root / self.work_dir
+        """``work_dir``, or the project's ``data/enrichment``."""
+        return self.work_dir or ProjectPaths(self.project_root).enrichment
 
 
 def _numbered_key(name: str) -> tuple[int, str]:
@@ -79,13 +79,10 @@ def load_settings(paths: ProjectPaths, overrides: Mapping[str, Any] | None = Non
     d = {**config.get("download", {}), **config.get("parser", {})}
     db = config.get("database", {})
     values: dict[str, Any] = {
-        "work_dir": "data/enrichment",
-        "source": "data/crawl/final",
         "concurrency": d.get("concurrency", 64),
         "per_host": d.get("per_host", 2),
         "host_delay_seconds": d.get("host_delay_seconds", 0.25),
         "max_file_bytes": d.get("max_file_bytes", 104857600),
-        "max_storage_bytes": d.get("max_storage_bytes", 107374182400),
         "timeout_seconds": d.get("request_timeout_seconds", 60),
         "retries": d.get("retries", 3),
         "max_redirects": d.get("max_redirects", 20),
@@ -106,7 +103,6 @@ def load_settings(paths: ProjectPaths, overrides: Mapping[str, Any] | None = Non
         "concurrency",
         "per_host",
         "max_file_bytes",
-        "max_storage_bytes",
         "retries",
         "max_redirects",
         "chunk_bytes",
@@ -123,6 +119,4 @@ def load_settings(paths: ProjectPaths, overrides: Mapping[str, Any] | None = Non
     ):
         values[key] = _positive(key, values[key], integer=False)
     values["project_root"] = paths.root.resolve()
-    values["work_dir"] = Path(values["work_dir"])
-    values["source"] = Path(values["source"])
     return Settings(**values)

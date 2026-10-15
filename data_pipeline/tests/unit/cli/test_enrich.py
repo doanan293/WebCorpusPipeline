@@ -71,7 +71,7 @@ def test_inventory_indexes_the_source(
 
     def index(source: Path, current: object) -> InventorySummary:
         calls.append(source)
-        return InventorySummary(candidates=5, referrers=7, completed=True)
+        return InventorySummary(candidates=5, referrers=7)
 
     monkeypatch.setattr(enrich_inventory, "index_inventory", index)
 
@@ -88,7 +88,7 @@ def test_run_indexes_downloads_and_extracts_in_order(
 
     def index(source: Path, current: object) -> InventorySummary:
         order.append("inventory")
-        return InventorySummary(candidates=0, referrers=0, completed=True)
+        return InventorySummary(candidates=0, referrers=0)
 
     async def download(current: object, settings: object) -> RunSummary:
         order.append("download")
@@ -151,7 +151,7 @@ def test_reconcile_job_reports_the_job_status(
     project: ProjectPaths, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     work = tmp_path / "work"
-    with WorkState.open(work, "fingerprint") as current:
+    with WorkState.open(work, "c1") as current:
         current.save_cloud_job(
             "req-1", "https://a.test/f.pdf", file_id="file-1", job_id="job-1", status="running"
         )
@@ -181,7 +181,7 @@ def test_reconcile_job_rejects_an_unknown_pair(
     project: ProjectPaths, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     work = tmp_path / "work"
-    with WorkState.open(work, "fingerprint"):
+    with WorkState.open(work, "c1"):
         pass
 
     code = main(

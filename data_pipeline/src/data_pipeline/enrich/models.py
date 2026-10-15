@@ -16,9 +16,14 @@ class SourceRef:
 
 
 @dataclass(frozen=True)
-class Candidate:
-    url: str
-    mime_hint: str | None = None
+class SourceProgress:
+    """How far inventory read one source file; a different size or mtime means a new file."""
+
+    path: str
+    size: int
+    mtime_ns: int
+    cursor: int
+    done: bool = False
 
 
 @dataclass
@@ -76,14 +81,12 @@ class RunSummary:
     pending: int = 0
     quota_blocked: int = 0
     transferred_bytes: int = 0
-    exit_code: int = 0
 
 
 @dataclass
 class InventorySummary:
     candidates: int
     referrers: int
-    completed: bool
 
 
 def jsonable(value: Any) -> Any:
