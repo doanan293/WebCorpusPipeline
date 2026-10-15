@@ -7,6 +7,7 @@ import time
 from collections import defaultdict
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
+from email.utils import parsedate_to_datetime
 from http import HTTPStatus
 from urllib.parse import urlsplit
 
@@ -20,6 +21,8 @@ _RETRYABLE_STATUSES = frozenset(
     {HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_EARLY, HTTPStatus.TOO_MANY_REQUESTS}
 )
 _SERVER_ERRORS = range(HTTPStatus.INTERNAL_SERVER_ERROR, 600)
+# Waits longer than this end the run; the row keeps its retry time for a later run.
+MAX_RETRY_WAIT_SECONDS = 300.0
 
 
 class RetryableDownloadError(RuntimeError):
@@ -66,11 +69,25 @@ def _resume_point(job: DownloadJob) -> tuple[int, dict[str, str]]:
     return offset, headers
 
 
+def retry_after_seconds(value: str | None, now: float) -> float | None:
+    """Read Retry-After as seconds or as an HTTP date; None when absent or unreadable."""
+    if not value:
+        return None
+    text = value.strip()
+    if text.isdigit():
+        return float(text)
+    try:
+        when = parsedate_to_datetime(text)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, when.timestamp() - now)
+
+
 def _raise_for_status(response: Response) -> None:
     status = response.status
     if status in _RETRYABLE_STATUSES or status in _SERVER_ERRORS:
         msg = f"HTTP {status}"
-        retry_after = float(response.headers.get("Retry-After", "0") or 0) or None
+        retry_after = retry_after_seconds(response.headers.get("Retry-After"), time.time())
         raise RetryableDownloadError(msg, retry_after)
     if status not in (HTTPStatus.OK, HTTPStatus.PARTIAL_CONTENT):
         msg = f"HTTP {status}"
@@ -198,59 +215,50 @@ async def run_downloads(
     transport_factory: Callable[
         [Settings], AbstractAsyncContextManager[HttpClient]
     ] = PublicTransport,
-    stop: asyncio.Event | None = None,
 ) -> RunSummary:
-
-    stop = stop or asyncio.Event()
     host_locks = defaultdict(lambda: asyncio.Semaphore(settings.per_host))
     host_last = defaultdict(float)
     active: dict[asyncio.Task[DownloadedFile], DownloadJob] = {}
 
-    async def worker(job: DownloadJob) -> DownloadedFile:
+    async def worker(job: DownloadJob, transport: HttpClient) -> DownloadedFile:
         host = urlsplit(job.url).netloc.lower()
         async with host_locks[host]:
             wait = settings.host_delay_seconds - (time.monotonic() - host_last[host])
             if wait > 0:
                 await asyncio.sleep(wait)
             host_last[host] = time.monotonic()
-            async with transport_factory(settings) as transport:
-                return await download_one(job, state, settings, transport)
+            return await download_one(job, state, settings, transport)
 
-    while not stop.is_set():
-        while len(active) < settings.concurrency:
-            job = state.claim_download()
-            if not job:
-                break
-            task = asyncio.create_task(worker(job))
-            active[task] = job
-        if not active:
-            delay = state.next_retry_delay()
-            if delay is None:
-                break
-            await asyncio.sleep(min(delay, 2.0))
-            continue
-        done, _ = await asyncio.wait(active, return_when=asyncio.FIRST_COMPLETED)
-        for task in done:
-            job = active.pop(task)
-            try:
-                task.result()
-            except RetryableDownloadError as exc:
-                if job.attempts <= settings.retries:
-                    state.record_failure(
-                        job.url,
-                        "download",
-                        str(exc),
-                        time.time() + (exc.retry_after or 2**job.attempts),
-                    )
-                else:
-                    state.record_failure(job.url, "download", str(exc))
-            except Exception as exc:  # noqa: BLE001 -- any download failure is recorded and retried per policy
-                if job.attempts <= settings.retries:
-                    state.record_failure(
-                        job.url, "download", str(exc), time.time() + 2**job.attempts
-                    )
-                else:
-                    state.record_failure(job.url, "download", str(exc))
-    for task in active:
-        task.cancel()
+    async with transport_factory(settings) as transport:
+        while True:
+            while len(active) < settings.concurrency:
+                job = state.claim_download()
+                if not job:
+                    break
+                active[asyncio.create_task(worker(job, transport))] = job
+            if not active:
+                delay = state.next_retry_delay()
+                if delay is None or delay > MAX_RETRY_WAIT_SECONDS:
+                    break
+                await asyncio.sleep(min(delay, 2.0))
+                continue
+            done, _ = await asyncio.wait(active, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                _record_outcome(state, settings, active.pop(task), task)
     return state.summary()
+
+
+def _record_outcome(
+    state: WorkState, settings: Settings, job: DownloadJob, task: asyncio.Task[DownloadedFile]
+) -> None:
+    """Record a failed download once if it is permanent, else schedule a retry within budget."""
+    try:
+        task.result()
+    except PermanentDownloadError as exc:
+        state.record_failure(job.url, "download", str(exc))
+    except Exception as exc:  # noqa: BLE001 -- any other download failure is retried per policy
+        if job.attempts > settings.retries:
+            state.record_failure(job.url, "download", str(exc))
+            return
+        wait = exc.retry_after if isinstance(exc, RetryableDownloadError) else None
+        state.record_failure(job.url, "download", str(exc), time.time() + (wait or 2**job.attempts))

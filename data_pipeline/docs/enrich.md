@@ -35,9 +35,15 @@ Văn bản chỉ ra file JSONL khi `corpus package` đóng gói (`documents.json
 - **Inventory** đọc `articles.jsonl` theo luồng, lập danh sách tài liệu duy nhất theo URL và bảng `refs` (trang
   nguồn, anchor text, alt, caption) **chỉ cho các liên kết trỏ tới tài liệu**. Mỗi file nguồn có một con trỏ riêng
   kèm kích thước và mtime: file bị ghi lại thì đọc lại từ đầu, file đã đọc xong thì bỏ qua ngay.
-- **Download** tối đa 64 luồng toàn cục và 2 mỗi host (xem `config/pipeline.yaml`). Tệp hoàn tất được kiểm
-  tra cục bộ và bỏ qua ở lần sau. Tệp `.part` dang dở chỉ được nối tiếp khi ETag mạnh và phản hồi `Range` hợp lệ
-  khớp nhau; nếu không, chỉ tệp đó bắt đầu lại. MIME được kiểm bằng nội dung, tệp lưu theo `sha256`.
+- **Download** tối đa 64 luồng toàn cục và 2 mỗi host (xem `config/pipeline.yaml`), một phiên HTTP cho cả lượt,
+  User-Agent `data-pipeline/<phiên bản>`. Tệp hoàn tất được bỏ qua ở lần sau; tệp đang chuyển vào `files/` khi
+  bị ngắt được kiểm lại bằng `sha256` lúc mở (khớp thì `downloaded`, không thì tải lại). Tệp `.part` dang dở chỉ
+  được nối tiếp khi ETag mạnh và phản hồi `Range` hợp lệ khớp nhau; nếu không, chỉ tệp đó bắt đầu lại. MIME được
+  kiểm bằng nội dung, tệp lưu theo `sha256`.
+  - Lỗi vĩnh viễn (404, 403, không phải tài liệu, quá `max_file_bytes`) ghi `failed` ngay, không thử lại.
+  - 408/425/429/5xx và lỗi mạng được thử lại tối đa `retries` lần. `Retry-After` đọc được cả số giây lẫn ngày
+    HTTP; nếu phải chờ quá 300 giây thì lượt chạy kết thúc, URL giữ trạng thái `retry` cho lượt sau.
+  - `enrich download --retry-failed` đưa các tài liệu `failed` về `pending`, xoá `.part` của chúng rồi tải lại.
 - **Extract** dùng parser cục bộ trước: PyMuPDF cho PDF, `python-docx` cho DOCX, LibreOffice chuyển DOC/ODT/PPT/
   ODP/ODS sang định dạng Office Open XML, `openpyxl`/`xlrd` cho bảng tính, `python-pptx` cho trình chiếu. Kết
   quả là văn bản thuần với ranh giới trang, sheet, slide hoặc tài liệu. LlamaParse (`fast/latest`) chỉ chạy cho

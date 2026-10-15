@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from importlib.metadata import version
 from typing import Any, Protocol
 
 import aiohttp
 
 from data_pipeline.core.settings import Settings
+
+USER_AGENT = f"data-pipeline/{version('data-pipeline')}"
 
 
 class _Releasable(Protocol):
@@ -44,7 +47,7 @@ class PublicTransport:
         )
         self.session = aiohttp.ClientSession(
             timeout=timeout,
-            headers={"User-Agent": "ir-data/0.1", "Accept-Encoding": "identity"},
+            headers={"User-Agent": USER_AGENT, "Accept-Encoding": "identity"},
             auto_decompress=False,
         )
         return self

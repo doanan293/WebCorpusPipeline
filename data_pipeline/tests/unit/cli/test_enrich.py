@@ -206,3 +206,24 @@ def test_extract_reparses_cloud_documents_only_on_request(
 
     assert main(["enrich", "extract", *args]) == 0
     assert seen == [requeued]
+
+
+def test_download_retry_failed_requeues_before_downloading(
+    state: FakeState, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    order: list[str] = []
+
+    def reset() -> int:
+        order.append("reset")
+        return 2
+
+    async def download(current: object, settings: object) -> RunSummary:
+        order.append("download")
+        return RunSummary()
+
+    monkeypatch.setattr(state, "reset_failed_downloads", reset, raising=False)
+    monkeypatch.setattr(downloader, "run_downloads", download)
+
+    assert main(["enrich", "download", "--retry-failed"]) == 0
+    assert order == ["reset", "download"]
+    assert "requeued 2 failed downloads" in capsys.readouterr().out

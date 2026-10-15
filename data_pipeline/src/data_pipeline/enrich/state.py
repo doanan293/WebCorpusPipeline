@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from data_pipeline.enrich.download.artifacts import verify_file
 from data_pipeline.enrich.models import (
     DownloadedFile,
     DownloadJob,
@@ -361,11 +362,46 @@ class WorkState:
                 )
 
     def recover(self) -> None:
-        self.conn.execute(
-            "UPDATE inventory SET status='pending',updated=? WHERE status='in_progress'",
-            (time.time(),),
-        )
-        self.conn.commit()
+        """Requeue downloads cut short; a finalizing row is done only if its file verifies."""
+        now = time.time()
+        with self._write_lock, self.conn:
+            self.conn.execute(
+                "UPDATE inventory SET status='pending',updated=? WHERE status='in_progress'", (now,)
+            )
+            rows = self.conn.execute("SELECT * FROM inventory WHERE status='finalizing'").fetchall()
+            for row in rows:
+                file = DownloadedFile(
+                    row["url"],
+                    Path(row["final_path"] or ""),
+                    row["sha256"] or "",
+                    row["size"] or 0,
+                    row["mime_type"] or "application/octet-stream",
+                    row["final_url"] or row["url"],
+                )
+                status = "downloaded" if row["final_path"] and verify_file(file) else "pending"
+                self.conn.execute(
+                    "UPDATE inventory SET status=?,updated=? WHERE url=?", (status, now, row["url"])
+                )
+
+    def reset_failed_downloads(self) -> int:
+        """Send failed downloads back to pending and drop their partial files."""
+        with self._write_lock, self.conn:
+            rows = self.conn.execute(
+                "SELECT url, part_path FROM inventory WHERE status='failed'"
+            ).fetchall()
+            for row in rows:
+                if row["part_path"]:
+                    Path(row["part_path"]).unlink(missing_ok=True)
+            self.conn.execute(
+                "UPDATE inventory SET status='pending',attempts=0,part_path=NULL,size=NULL,"
+                "etag=NULL,retry_at=NULL,error=NULL,updated=? WHERE status='failed'",
+                (time.time(),),
+            )
+            self.conn.executemany(
+                "DELETE FROM failures WHERE url=? AND stage='download'",
+                [(row["url"],) for row in rows],
+            )
+        return len(rows)
 
     def summary(self) -> RunSummary:
         def n(sql: str) -> int:

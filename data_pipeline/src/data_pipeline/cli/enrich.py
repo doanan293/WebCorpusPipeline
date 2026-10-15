@@ -49,6 +49,10 @@ def download(
     work_dir: WorkDirOption = None,
     json_output: JsonOption = False,
     rebind_source: RebindOption = False,
+    retry_failed: Annotated[
+        bool,
+        typer.Option("--retry-failed", help="download the failed documents again from scratch"),
+    ] = False,
 ) -> int:
     """Download the inventoried documents (resumable)."""
     from data_pipeline.enrich import session
@@ -56,6 +60,8 @@ def download(
 
     settings = context.build_settings(source, work_dir)
     with session.open_work_state(settings, rebind=rebind_source) as state:
+        if retry_failed:
+            print(f"requeued {state.reset_failed_downloads()} failed downloads")
         summary = asyncio.run(downloader.run_downloads(state, settings))
     return _summary(summary, json_output)
 

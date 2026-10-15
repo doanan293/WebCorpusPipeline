@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import time
 from collections.abc import AsyncIterator
+from importlib.metadata import version
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -17,8 +19,8 @@ from data_pipeline.enrich.download.downloader import (
     download_one,
     run_downloads,
 )
-from data_pipeline.enrich.download.transport import Response
-from data_pipeline.enrich.models import DownloadJob, SourceProgress
+from data_pipeline.enrich.download.transport import USER_AGENT, Response
+from data_pipeline.enrich.models import DownloadedFile, DownloadJob, SourceProgress
 from data_pipeline.enrich.state import WorkState
 
 PDF = b"%PDF-1.4\n" + b"0123456789" * 10
@@ -236,7 +238,7 @@ def test_run_downloads_downloads_pending_files_and_schedules_retries(
         {"work_dir": settings.work_path, "retries": 1, "host_delay_seconds": 0.001},
     )
 
-    summary = run(run_downloads(state, fast, transport_factory=Transport, stop=asyncio.Event()))
+    summary = run(run_downloads(state, fast, transport_factory=Transport))
 
     assert summary.downloaded == 1
     failure = state.conn.execute(
@@ -244,3 +246,122 @@ def test_run_downloads_downloads_pending_files_and_schedules_retries(
     ).fetchone()
     assert failure is not None
     assert (failure["stage"], failure["reason"]) == ("download", "HTTP 503")
+
+
+class Served:
+    """A transport factory serving one reply per URL; counts sessions and requests."""
+
+    def __init__(self, replies: dict[str, Any]) -> None:
+        self.replies = replies
+        self.sessions = 0
+        self.calls: list[str] = []
+
+    def __call__(self, _settings: Settings) -> Served:
+        return self
+
+    async def __aenter__(self) -> Served:
+        self.sessions += 1
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    async def get(self, url: str, headers: dict[str, str] | None = None) -> Response:
+        self.calls.append(url)
+        return self.replies[url]()
+
+
+def serve(state: WorkState, replies: dict[str, Any]) -> Served:
+    state.add_inventory_batch(list(replies), [], SourceProgress("s", 0, 0, 0, done=True))
+    return Served(replies)
+
+
+def quick(settings: Settings, **overrides: object) -> Settings:
+    return load_settings(
+        ProjectPaths(settings.project_root),
+        {"work_dir": settings.work_path, "host_delay_seconds": 0.001, **overrides},
+    )
+
+
+def test_permanent_error_is_not_retried(state: WorkState, settings: Settings) -> None:
+    transport = serve(state, {URL: lambda: reply(404, b"", url=URL)})
+
+    run(run_downloads(state, quick(settings, retries=3), transport_factory=transport))
+
+    assert transport.calls == [URL]
+    row = state.conn.execute(
+        "SELECT status, retry_at FROM inventory WHERE url=?", (URL,)
+    ).fetchone()
+    assert (row["status"], row["retry_at"]) == ("failed", None)
+
+
+def test_retry_after_http_date_is_parsed(state: WorkState, settings: Settings) -> None:
+    when = "Wed, 21 Oct 2099 07:28:00 GMT"
+    transport = serve(state, {URL: lambda: reply(503, b"", {"Retry-After": when}, url=URL)})
+
+    run(run_downloads(state, quick(settings), transport_factory=transport))
+
+    row = state.conn.execute(
+        "SELECT status, retry_at FROM inventory WHERE url=?", (URL,)
+    ).fetchone()
+    assert row["status"] == "retry"
+    assert row["retry_at"] > 4_000_000_000
+
+
+def test_retry_after_is_capped_at_300_seconds(state: WorkState, settings: Settings) -> None:
+    transport = serve(state, {URL: lambda: reply(429, b"", {"Retry-After": "100000"}, url=URL)})
+    started = time.monotonic()
+
+    summary = run(run_downloads(state, quick(settings), transport_factory=transport))
+
+    assert time.monotonic() - started < 5
+    assert summary.pending == 1
+    assert transport.calls == [URL]
+
+
+def test_one_session_per_run(state: WorkState, settings: Settings) -> None:
+    urls = [f"https://a.test/{n}.pdf" for n in range(3)]
+    transport = serve(state, {url: (lambda u=url: reply(200, PDF, url=u)) for url in urls})
+
+    summary = run(run_downloads(state, quick(settings), transport_factory=transport))
+
+    assert summary.downloaded == 3
+    assert transport.sessions == 1
+
+
+def test_recover_finishes_or_resets_finalizing_rows(state: WorkState, settings: Settings) -> None:
+    good, lost = "https://a.test/good.pdf", "https://a.test/lost.pdf"
+    state.add_inventory_batch([good, lost], [], SourceProgress("s", 0, 0, 0, done=True))
+    final = state.root / "files" / "good.pdf"
+    final.parent.mkdir(parents=True)
+    final.write_bytes(PDF)
+    digest = hashlib.sha256(PDF).hexdigest()
+    for url, path in ((good, final), (lost, state.root / "files" / "lost.pdf")):
+        state.mark_finalizing(DownloadedFile(url, path, digest, len(PDF), "application/pdf", url))
+
+    state.recover()
+
+    statuses = dict(state.conn.execute("SELECT url, status FROM inventory").fetchall())
+    assert statuses == {good: "downloaded", lost: "pending"}
+
+
+def test_retry_failed_resets_failed_rows_and_parts(state: WorkState) -> None:
+    state.add_inventory_batch([URL], [], SourceProgress("s", 0, 0, 0, done=True))
+    part = state.root / "parts" / "x.part"
+    part.parent.mkdir(parents=True)
+    part.write_bytes(b"partial")
+    state.conn.execute("UPDATE inventory SET part_path=? WHERE url=?", (str(part), URL))
+    state.record_failure(URL, "download", "HTTP 404")
+
+    assert state.reset_failed_downloads() == 1
+
+    row = state.conn.execute(
+        "SELECT status, attempts FROM inventory WHERE url=?", (URL,)
+    ).fetchone()
+    assert (row["status"], row["attempts"]) == ("pending", 0)
+    assert not part.exists()
+    assert state.conn.execute("SELECT count(*) FROM failures").fetchone()[0] == 0
+
+
+def test_user_agent_names_package() -> None:
+    assert f"data-pipeline/{version('data-pipeline')}" == USER_AGENT
