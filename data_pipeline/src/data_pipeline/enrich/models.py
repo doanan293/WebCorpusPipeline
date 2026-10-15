@@ -80,6 +80,7 @@ class RunSummary:
     failed: int = 0
     pending: int = 0
     quota_blocked: int = 0
+    cloud_failed: int = 0
     transferred_bytes: int = 0
 
 

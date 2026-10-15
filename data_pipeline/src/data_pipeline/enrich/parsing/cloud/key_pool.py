@@ -4,6 +4,10 @@ import hashlib
 import threading
 
 
+class KeysExhaustedError(RuntimeError):
+    """Every LlamaParse key ran out of quota (or none was configured)."""
+
+
 class KeyPool:
     def __init__(self, keys: list[tuple[str, str]]):
         self.keys = keys
@@ -16,7 +20,7 @@ class KeyPool:
                 if item[0] not in self.exhausted:
                     return item
         msg = "all LlamaParse keys are quota exhausted"
-        raise RuntimeError(msg)
+        raise KeysExhaustedError(msg)
 
     def mark_quota_exhausted(self, label: str) -> None:
         with self._lock:

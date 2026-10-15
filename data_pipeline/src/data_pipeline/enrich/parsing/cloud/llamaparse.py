@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import uuid
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,7 @@ def _page_texts(response: Any) -> dict[int, str]:
 
 
 def parse_cloud_subset(
+    document_url: str,
     file: Path,
     local: LocalResult,
     mapping: dict[int, int],
@@ -42,82 +44,60 @@ def parse_cloud_subset(
     settings: Settings,
     pool: KeyPool,
 ) -> ParseResult:
-    try:
-        from llama_cloud import LlamaCloud  # noqa: PLC0415 -- llama-cloud is an optional 'enrich' extra
-    except ImportError as exc:
-        msg = "install the producer extra to use LlamaParse"
-        raise RuntimeError(msg) from exc
-    pending = list(mapping.items())
+    """Parse ``file`` (a page subset of ``document_url``) with LlamaParse.
+
+    Only an account out of quota moves on to the next key; any other failure is this file's
+    ``cloud_failed``. The uploaded file is deleted from LlamaCloud whatever happens.
+    """
+    from llama_cloud import LlamaCloud  # noqa: PLC0415 -- llama-cloud is an optional 'enrich' extra
+
     label, secret = pool.current()
     request_id = uuid.uuid4().hex
-    try:
-        client = LlamaCloud(api_key=secret)
-        uploaded = client.files.create(file=str(file), purpose="parse")
-        file_id = str(_value(uploaded, "id"))
+
+    def record(status: str, **fields: str | None) -> None:
         state.save_cloud_job(
             request_id,
-            str(file),
-            file_id=file_id,
+            document_url,
             key_label=label,
             key_fingerprint=pool.fingerprint(secret),
-            status="uploaded",
+            status=status,
+            **fields,
         )
+
+    client = LlamaCloud(api_key=secret)
+    file_id: str | None = None
+    try:
+        file_id = str(_value(client.files.create(file=str(file), purpose="parse"), "id"))
+        record("uploaded", file_id=file_id)
         job = client.parsing.create(file_id=file_id, tier="fast", version="latest")
         job_id = str(_value(job, "id") or _value(job, "job_id"))
-        state.save_cloud_job(
-            request_id,
-            str(file),
-            file_id=file_id,
-            job_id=job_id,
-            key_label=label,
-            key_fingerprint=pool.fingerprint(secret),
-            status="accepted",
-        )
+        record("accepted", job_id=job_id)
         client.parsing.wait_for_completion(
             job_id,
             polling_interval=settings.cloud_poll_seconds,
             timeout=settings.cloud_timeout_seconds,
         )
-        response = client.parsing.get(job_id, expand=["text", "markdown"])
-        texts = _page_texts(response)
-        parts = []
-        for remote_index, original_index in pending:
-            text = texts.get(remote_index, "")
-            parts.append(ExtractedPart(original_index, "page", text, bool(text), "llamaparse-fast"))
-        state.save_cloud_job(
-            request_id,
-            str(file),
-            file_id=file_id,
-            job_id=job_id,
-            key_label=label,
-            key_fingerprint=pool.fingerprint(secret),
-            status="completed",
-        )
-        return ParseResult(
-            local.source_sha256, parts, "extracted", [], {"llamaparse": "fast/latest"}
-        )
+        texts = _page_texts(client.parsing.get(job_id, expand=["text", "markdown"]))
+        record("completed")
     except Exception as exc:  # noqa: BLE001 -- any cloud failure is classified and recorded
         status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
         kind = classify_cloud_error(status, exc)
+        record(kind, payload=str(exc)[:500])
         if kind == "quota":
             pool.mark_quota_exhausted(label)
-        state.save_cloud_job(
-            request_id,
-            str(file),
-            key_label=label,
-            key_fingerprint=pool.fingerprint(secret),
-            status=kind,
-            payload=str(exc)[:500],
+            return parse_cloud_subset(document_url, file, local, mapping, state, settings, pool)
+        return ParseResult(local.source_sha256, [], "cloud_failed", [f"{kind}: {exc}"], {})
+    finally:
+        if file_id is not None:
+            with contextlib.suppress(Exception):
+                client.files.delete(file_id)
+    parts = [
+        ExtractedPart(
+            original, "page", texts.get(remote, ""), bool(texts.get(remote)), "llamaparse-fast"
         )
-        if kind == "quota" and len(pool.exhausted) < len(pool.keys):
-            return parse_cloud_subset(file, local, mapping, state, settings, pool)
-        return ParseResult(
-            local.source_sha256,
-            [],
-            "quota_blocked" if kind == "quota" else "cloud_failed",
-            [f"{kind}: {exc}"],
-            {},
-        )
+        for remote, original in mapping.items()
+    ]
+    return ParseResult(local.source_sha256, parts, "extracted", [], {"llamaparse": "fast/latest"})
 
 
 def merge_parts(local: LocalResult, remote: ParseResult) -> ParseResult:

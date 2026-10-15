@@ -20,10 +20,11 @@ def _summary(summary: RunSummary, as_json: bool) -> int:
         print(json.dumps(value, ensure_ascii=False, indent=2))
     else:
         print(
-            "downloaded={downloaded} parsed={parsed} failed={failed} "
-            "pending={pending} quota_blocked={quota_blocked}".format(**value)
+            "downloaded={downloaded} parsed={parsed} failed={failed} pending={pending} "
+            "quota_blocked={quota_blocked} cloud_failed={cloud_failed}".format(**value)
         )
-    return 4 if summary.pending or summary.quota_blocked else 0
+    unfinished = summary.pending + summary.quota_blocked + summary.cloud_failed
+    return 4 if unfinished else 0
 
 
 @app.command()

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import os
 import sqlite3
 import threading
 import time
-from collections.abc import Iterable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Concatenate
 
 from data_pipeline.enrich.download.artifacts import verify_file
 from data_pipeline.enrich.models import (
@@ -39,13 +40,26 @@ def read_crawl_id(source: Path) -> str | None:
     return None
 
 
+def _locked[**P, R](
+    method: Callable[Concatenate[WorkState, P], R],
+) -> Callable[Concatenate[WorkState, P], R]:
+    """Run a write method while holding the state's write lock."""
+
+    @functools.wraps(method)
+    def wrapper(self: WorkState, *args: P.args, **kwargs: P.kwargs) -> R:
+        with self._write_lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 class WorkState:
     def __init__(self, root: Path, conn: sqlite3.Connection, lock_fd: int):
         self.root, self.conn = root, conn
         self._lock_fd: int | None = lock_fd
         self._connection_open = True
-        # LlamaParse workers record their jobs from other threads.
-        self._write_lock = threading.Lock()
+        # LlamaParse workers record their jobs from other threads; every write takes this lock.
+        self._write_lock: AbstractContextManager[Any] = threading.RLock()
 
     @classmethod
     @contextmanager
@@ -119,8 +133,8 @@ class WorkState:
         );
         CREATE INDEX IF NOT EXISTS refs_target ON refs(target_url);
         CREATE TABLE IF NOT EXISTS parse_results (
-          url TEXT PRIMARY KEY, status TEXT NOT NULL,
-          result_json TEXT, cache_path TEXT, updated REAL NOT NULL
+          url TEXT PRIMARY KEY, status TEXT NOT NULL, result_json TEXT, cache_path TEXT,
+          used_cloud INTEGER NOT NULL DEFAULT 0, updated REAL NOT NULL
         );
         CREATE TABLE IF NOT EXISTS cloud_jobs (
           request_id TEXT PRIMARY KEY, url TEXT NOT NULL, file_id TEXT, job_id TEXT,
@@ -159,6 +173,7 @@ class WorkState:
             return None
         return SourceProgress(source_key, int(row[0]), int(row[1]), int(row[2]), bool(row[3]))
 
+    @_locked
     def add_inventory_batch(
         self, candidates: list[str], refs: list[SourceRef], progress: SourceProgress
     ) -> None:
@@ -193,12 +208,14 @@ class WorkState:
         progress = self.source_progress(source_key)
         return progress is not None and progress.done
 
+    @_locked
     def delete_refs_from(self, source_urls: Iterable[str]) -> None:
         with self.conn:
             self.conn.executemany(
                 "DELETE FROM refs WHERE source_url=?", [(url,) for url in source_urls]
             )
 
+    @_locked
     def claim_download(self) -> DownloadJob | None:
         now = time.time()
         row = self.conn.execute(
@@ -226,6 +243,7 @@ class WorkState:
             row["attempts"] + 1,
         )
 
+    @_locked
     def checkpoint_download(self, job: DownloadJob) -> None:
         self.conn.execute(
             "UPDATE inventory SET "
@@ -242,6 +260,7 @@ class WorkState:
         )
         self.conn.commit()
 
+    @_locked
     def mark_finalizing(self, file: DownloadedFile) -> None:
         self.conn.execute(
             "UPDATE inventory SET "
@@ -259,6 +278,7 @@ class WorkState:
         )
         self.conn.commit()
 
+    @_locked
     def mark_downloaded(self, file: DownloadedFile) -> None:
         self.conn.execute(
             "UPDATE inventory SET "
@@ -302,7 +322,8 @@ class WorkState:
     def pending_parse(self) -> Iterator[DownloadedFile]:
         rows = self.conn.execute(
             "SELECT i.* FROM inventory i LEFT JOIN parse_results p ON i.url=p.url WHERE "
-            "i.status='downloaded' AND p.url IS NULL ORDER BY i.url"
+            "i.status='downloaded' AND (p.url IS NULL OR p.status IN "
+            "('cloud_failed','quota_blocked')) ORDER BY i.url"
         )
         for row in rows:
             yield DownloadedFile(
@@ -314,26 +335,42 @@ class WorkState:
                 row["final_url"] or row["url"],
             )
 
-    def mark_parse(self, url: str, result: ParseResult, cache_path: Path | None = None) -> None:
+    @_locked
+    def mark_parse(
+        self,
+        url: str,
+        result: ParseResult,
+        cache_path: Path | None = None,
+        *,
+        used_cloud: bool = False,
+    ) -> None:
+        """Store a parse result; ``cache_path`` only when a LlamaParse cache file exists."""
         self.conn.execute(
-            "INSERT INTO parse_results(url,status,result_json,cache_path,updated) "
-            "VALUES(?,?,?,?,?) ON CONFLICT(url) DO UPDATE SET "
-            "status=excluded.status,"
-            "result_json=excluded.result_json,cache_path=excluded.cache_path,"
+            "INSERT INTO parse_results(url,status,result_json,cache_path,used_cloud,updated) "
+            "VALUES(?,?,?,?,?,?) ON CONFLICT(url) DO UPDATE SET "
+            "status=excluded.status,result_json=excluded.result_json,"
+            "cache_path=excluded.cache_path,used_cloud=excluded.used_cloud,"
             "updated=excluded.updated",
             (
                 url,
                 result.status,
                 json.dumps(jsonable(result), ensure_ascii=False),
                 str(cache_path) if cache_path else None,
+                int(used_cloud),
                 time.time(),
             ),
         )
         self.conn.commit()
 
+    @_locked
     def requeue_cloud_parses(self) -> int:
-        """Forget parse results that went through LlamaParse so the next extract redoes them."""
-        cursor = self.conn.execute("DELETE FROM parse_results WHERE cache_path IS NOT NULL")
+        """Forget LlamaParse results and their cache files so the next extract calls it again."""
+        rows = self.conn.execute(
+            "SELECT cache_path FROM parse_results WHERE used_cloud=1 AND cache_path IS NOT NULL"
+        ).fetchall()
+        for row in rows:
+            Path(row[0]).unlink(missing_ok=True)
+        cursor = self.conn.execute("DELETE FROM parse_results WHERE used_cloud=1")
         self.conn.commit()
         return cursor.rowcount
 
@@ -346,6 +383,7 @@ class WorkState:
 
         return parse_result_from_dict(json.loads(row[0]))
 
+    @_locked
     def record_failure(
         self, url: str, stage: str, reason: str, retry_at: float | None = None
     ) -> None:
@@ -416,6 +454,7 @@ class WorkState:
                 "('pending','retry','in_progress','finalizing')"
             ),
             quota_blocked=n("SELECT count(*) FROM parse_results WHERE status='quota_blocked'"),
+            cloud_failed=n("SELECT count(*) FROM parse_results WHERE status='cloud_failed'"),
             transferred_bytes=n(
                 "SELECT coalesce(sum(size),0) FROM inventory WHERE status='downloaded'"
             ),
@@ -447,7 +486,8 @@ class WorkState:
                 "INSERT INTO "
                 "cloud_jobs(request_id,url,file_id,job_id,key_label,key_fingerprint,status,payload,"
                 "updated) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(request_id) DO UPDATE SET "
-                "file_id=excluded.file_id,job_id=excluded.job_id,status=excluded.status,"
+                "file_id=COALESCE(excluded.file_id,cloud_jobs.file_id),"
+                "job_id=COALESCE(excluded.job_id,cloud_jobs.job_id),status=excluded.status,"
                 "payload=excluded.payload,updated=excluded.updated",
                 (
                     request_id,

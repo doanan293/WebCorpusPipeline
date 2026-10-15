@@ -53,7 +53,7 @@ def test_status_prints_a_one_line_summary(
     assert main(["enrich", "status"]) == 0
     assert (
         capsys.readouterr().out.strip()
-        == "downloaded=2 parsed=1 failed=0 pending=0 quota_blocked=0"
+        == "downloaded=2 parsed=1 failed=0 pending=0 quota_blocked=0 cloud_failed=0"
     )
 
 
@@ -227,3 +227,12 @@ def test_download_retry_failed_requeues_before_downloading(
     assert main(["enrich", "download", "--retry-failed"]) == 0
     assert order == ["reset", "download"]
     assert "requeued 2 failed downloads" in capsys.readouterr().out
+
+
+def test_cloud_failed_makes_exit_code_4(
+    state: FakeState, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(state, "summary", lambda: RunSummary(parsed=1, cloud_failed=2))
+
+    assert main(["enrich", "status"]) == 4
+    assert "cloud_failed=2" in capsys.readouterr().out

@@ -392,7 +392,7 @@ flowchart TD
         TEXT["TXT, CSV, RTF<br/>đọc thẳng"]
         PFAIL["Parser lỗi<br/>parse_results: failed,<br/>failures stage parse"]
         CACHE{"cache/ có kết quả<br/>cho đúng tệp và tập trang?"}
-        CLOUD["LlamaParse fast<br/>chỉ trang PDF trực quan không có chữ;<br/>tối đa cloud_workers job song song,<br/>xoay key khi hết quota"]
+        CLOUD["LlamaParse fast<br/>chỉ trang PDF trực quan không có chữ;<br/>tối đa cloud_workers job song song,<br/>cache ghi ngay trong worker,<br/>chỉ xoay key khi tài khoản hết credit,<br/>luôn xoá file đã upload"]
         CLOUDRES{"Kết quả cloud"}
         RESULT["Kết quả mỗi URL<br/>text theo page, sheet, slide hoặc document,<br/>trạng thái, cảnh báo, phiên bản parser"]
         INV --> WORK
@@ -410,22 +410,22 @@ flowchart TD
         CACHE -- "có" --> RESULT
         CACHE -- "chưa" --> CLOUD --> CLOUDRES
         CLOUDRES -- "extracted: ghi cache,<br/>trang có chữ thay trang cục bộ" --> RESULT
-        CLOUDRES -- "cloud_failed: không cache,<br/>lần chạy sau thử lại" --> RESULT
-        CLOUDRES -- "quota_blocked: hết mọi key" --> RESULT
+        CLOUDRES -- "cloud_failed: mọi lỗi của job,<br/>không cache, lần chạy sau thử lại" --> RESULT
+        CLOUDRES -- "quota_blocked: hết mọi key<br/>hoặc chưa có key; lần sau thử lại" --> RESULT
         PDF --> RESULT
         WORD --> RESULT
         SHEET --> RESULT
         SLIDE --> RESULT
         TEXT --> RESULT
         RESULT --> WORK
-        REPARSE["extract --reparse-cloud<br/>xoá kết quả đã qua LlamaParse<br/>để parse lại"]
+        REPARSE["extract --reparse-cloud<br/>xoá kết quả đã qua LlamaParse<br/>và tệp cache của chúng để gọi lại"]
         REPARSE -.-> WORK
     end
 
     %% ============ LỆNH PHỤ CỦA ENRICH ============
     subgraph ENRICHOPS["Lệnh phụ của enrich"]
         direction TB
-        ESTATUS["enrich status<br/>đã tải, đã parse, lỗi, chờ, bị chặn quota;<br/>exit 4 khi còn việc"]
+        ESTATUS["enrich status<br/>đã tải, đã parse, lỗi, chờ, quota_blocked,<br/>cloud_failed; exit 4 khi còn việc"]
         EEXPORT["enrich export --output dir<br/>documents.jsonl, extraction-report.json"]
         ERECON["enrich reconcile-job<br/>đối chiếu một job LlamaParse đã ghi"]
     end

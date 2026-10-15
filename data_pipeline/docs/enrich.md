@@ -48,11 +48,19 @@ Văn bản chỉ ra file JSONL khi `corpus package` đóng gói (`documents.json
   ODP/ODS sang định dạng Office Open XML, `openpyxl`/`xlrd` cho bảng tính, `python-pptx` cho trình chiếu. Kết
   quả là văn bản thuần với ranh giới trang, sheet, slide hoặc tài liệu. LlamaParse (`fast/latest`) chỉ chạy cho
   trang PDF trực quan không có chữ cục bộ; không bao giờ chạy cho trang trắng hay văn bản ngắn/xấu. Khoá API
-  `LLAMAPARSE_KEY1..n` đọc từ `.env`, tự xoay khi hết hạn mức.
-- `enrich extract --reparse-cloud` xoá kết quả parse của các tài liệu đã qua LlamaParse rồi parse lại chúng. Dùng
-  sau khi đổi cách đọc kết quả LlamaParse; kết quả cũ trong `cache/` không được dùng lại khi khoá cache đổi.
-- Nếu một lần chạy dừng, chạy lại đúng lệnh. `status --json` báo số đã tải, đã parse, lỗi, đang chờ và bị chặn
-  hạn mức (mã thoát 4 khi còn việc chờ hoặc bị chặn hạn mức). `reconcile-job` đối chiếu một job LlamaParse đã ghi.
+  `LLAMAPARSE_KEY1..n` đọc từ `.env`.
+  - Tối đa `cloud_workers` job chạy song song với parse cục bộ. Kết quả thành công được ghi vào `cache/` ngay trong
+    worker và ghi vào `state.sqlite3` giữa các tài liệu cục bộ, nên ngắt giữa chừng không mất kết quả đã trả tiền.
+  - Mọi lỗi của một job (mạng, timeout, lỗi máy chủ, lỗi riêng của tệp) chỉ làm tài liệu đó `cloud_failed`; chỉ
+    lỗi tài khoản hết credit/quota mới chuyển sang khoá kế tiếp. Hết mọi khoá, hoặc chưa có khoá nào (cảnh báo
+    `no LlamaParse keys`), cho `quota_blocked`. Cả hai được parse lại ở lần `extract` sau.
+  - Tệp đã upload luôn bị xoá khỏi LlamaCloud sau job. `cloud_jobs` ghi URL tài liệu và giữ `file_id`/`job_id`
+    cả khi job lỗi.
+- `enrich extract --reparse-cloud` xoá kết quả parse **và tệp cache** của các tài liệu đã qua LlamaParse, nên
+  lần parse sau thực sự gọi lại LlamaParse.
+- Nếu một lần chạy dừng, chạy lại đúng lệnh. `status --json` báo số đã tải, đã parse, lỗi, đang chờ,
+  `quota_blocked` và `cloud_failed` (mã thoát 4 khi còn bất kỳ loại nào trong ba loại cuối). `reconcile-job`
+  đối chiếu một job LlamaParse đã ghi.
 
 ## Sau một lần refresh
 
