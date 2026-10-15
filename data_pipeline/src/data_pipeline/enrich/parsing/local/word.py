@@ -10,7 +10,7 @@ from docx.table import Table
 from docx.text.paragraph import Paragraph
 
 from data_pipeline.enrich.models import DownloadedFile, ExtractedPart, LocalResult
-from data_pipeline.enrich.parsing.local.common import result, useful_text
+from data_pipeline.enrich.parsing.local.common import result
 
 
 def _blocks(parent: Any) -> list[Paragraph | Table]:
@@ -28,19 +28,14 @@ def _table_text(table: Table) -> str:
     )
 
 
-def parse_docx(file: DownloadedFile) -> tuple[str, bool]:
+def parse_word(file: DownloadedFile) -> LocalResult:
     document = Document(str(file.path))
     chunks: list[str] = []
     for item in _blocks(document):
         text = item.text if isinstance(item, Paragraph) else _table_text(item)
         if text.strip():
             chunks.append(text.strip())
-    text = "\n".join(chunks).strip()
-    return text, useful_text(text)
-
-
-def parse_word(file: DownloadedFile) -> LocalResult:
-    text, useful = parse_docx(file)
-    return result(
-        file, [ExtractedPart(1, "document", text, not useful, "python-docx")], "python-docx"
-    )
+    # Visual content means the document contains images or drawings, as for every parser.
+    visual = bool(document.element.body.xpath(".//w:drawing | .//w:pict"))
+    part = ExtractedPart(1, "document", "\n".join(chunks).strip(), visual, "python-docx")
+    return result(file, [part], "python-docx")

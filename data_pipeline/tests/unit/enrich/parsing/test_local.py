@@ -1,7 +1,9 @@
+import base64
 import hashlib
 from pathlib import Path
 
 import pymupdf as fitz
+import pytest
 from docx import Document
 from openpyxl import Workbook
 from pptx import Presentation
@@ -9,7 +11,7 @@ from pptx.util import Inches
 
 from data_pipeline.enrich.download.artifacts import extension_for
 from data_pipeline.enrich.models import DownloadedFile
-from data_pipeline.enrich.parsing.local import parse_local
+from data_pipeline.enrich.parsing.local import dispatch, parse_local
 from data_pipeline.enrich.parsing.local.pdf import cloud_part_indices, parse_pdf
 
 
@@ -81,3 +83,66 @@ def test_download_extension_uses_mime_for_dynamic_document_urls() -> None:
         )
         == ".docx"
     )
+
+
+PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+)
+
+
+def test_docx_visual_content_means_images(tmp_path: Path) -> None:
+    image = tmp_path / "dot.png"
+    image.write_bytes(PNG)
+
+    def visual(name: str, *, text: bool, picture: bool) -> bool:
+        doc = Document()
+        if text:
+            doc.add_paragraph("Nội dung")
+        if picture:
+            doc.add_picture(str(image))
+        path = tmp_path / name
+        doc.save(str(path))
+        return parse_local(_file(path)).parts[0].has_visual_content
+
+    assert visual("both.docx", text=True, picture=True) is True
+    assert visual("text.docx", text=True, picture=False) is False
+    assert visual("empty.docx", text=False, picture=False) is False
+
+
+def test_pptx_visual_content_means_picture(tmp_path: Path) -> None:
+    image = tmp_path / "dot.png"
+    image.write_bytes(PNG)
+    path = tmp_path / "deck.pptx"
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[6])
+    slide.shapes.add_textbox(Inches(1), Inches(1), Inches(2), Inches(1)).text = "Hello"
+    slide.shapes.add_picture(str(image), Inches(1), Inches(3))
+    deck.slides.add_slide(deck.slide_layouts[6]).shapes.add_textbox(
+        Inches(1), Inches(1), Inches(2), Inches(1)
+    ).text = "Text only"
+    deck.save(str(path))
+
+    parts = parse_local(_file(path)).parts
+
+    assert [part.has_visual_content for part in parts] == [True, False]
+
+
+def test_rtf_goes_through_libreoffice(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = tmp_path / "note.rtf"
+    source.write_text(r"{\rtf1 Hello}", encoding="utf-8")
+    targets: list[str] = []
+
+    def convert(path: Path, out_dir: Path, target: str) -> Path:
+        targets.append(target)
+        converted = out_dir / "note.docx"
+        doc = Document()
+        doc.add_paragraph("Hello")
+        doc.save(str(converted))
+        return converted
+
+    monkeypatch.setattr(dispatch, "convert_office", convert)
+
+    result = parse_local(_file(source))
+
+    assert targets == ["docx:Office Open XML Text"]
+    assert result.parts[0].text == "Hello"

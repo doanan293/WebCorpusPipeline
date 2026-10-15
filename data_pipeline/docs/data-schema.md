@@ -435,14 +435,16 @@ Một dòng cho mỗi URL tài liệu đã tải (`inventory.status = downloaded
 **`parts`**: `{index, kind, parser, text, has_visual_content}`, `index` bắt đầu từ 1. Văn bản thuần, giữ ranh giới
 trang/sheet/slide, không tái tạo bố cục.
 
+`has_visual_content` có **một nghĩa cho mọi parser**: phần đó chứa ảnh hoặc hình vẽ (không phụ thuộc có chữ hay không).
+
 | `kind` | `parser` | Định dạng | `has_visual_content` |
 |---|---|---|---|
 | `page` | `pymupdf` | PDF | trang có ảnh hoặc hình vẽ |
-| `page` | `llamaparse-fast` | trang PDF trực quan không có chữ cục bộ | có chữ từ LlamaParse |
-| `document` | `python-docx` | DOCX (DOC/ODT chuyển qua LibreOffice) | không có văn bản dùng được |
+| `page` | `llamaparse-fast` | trang PDF trực quan không có chữ cục bộ | giữ giá trị của trang `pymupdf` tương ứng |
+| `document` | `python-docx` | DOCX (DOC/ODT/RTF chuyển qua LibreOffice) | tài liệu có ảnh hoặc hình vẽ (`w:drawing`, `w:pict`) |
 | `sheet` | `openpyxl`, `xlrd` | XLSX/ODS, XLS | luôn `false` |
-| `slide` | `python-pptx` | PPTX (PPT/ODP chuyển qua LibreOffice) | slide có ảnh và không có chữ |
-| `document` | `text` | TXT, CSV, RTF | luôn `false` |
+| `slide` | `python-pptx` | PPTX (PPT/ODP chuyển qua LibreOffice) | slide có ảnh (kể cả trong nhóm) |
+| `document` | `text` | TXT, CSV | luôn `false` |
 
 Trang PDF từ LlamaParse chỉ thay trang cục bộ khi có chữ; nếu LlamaParse cũng không trả chữ thì trang `pymupdf`
 được giữ.

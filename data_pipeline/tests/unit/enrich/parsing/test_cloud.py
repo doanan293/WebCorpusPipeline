@@ -26,6 +26,7 @@ class FakeCloud:
     """Stands in for llama_cloud.LlamaCloud; `fail` is raised by wait_for_completion."""
 
     fail: Exception | None = None
+    text = "cloud"
     deleted: list[str]
     keys: list[str]
 
@@ -40,7 +41,7 @@ class FakeCloud:
         return SimpleNamespace(id="job-1")
 
     def _get(self, *_a: object, **_k: object) -> dict[str, Any]:
-        return {"text": {"pages": [{"page_number": 1, "text": "cloud"}]}}
+        return {"text": {"pages": [{"page_number": 1, "text": FakeCloud.text}]}}
 
     def _create(self, **_: Any) -> SimpleNamespace:
         return SimpleNamespace(id="file-1")
@@ -56,6 +57,7 @@ class FakeCloud:
 @pytest.fixture
 def cloud(monkeypatch: pytest.MonkeyPatch) -> type[FakeCloud]:
     FakeCloud.fail = None
+    FakeCloud.text = "cloud"
     FakeCloud.deleted = []
     FakeCloud.keys = []
     monkeypatch.setattr(llama_cloud, "LlamaCloud", FakeCloud)
@@ -105,3 +107,11 @@ def test_per_file_limit_error_does_not_exhaust_keys(tmp_path: Path, cloud: type[
     assert result.status == "cloud_failed"
     assert pool.exhausted == set()
     assert cloud.keys == ["s1"]
+
+
+def test_llamaparse_part_keeps_local_visual_flag(tmp_path: Path, cloud: type[FakeCloud]) -> None:
+    cloud.text = ""
+
+    result, _ = run_subset(tmp_path, KeyPool([("K1", "s1")]))
+
+    assert [(part.text, part.has_visual_content) for part in result.parts] == [("", True)]

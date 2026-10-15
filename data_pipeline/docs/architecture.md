@@ -386,10 +386,10 @@ flowchart TD
         DLFAIL["inventory: retry (có retry_at)<br/>hoặc failed; bảng failures<br/>stage download"]
         PARSE{"extract<br/>chọn parser theo định dạng<br/>(8 luồng cục bộ)"}
         PDF["PDF<br/>PyMuPDF"]
-        WORD["DOCX: python-docx<br/>DOC, ODT: LibreOffice chuyển sang DOCX"]
+        WORD["DOCX: python-docx<br/>DOC, ODT, RTF: LibreOffice chuyển sang DOCX"]
         SHEET["XLSX, ODS: openpyxl<br/>XLS: xlrd"]
         SLIDE["PPTX: python-pptx<br/>PPT, ODP: LibreOffice chuyển sang PPTX"]
-        TEXT["TXT, CSV, RTF<br/>đọc thẳng"]
+        TEXT["TXT, CSV<br/>đọc thẳng"]
         PFAIL["Parser lỗi<br/>parse_results: failed,<br/>failures stage parse"]
         CACHE{"cache/ có kết quả<br/>cho đúng tệp và tập trang?"}
         CLOUD["LlamaParse fast<br/>chỉ trang PDF trực quan không có chữ;<br/>tối đa cloud_workers job song song,<br/>cache ghi ngay trong worker,<br/>chỉ xoay key khi tài khoản hết credit,<br/>luôn xoá file đã upload"]

@@ -91,9 +91,11 @@ def parse_cloud_subset(
         if file_id is not None:
             with contextlib.suppress(Exception):
                 client.files.delete(file_id)
+    # A cloud page keeps the local page's visual flag: it describes the page, not the parser.
+    visual = {part.index: part.has_visual_content for part in local.parts}
     parts = [
         ExtractedPart(
-            original, "page", texts.get(remote, ""), bool(texts.get(remote)), "llamaparse-fast"
+            original, "page", texts.get(remote, ""), visual.get(original, False), "llamaparse-fast"
         )
         for remote, original in mapping.items()
     ]

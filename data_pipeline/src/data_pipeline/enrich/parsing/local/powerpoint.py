@@ -5,7 +5,7 @@ from typing import Any
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
-from data_pipeline.enrich.models import DownloadedFile, ExtractedPart
+from data_pipeline.enrich.models import DownloadedFile, ExtractedPart, LocalResult
 from data_pipeline.enrich.parsing.local.common import result
 
 
@@ -25,16 +25,22 @@ def _shape_text(shape: Any) -> list[str]:
     return out
 
 
-def parse_powerpoint(file: DownloadedFile):
+def _has_picture(shapes: Any) -> bool:
+    return any(
+        shape.shape_type == MSO_SHAPE_TYPE.PICTURE
+        or (shape.shape_type == MSO_SHAPE_TYPE.GROUP and _has_picture(shape.shapes))
+        for shape in shapes
+    )
+
+
+def parse_powerpoint(file: DownloadedFile) -> LocalResult:
     deck = Presentation(str(file.path))
     parts = []
     for index, slide in enumerate(deck.slides, 1):
-        chunks = []
-        image = False
-        for shape in slide.shapes:
-            chunks.extend(_shape_text(shape))
-            image = image or shape.shape_type == MSO_SHAPE_TYPE.PICTURE
+        chunks = [text for shape in slide.shapes for text in _shape_text(shape)]
         parts.append(
-            ExtractedPart(index, "slide", "\n".join(chunks), image and not chunks, "python-pptx")
+            ExtractedPart(
+                index, "slide", "\n".join(chunks), _has_picture(slide.shapes), "python-pptx"
+            )
         )
     return result(file, parts, "python-pptx")

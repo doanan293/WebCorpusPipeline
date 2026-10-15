@@ -22,15 +22,16 @@ _DIRECT_PARSERS = {
 _WORD_TARGET = "docx:Office Open XML Text"
 _SLIDES_TARGET = "pptx:Office Open XML Presentation"
 _SHEET_TARGET = "xlsx:Office Open XML Spreadsheet"
-# Legacy and OpenDocument formats are converted with LibreOffice, then parsed natively.
+# Legacy, OpenDocument and RTF documents are converted with LibreOffice, then parsed natively.
 _CONVERTED_PARSERS = {
     ".doc": (_WORD_TARGET, parse_word),
     ".odt": (_WORD_TARGET, parse_word),
     ".ppt": (_SLIDES_TARGET, parse_powerpoint),
     ".odp": (_SLIDES_TARGET, parse_powerpoint),
     ".ods": (_SHEET_TARGET, parse_xlsx),
+    ".rtf": (_WORD_TARGET, parse_word),
 }
-_TEXT_EXTENSIONS = frozenset({".txt", ".csv", ".rtf"})
+_TEXT_EXTENSIONS = frozenset({".txt", ".csv"})
 
 
 def _parse_converted(
