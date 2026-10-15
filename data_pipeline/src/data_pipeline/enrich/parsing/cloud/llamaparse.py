@@ -17,18 +17,21 @@ def _value(obj: Any, name: str, default: Any = None) -> Any:
     return getattr(obj, name, default)
 
 
-def _page_texts(response: Any) -> list[str]:
-    raw = _value(response, "pages") or _value(response, "items") or []
-    values: list[str] = []
-    if isinstance(raw, dict):
-        raw = list(raw.values())
-    for item in raw:
-        text = _value(item, "text") or _value(item, "markdown") or _value(item, "text_full") or ""
-        values.append(str(text))
-    if not values:
-        text = _value(response, "text_full") or _value(response, "markdown_full") or ""
-        values = [str(text)] if text else []
-    return values
+def _page_texts(response: Any) -> dict[int, str]:
+    """Map 1-based page numbers of the parsed subset to their text.
+
+    Plain-text pages are preferred; markdown pages are the fallback. Failed pages are left out.
+    """
+    for section, field in (("text", "text"), ("markdown", "markdown")):
+        pages = _value(_value(response, section), "pages") or []
+        texts = {
+            int(_value(page, "page_number")): str(_value(page, field) or "")
+            for page in pages
+            if _value(page, "success") is not False and _value(page, field)
+        }
+        if texts:
+            return texts
+    return {}
 
 
 def parse_cloud_subset(
@@ -75,11 +78,11 @@ def parse_cloud_subset(
             polling_interval=settings.cloud_poll_seconds,
             timeout=settings.cloud_timeout_seconds,
         )
-        response = client.parsing.get(job_id, expand=["markdown_full", "text_full", "items"])
+        response = client.parsing.get(job_id, expand=["text", "markdown"])
         texts = _page_texts(response)
         parts = []
         for remote_index, original_index in pending:
-            text = texts[remote_index - 1] if remote_index <= len(texts) else ""
+            text = texts.get(remote_index, "")
             parts.append(ExtractedPart(original_index, "page", text, bool(text), "llamaparse-fast"))
         state.save_cloud_job(
             request_id,

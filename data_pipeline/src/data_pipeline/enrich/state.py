@@ -363,6 +363,12 @@ class WorkState:
         )
         self.conn.commit()
 
+    def requeue_cloud_parses(self) -> int:
+        """Forget parse results that went through LlamaParse so the next extract redoes them."""
+        cursor = self.conn.execute("DELETE FROM parse_results WHERE cache_path IS NOT NULL")
+        self.conn.commit()
+        return cursor.rowcount
+
     def parse_record(self, url: str) -> ParseResult | None:
         row = self.conn.execute(
             "SELECT result_json FROM parse_results WHERE url=?", (url,)

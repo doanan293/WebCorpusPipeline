@@ -16,6 +16,20 @@ ghi `documents.jsonl` và `extraction-report.json` của thư mục làm việc.
 `data/crawl/final` và `--work-dir` là `data/enrichment` (tính theo thư mục project); đường dẫn bạn gõ là tương
 đối theo thư mục hiện tại.
 
+## Đầu ra (`data/enrichment/`)
+
+| File | Nội dung |
+|---|---|
+| `state.sqlite3` | nguồn sự thật: danh sách tài liệu, bảng `refs`, trạng thái tải và **văn bản đã bóc tách** của từng tài liệu |
+| `files/` | tài liệu gốc đã tải xong, tên là SHA-256 của URL kèm phần mở rộng theo MIME (`.pdf`, `.docx`, `.doc`…) |
+| `parts/` | tệp `.part` đang tải dở, được nối tiếp hoặc tải lại ở lần chạy sau |
+| `cache/` | kết quả LlamaParse đã nhận, để chạy lại không tốn hạn mức |
+| `.writer.lock` | khoá chỉ cho một tiến trình ghi vào thư mục làm việc |
+
+Văn bản chỉ ra file JSONL khi `corpus package` đóng gói (`documents.jsonl` trong gói corpus) hoặc khi chạy
+`enrich export`. Nên ghi bản export ra ngoài `data/corpus/` để khỏi nhầm với một phiên bản corpus; thư mục
+`data/corpus/enrichment/` hiện có là một bản export như vậy, không phải gói corpus.
+
 ## Hành vi
 
 - **Inventory** đọc `articles.jsonl` theo luồng, lập danh sách tài liệu duy nhất theo URL và bảng `refs` (trang
@@ -28,6 +42,8 @@ ghi `documents.jsonl` và `extraction-report.json` của thư mục làm việc.
   quả là văn bản thuần với ranh giới trang, sheet, slide hoặc tài liệu. LlamaParse (`fast/latest`) chỉ chạy cho
   trang PDF trực quan không có chữ cục bộ; không bao giờ chạy cho trang trắng hay văn bản ngắn/xấu. Khoá API
   `LLAMAPARSE_KEY1..n` đọc từ `.env`, tự xoay khi hết hạn mức.
+- `enrich extract --reparse-cloud` xoá kết quả parse của các tài liệu đã qua LlamaParse rồi parse lại chúng. Dùng
+  sau khi đổi cách đọc kết quả LlamaParse; kết quả cũ trong `cache/` không được dùng lại khi khoá cache đổi.
 - Nếu một lần chạy dừng, chạy lại đúng lệnh. `status --json` báo số đã tải, đã parse, lỗi, đang chờ và bị chặn
   hạn mức (mã thoát 4 khi còn việc chờ hoặc bị chặn hạn mức). `reconcile-job` đối chiếu một job LlamaParse đã ghi.
 

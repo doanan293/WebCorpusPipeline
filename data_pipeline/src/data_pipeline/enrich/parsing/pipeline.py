@@ -13,6 +13,10 @@ from data_pipeline.enrich.parsing.local import parse_local
 from data_pipeline.enrich.parsing.local.pdf import build_pdf_subset, cloud_part_indices
 from data_pipeline.enrich.state import WorkState
 
+# Part of the LlamaParse cache key. Bump it when the way cloud results are read changes, so stale
+# cached results are not reused ("page-text": text is read per page from the "text" expansion).
+CLOUD_CACHE_REVISION = "fast/latest/page-text"
+
 
 def extract_documents(
     state: WorkState, settings: Settings, *, api_keys: list[tuple[str, str]]
@@ -56,7 +60,7 @@ def extract_documents(
                     None,
                 )
                 continue
-            key = cache_key(file.sha256, missing, local.parser_version, "fast/latest")
+            key = cache_key(file.sha256, missing, local.parser_version, CLOUD_CACHE_REVISION)
             remote = read_cached(cache_root, key)
             if remote is None:
                 with tempfile.TemporaryDirectory(prefix="ir-parse-") as temp:

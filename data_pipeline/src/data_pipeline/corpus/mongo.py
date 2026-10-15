@@ -58,6 +58,7 @@ def _page_value(value: dict[str, Any]) -> dict[str, Any]:
         "status",
         "content_type",
         "content_id",
+        "duplicate_of",
         "warnings",
     )
     return {key: value[key] for key in fields if key in value}

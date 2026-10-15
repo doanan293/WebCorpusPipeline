@@ -78,6 +78,12 @@ def extract(
     work_dir: WorkDirOption = None,
     json_output: JsonOption = False,
     rebind_source: RebindOption = False,
+    reparse_cloud: Annotated[
+        bool,
+        typer.Option(
+            "--reparse-cloud", help="parse again the documents that already went through LlamaParse"
+        ),
+    ] = False,
 ) -> int:
     """Extract plain text from the downloaded documents."""
     from data_pipeline.core.settings import load_api_keys
@@ -87,6 +93,8 @@ def extract(
     settings = context.build_settings(source, work_dir)
     api_keys = load_api_keys(context.current_paths().env_file)
     with session.open_work_state(settings, rebind=rebind_source) as state:
+        if reparse_cloud:
+            print(f"requeued {state.requeue_cloud_parses()} documents for LlamaParse")
         summary = pipeline.extract_documents(state, settings, api_keys=api_keys)
     return _summary(summary, json_output)
 

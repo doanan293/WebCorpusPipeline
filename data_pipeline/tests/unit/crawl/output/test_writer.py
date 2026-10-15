@@ -102,6 +102,16 @@ def test_write_article_completes_url(tmp_path: Path) -> None:
     writer.close()
 
 
+def test_write_article_records_the_article_http_status(tmp_path: Path) -> None:
+    writer = make_writer(tmp_path)
+    writer.write_article({"url": "https://a.test/article", "text": "Body", "status": 203})
+    record = writer.state.url_record("https://a.test/article")
+    writer.close()
+
+    assert record is not None
+    assert record["http_status"] == 203
+
+
 def test_file_record_preserves_article_asset_role(tmp_path: Path) -> None:
     writer = make_writer(tmp_path)
     record = writer.write_file(

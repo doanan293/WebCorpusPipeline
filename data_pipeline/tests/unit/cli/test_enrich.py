@@ -22,12 +22,17 @@ from data_pipeline.enrich.state import WorkState
 class FakeState:
     def __init__(self) -> None:
         self.inventory_is_done = False
+        self.requeued = False
 
     def summary(self) -> RunSummary:
         return RunSummary(downloaded=2, parsed=1, failed=0, pending=0, quota_blocked=0)
 
     def inventory_done(self, key: str) -> bool:
         return self.inventory_is_done
+
+    def requeue_cloud_parses(self) -> int:
+        self.requeued = True
+        return 3
 
 
 @pytest.fixture
@@ -185,3 +190,19 @@ def test_reconcile_job_rejects_an_unknown_pair(
 
     assert code == 2
     assert "request/job pair is not present" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(("args", "requeued"), [([], False), (["--reparse-cloud"], True)])
+def test_extract_reparses_cloud_documents_only_on_request(
+    state: FakeState, monkeypatch: pytest.MonkeyPatch, args: list[str], requeued: bool
+) -> None:
+    seen: list[bool] = []
+
+    def extract(current: FakeState, settings: object, *, api_keys: object) -> RunSummary:
+        seen.append(current.requeued)
+        return current.summary()
+
+    monkeypatch.setattr(pipeline, "extract_documents", extract)
+
+    assert main(["enrich", "extract", *args]) == 0
+    assert seen == [requeued]

@@ -111,7 +111,7 @@ class CrawlWriter:
             "status": "extracted",
             "content_id": content_id,
             "duplicate_of": record_copy.get("duplicate_of"),
-            "http_status": record_copy.get("http_status", 200),
+            "http_status": record_copy.get("status", 200),
             "content_type": record_copy.get("content_type", "text/html"),
         }
         self.state.complete_url(disposition, article=record_copy)

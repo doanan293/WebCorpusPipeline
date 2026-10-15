@@ -70,10 +70,21 @@ uv run data-pipeline corpus pull && uv run data-pipeline corpus import-mongo --c
 | `config/pipeline.yaml` | tải xuống, parser, MongoDB |
 | `config/domains/` | `all.txt`, `active.txt`, `status.jsonl` (xem [docs/domains.md](docs/domains.md)) |
 | `config/kaggle-dataset.json`, `config/corpus.lock.json` | metadata dataset Kaggle và bản đã ghim |
-| `data/` | toàn bộ dữ liệu sinh ra: `crawl/`, `enrichment/`, `corpus/` (không đưa vào git) |
+| `data/` | toàn bộ dữ liệu sinh ra (không đưa vào git), xem [Dữ liệu đầu ra](#dữ-liệu-đầu-ra) |
 
 Biến môi trường đã export trong shell luôn thắng giá trị trong `.env`. Đường dẫn mặc định tính theo thư mục
 project, không phụ thuộc thư mục bạn đang đứng; đường dẫn bạn gõ là tương đối theo thư mục hiện tại.
+
+## Dữ liệu đầu ra
+
+| Thư mục | Giai đoạn | Nội dung chính |
+|---|---|---|
+| `data/crawl/` | crawl | `articles.jsonl` thô, `state/` để resume; `final/articles.jsonl` là bản chốt cho bước sau ([docs/crawl.md](docs/crawl.md#đầu-ra-datacrawl)) |
+| `data/enrichment/` | enrich | tài liệu gốc trong `files/`, văn bản đã bóc tách trong `state.sqlite3` ([docs/enrich.md](docs/enrich.md#đầu-ra-dataenrichment)) |
+| `data/corpus/<phiên bản>/` | corpus | gói hoàn chỉnh: `articles.jsonl`, `documents.jsonl`, `images.jsonl`, `links.jsonl` ([docs/data-schema.md](docs/data-schema.md#corpus-datacorpusphiên-bản)) |
+
+Muốn dùng dữ liệu thì đọc `data/corpus/latest/` (hoặc `data/corpus/pulled/` nếu tải từ Kaggle); `data/crawl/` và
+`data/enrichment/` là thư mục làm việc của pipeline.
 
 ## Phát triển
 

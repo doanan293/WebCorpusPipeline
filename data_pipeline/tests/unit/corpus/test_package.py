@@ -42,6 +42,13 @@ def test_package_refuses_unresolved_enrichment(tmp_path: Path) -> None:
         package_corpus(source, work, tmp_path / "corpus")
 
 
+def test_mongo_page_keeps_the_duplicate_owner() -> None:
+    page = _page_value(
+        {"url": "https://example.test/copy", "duplicate_of": "https://example.test/a"}
+    )
+    assert page["duplicate_of"] == "https://example.test/a"
+
+
 def test_mongo_page_projection_and_edge_ids_are_bounded_and_distinct() -> None:
     page = _page_value(
         {
