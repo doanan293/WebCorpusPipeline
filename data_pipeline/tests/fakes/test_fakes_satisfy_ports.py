@@ -3,9 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from data_pipeline.corpus.application import ports as corpus_ports
+from data_pipeline.crawl.application import ports as crawl_ports
 from data_pipeline.domains.application import ports as domains_ports
 from data_pipeline.enrich.application import ports
 from tests.fakes.corpus import FakeCorpusDatabase, FakePublisher
+from tests.fakes.crawl import FakeCrawlState, FakeEngine, FakeHtmlStore, FakeRefreshStore
 from tests.fakes.domains import FakeBrowser, FakeProber, MemoryReports
 from tests.fakes.enrich import (
     FakeArticleSource,
@@ -54,3 +56,14 @@ def test_domains_fakes_satisfy_their_ports() -> None:
     _check(prober, domains_ports.HostProber)
     _check(browser, domains_ports.BrowserProber)
     _check(reports, domains_ports.AuditReports)
+
+
+def test_crawl_fakes_satisfy_their_ports() -> None:
+    state: crawl_ports.CrawlStateStore = FakeCrawlState()
+    refresh: crawl_ports.RefreshStorePort = FakeRefreshStore()
+    html: crawl_ports.RawHtmlStore = FakeHtmlStore()
+    engine: crawl_ports.CrawlEngine = FakeEngine()
+    _check(state, crawl_ports.CrawlStateStore)
+    _check(refresh, crawl_ports.RefreshStorePort)
+    _check(html, crawl_ports.RawHtmlStore)
+    _check(engine, crawl_ports.CrawlEngine)

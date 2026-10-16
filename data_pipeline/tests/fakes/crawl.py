@@ -4,25 +4,47 @@ from __future__ import annotations
 
 import hashlib
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
-from data_pipeline.crawl.domain.models import RouteFamilyState
+from data_pipeline.crawl.application.ports import EngineResult, SpiderSetup
+from data_pipeline.crawl.domain.config import CrawlerConfig
+from data_pipeline.crawl.domain.frontier.assets import AssetRole
+from data_pipeline.crawl.domain.models import RawPage, RouteFamilyState
 from data_pipeline.crawl.domain.options import CrawlOptions
+from data_pipeline.crawl.domain.tuning import RuntimeTuning
 
 
 class FakeCrawlState:
-    def __init__(self) -> None:
+    """A crawl state in memory: records, articles, files and errors as plain lists and dicts."""
+
+    def __init__(self, root: Path = Path("state")) -> None:
+        self.root = root
+        self.manifest: dict[str, Any] = {"input_sha256": "fake", "started_at": 0}
+        self.refresh_run_id: str | None = None
         self.completed: set[str] = set()
         self.articles: list[dict[str, Any]] = []
         self.files: list[dict[str, Any]] = []
         self.errors: list[dict[str, Any]] = []
         self.discovered: list[dict[str, Any]] = []
         self.skipped: list[dict[str, Any]] = []
+        self.targets: list[dict[str, Any]] = []
         self.url_records: dict[str, dict[str, Any]] = {}
-        self.content_owners: dict[str, str] = {}
+        self.owners: dict[str, str] = {}
         self._asset_referrers: dict[str, set[tuple[str, str]]] = defaultdict(set)
-        self.route_families: dict[str, RouteFamilyState] = {}
+        self.families: dict[str, RouteFamilyState] = {}
+        self.hosts: dict[str, dict[str, object]] = {}
+        self.refresh = FakeRefreshStore()
+        self.finished: dict[str, object] | None = None
+
+    @property
+    def crawl_id(self) -> str:
+        return "fake-crawl"
+
+    def write_manifest(self, value: dict[str, Any]) -> None:
+        self.manifest = value
 
     def is_complete(self, url: str) -> bool:
         return url in self.completed
@@ -37,7 +59,13 @@ class FakeCrawlState:
     def checkpoint(self, url: str) -> None:
         self.completed.add(url)
 
-    def merge_url(self, record: dict[str, Any], *, completed: bool = False) -> dict[str, Any]:
+    def merge_url(
+        self,
+        record: Mapping[str, object],
+        *,
+        completed: bool = False,
+        keep_scheduled: bool = False,
+    ) -> dict[str, object]:
         url = str(record["url"])
         existing = self.url_records.get(url, {})
         merged = dict(existing)
@@ -49,53 +77,226 @@ class FakeCrawlState:
 
     def complete_url(
         self,
-        disposition: dict[str, Any],
+        disposition: Mapping[str, object],
         *,
-        article: dict[str, Any] | None = None,
-        file: dict[str, Any] | None = None,
-        error: dict[str, Any] | None = None,
+        article: Mapping[str, object] | None = None,
+        file: Mapping[str, object] | None = None,
+        error: Mapping[str, object] | None = None,
     ) -> None:
         if article is not None:
-            self.articles.append(article)
+            self.articles.append(dict(article))
         if file is not None:
-            self.files.append(file)
+            self.files.append(dict(file))
         if error is not None:
-            self.errors.append(error)
+            self.errors.append(dict(error))
         self.merge_url(disposition, completed=True)
 
-    def put_error(self, record: dict[str, Any]) -> None:
-        self.errors.append(record)
+    def upsert_url(self, record: Mapping[str, object], *, completed: bool = False) -> None:
+        self.merge_url(record, completed=completed)
+
+    def put_error(self, record: Mapping[str, object]) -> None:
+        self.errors.append(dict(record))
+
+    def insert_url_if_absent(self, record: Mapping[str, object]) -> None:
+        if str(record["url"]) not in self.url_records:
+            self.merge_url(record, completed=True)
 
     def claim_content(self, content_id: str, url: str) -> str:
-        if content_id not in self.content_owners:
-            self.content_owners[content_id] = url
-        return self.content_owners[content_id]
+        return self.owners.setdefault(content_id, url)
 
-    def add_asset_referrer(self, url: str, page_url: str, role: str) -> None:
+    def add_asset_referrer(self, url: str, page_url: str, role: AssetRole) -> None:
         self._asset_referrers[url].add((page_url, role))
 
     def asset_referrers(self, url: str) -> tuple[str, ...]:
         return tuple(sorted({page for page, _ in self._asset_referrers.get(url, ())}))
 
-    def url_record(self, url: str) -> dict[str, Any] | None:
+    def url_record(self, url: str) -> dict[str, object] | None:
         return self.url_records.get(url)
 
-    def article(self, url: str) -> dict[str, Any] | None:
+    def url_status(self, url: str) -> str | None:
+        record = self.url_records.get(url)
+        return None if record is None else str(record.get("status"))
+
+    def article(self, url: str) -> dict[str, object] | None:
         return next((a for a in reversed(self.articles) if a.get("url") == url), None)
 
+    def file_record(self, url: str) -> dict[str, object] | None:
+        return next((f for f in reversed(self.files) if f.get("url") == url), None)
+
     def release_content_owner(self, url: str, content_id: str) -> None:
-        if self.content_owners.get(content_id) == url:
-            del self.content_owners[content_id]
+        if self.owners.get(content_id) == url:
+            del self.owners[content_id]
 
     def mark_absent(self, url: str) -> None:
         self.url_records.setdefault(url, {"url": url})["status"] = "absent"
 
-    def update_url_fields(self, url: str, fields: dict[str, Any]) -> None:
+    def update_url_fields(self, url: str, fields: Mapping[str, object]) -> None:
         if url in self.url_records:
             self.url_records[url].update(fields)
 
+    def backup_to(self, destination: Path) -> None:
+        return None
+
+    def counts(self) -> dict[str, int]:
+        return dict(Counter(f"url_status_{r.get('status')}" for r in self.url_records.values()))
+
+    def put_target(self, record: Mapping[str, object]) -> None:
+        self.targets.append(dict(record))
+
+    def iter_url_records(self) -> Iterator[dict[str, object]]:
+        return iter([self.url_records[url] for url in sorted(self.url_records)])
+
+    def iter_pending_scheduled_records(self) -> Iterator[dict[str, object]]:
+        return iter(
+            [
+                record
+                for url, record in sorted(self.url_records.items())
+                if url not in self.completed
+                and record.get("status") == "scheduled"
+                and record.get("frontier_action") == "scheduled"
+            ]
+        )
+
+    def parsed_probes(self) -> list[tuple[str, str]]:
+        return []
+
+    def navigation_pages(self) -> list[str]:
+        return []
+
+    def pagination_members(self) -> list[tuple[str, str, str | None]]:
+        return []
+
+    def recent_content_candidates(self) -> list[tuple[str, object, object, object]]:
+        return []
+
+    def failed_records(self) -> list[tuple[str, dict[str, object], dict[str, object]]]:
+        return []
+
+    def skipped_records(self) -> list[tuple[str, dict[str, object]]]:
+        return []
+
+    def requeue(self, records: list[tuple[str, dict[str, object]]]) -> int:
+        for url, record in records:
+            self.url_records[url] = record
+            self.completed.discard(url)
+        return len(records)
+
+    def reextract_candidates(self) -> list[tuple[str, object]]:
+        return []
+
+    def set_article_payload(self, url: str, article: Mapping[str, object]) -> None:
+        self.articles.append(dict(article))
+
+    def content_owners(self) -> dict[str, str]:
+        return dict(self.owners)
+
+    def replace_content_owners(self, urls: Iterable[str], owners: Mapping[str, str]) -> None:
+        gone = set(urls)
+        self.owners = {k: v for k, v in self.owners.items() if v not in gone}
+        self.owners.update(owners)
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        yield
+
+    def raw_html_store(self, directory: Path) -> FakeHtmlStore:
+        return FakeHtmlStore()
+
+    def refresh_store(self) -> FakeRefreshStore:
+        return self.refresh
+
+    def export_crawl(self, output: Path) -> None:
+        return None
+
+    def export_discovery(self, output: Path) -> None:
+        return None
+
+    def export_final(self, output: Path) -> None:
+        return None
+
+    def iter_final_articles(self, urls: Iterable[str] | None = None) -> Iterator[tuple[str, str]]:
+        return iter(())
+
+    def reason_counts(self, reasons: frozenset[str] | None = None) -> dict[str, int]:
+        return {}
+
+    def route_families(self) -> Iterator[RouteFamilyState]:
+        return iter(self.families.values())
+
     def put_route_family(self, family: RouteFamilyState) -> None:
-        self.route_families[family.family_key] = family
+        self.families[family.family_key] = family
+
+    def host_discovery(self) -> Iterator[dict[str, object]]:
+        return iter(self.hosts.values())
+
+    def upsert_host_discovery(self, record: Mapping[str, object]) -> None:
+        self.hosts[str(record["hostname"])] = dict(record)
+
+    def host_completion(self, hostnames: frozenset[str]) -> dict[str, dict[str, object]]:
+        return {}
+
+    def finish(
+        self,
+        status: str,
+        exit_code: int,
+        counts: dict[str, int],
+        metrics: Mapping[str, object],
+        truncation: Mapping[str, object] | None = None,
+        *,
+        discovery: Mapping[str, object] | None = None,
+        frontier: Mapping[str, object] | None = None,
+        host_completion: Mapping[str, Mapping[str, object]] | None = None,
+        public_output: Path | None = None,
+    ) -> None:
+        self.finished = {"status": status, "exit_code": exit_code}
+
+    def close(self) -> None:
+        return None
+
+
+class FakeHtmlStore:
+    """Raw pages in memory, keyed by URL."""
+
+    def __init__(self) -> None:
+        self.pages: dict[str, RawPage] = {}
+
+    def put(
+        self,
+        url: str,
+        body: bytes,
+        *,
+        final_url: str,
+        status: int,
+        content_type: str,
+        fetched_at: str,
+    ) -> str:
+        self.pages[url] = RawPage(url, final_url, status, content_type, fetched_at, body)
+        return hashlib.sha256(body).hexdigest()
+
+    def get(self, url: str) -> RawPage | None:
+        return self.pages.get(url)
+
+
+class FakePreparedCrawl:
+    def __init__(self, result: EngineResult) -> None:
+        self.result = result
+
+    def start(self) -> EngineResult:
+        return self.result
+
+
+class FakeEngine:
+    """Records each spider setup it is given and reports the stats it was built with."""
+
+    def __init__(self, stats: dict[str, Any] | None = None) -> None:
+        self.setups: list[SpiderSetup] = []
+        self.stats = stats or {"finish_reason": "finished"}
+
+    def prepare(
+        self, config: CrawlerConfig, tuning: RuntimeTuning, setup: SpiderSetup
+    ) -> FakePreparedCrawl:
+        self.setups.append(setup)
+        return FakePreparedCrawl(EngineResult(dict(self.stats), {}))
 
 
 class FakeCrawlWriter:
