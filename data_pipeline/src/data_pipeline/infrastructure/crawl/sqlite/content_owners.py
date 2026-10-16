@@ -6,6 +6,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from data_pipeline.domain.crawl.models import DUPLICATE_DROPPED_FIELDS
+from data_pipeline.infrastructure.crawl.sqlite.transaction import immediate_transaction
 
 
 def _url_record(connection: sqlite3.Connection, url: str) -> dict[str, object] | None:
@@ -66,8 +67,7 @@ class SqliteContentOwners:
                 (url, content_id),
             )
         ]
-        self.connection.execute("BEGIN IMMEDIATE;")
-        try:
+        with immediate_transaction(self.connection):
             if not dependents:
                 self.connection.execute(
                     "DELETE FROM content_owner WHERE content_id = ?;", (content_id,)
@@ -100,10 +100,6 @@ class SqliteContentOwners:
                         "UPDATE url_records SET payload = ? WHERE url = ?;",
                         (json.dumps(record, ensure_ascii=False), dependent),
                     )
-            self.connection.execute("COMMIT;")
-        except Exception:
-            self.connection.execute("ROLLBACK;")
-            raise
 
     def content_owners(self) -> dict[str, str]:
         rows = self.connection.execute("SELECT content_id, url FROM content_owner;")

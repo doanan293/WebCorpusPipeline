@@ -7,6 +7,7 @@ from collections import Counter
 from collections.abc import Iterable, Iterator
 
 from data_pipeline.domain.crawl.run_status import FINISHED_STATUSES, SUCCESS_OUTCOMES
+from data_pipeline.infrastructure.crawl.sqlite.transaction import immediate_transaction
 
 
 def latest_refresh_run(connection: sqlite3.Connection) -> dict[str, object] | None:
@@ -106,16 +107,11 @@ class RefreshStore:
         return [str(row[0]) for row in rows]
 
     def add_targets(self, run_id: str, targets: Iterable[tuple[str, str]]) -> None:
-        self.connection.execute("BEGIN IMMEDIATE;")
-        try:
+        with immediate_transaction(self.connection):
             self.connection.executemany(
                 "INSERT OR IGNORE INTO refresh_targets (run_id, url, reason) VALUES (?, ?, ?);",
                 ((run_id, url, reason) for url, reason in targets),
             )
-            self.connection.execute("COMMIT;")
-        except Exception:
-            self.connection.execute("ROLLBACK;")
-            raise
 
     def add_target(self, run_id: str, url: str, reason: str) -> bool:
         cursor = self.connection.execute(

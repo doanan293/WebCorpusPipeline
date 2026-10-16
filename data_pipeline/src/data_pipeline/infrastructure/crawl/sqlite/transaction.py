@@ -7,7 +7,14 @@ from contextlib import contextmanager
 
 @contextmanager
 def immediate_transaction(connection: sqlite3.Connection) -> Iterator[None]:
-    """Run the block in one write transaction; roll it back on any exception."""
+    """Run the block in one write transaction; roll it back on any exception.
+
+    Inside a transaction that is already open the block joins it, and the outer one commits or
+    rolls back.
+    """
+    if connection.in_transaction:
+        yield
+        return
     connection.execute("BEGIN IMMEDIATE;")
     try:
         yield

@@ -102,8 +102,7 @@ class SqliteUrlRecords:
         file: Mapping[str, object] | None = None,
         error: Mapping[str, object] | None = None,
     ) -> None:
-        self.connection.execute("BEGIN IMMEDIATE;")
-        try:
+        with immediate_transaction(self.connection):
             if article is not None:
                 self._put_payload("articles", article)
             if file is not None:
@@ -111,10 +110,6 @@ class SqliteUrlRecords:
             if error is not None:
                 self._put_payload("errors", error)
             self.merge_url(disposition, completed=True)
-            self.connection.execute("COMMIT;")
-        except Exception:
-            self.connection.execute("ROLLBACK;")
-            raise
 
     def upsert_url(self, record: Mapping[str, object], *, completed: bool = False) -> None:
         self.merge_url(record, completed=completed)
