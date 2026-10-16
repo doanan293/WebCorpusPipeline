@@ -1,90 +1,104 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Mapping
-from typing import Any, cast
+from collections.abc import Callable
+from typing import Any
 from urllib.parse import urlsplit
 
 import scrapy
+from scrapy.exceptions import IgnoreRequest
+from scrapy.http import Response
 
-from data_pipeline.crawl.application.writer import CrawlWriter
-from data_pipeline.crawl.domain.frontier.assets import (
-    AssetPolicy,
-    is_recognizable_binary,
-    recognizable_asset,
-)
-from data_pipeline.crawl.domain.frontier.frontier import (
-    Candidate,
-    DiscoverySource,
-    FrontierDecision,
-    FrontierPolicy,
-    Purpose,
-)
-from data_pipeline.crawl.domain.frontier.sitemaps import SitemapDiscoveryCoordinator
+from data_pipeline.crawl.application.ports import CrawlStateStore
+from data_pipeline.crawl.domain.frontier.assets import recognizable_asset
 from data_pipeline.crawl.domain.options import CrawlOptions
+from data_pipeline.crawl.domain.pages import (
+    FailedRequest,
+    FetchedPage,
+    FollowUp,
+    RefreshFetch,
+    Scheduled,
+)
+from data_pipeline.crawl.domain.refresh_rules import conditional_headers, response_validators
+
+
+def _host(url: str) -> str:
+    return (urlsplit(url).hostname or "").lower().rstrip(".")
+
+
+def fetched_page(response: Response) -> FetchedPage:
+    """The parts of a Scrapy response the crawl rules read."""
+    meta = response.meta
+    decode: Callable[[], str] | None = None
+    if hasattr(response, "text"):
+
+        def decode() -> str:
+            return response.text
+
+    return FetchedPage(
+        url=response.url,
+        input_url=meta.get("input_url", response.url),
+        status=response.status,
+        content_type=(response.headers.get(b"Content-Type") or b"").decode(
+            "latin1", errors="replace"
+        ),
+        body=response.body,
+        encoding=getattr(response, "encoding", None),
+        purpose=meta.get("response_purpose", "page"),
+        seed_mode=meta.get("seed_mode", "exact"),
+        discovery_source=meta.get("discovery_source", "seed"),
+        meta=meta,
+        validators=response_validators(response.headers.get),
+        flags=tuple(getattr(response, "flags", None) or ()),
+        decode=decode,
+    )
+
+
+def failed_request(failure: Any) -> FailedRequest:
+    """The parts of a failed Scrapy request the crawl rules read."""
+    request = failure.request
+    meta = request.meta
+    return FailedRequest(
+        url=request.url,
+        input_url=meta.get("input_url", request.url),
+        seed_mode=meta.get("seed_mode", "exact"),
+        purpose=meta.get("response_purpose", "page"),
+        request_scope=meta.get("request_scope", "page"),
+        discovery_source=meta.get("discovery_source", "seed"),
+        explicit=meta.get("explicit", False),
+        http_fallback=bool(meta.get("http_fallback")),
+        refresh_reason=meta.get("refresh_reason"),
+        error=str(failure.value),
+        error_type=getattr(failure.type, "__name__", ""),
+        ignored=isinstance(failure.value, IgnoreRequest),
+    )
 
 
 class RequestFactory:
-    """Builds Scrapy requests for frontier candidates and resumed crawl records."""
+    """Builds Scrapy requests for the fetches the crawl pipeline schedules."""
 
     def __init__(
         self,
         *,
         options: CrawlOptions,
-        frontier: FrontierPolicy,
-        writer: CrawlWriter,
-        policy: AssetPolicy,
-        coordinator: SitemapDiscoveryCoordinator,
+        state: CrawlStateStore,
         callback: Callable[..., Any],
         errback: Callable[..., Any],
     ) -> None:
         self.options = options
-        self.frontier = frontier
-        self.writer = writer
-        self.policy = policy
-        self.coordinator = coordinator
+        self.state = state
         self.callback = callback
         self.errback = errback
 
-    def for_scheduled(
-        self, candidate: Candidate, decision: FrontierDecision
-    ) -> scrapy.Request | None:
-        canonical = decision.canonical_url
-        if canonical is None:
-            msg = "a scheduled decision must carry a canonical URL"
-            raise ValueError(msg)
+    def build(self, follow: FollowUp) -> scrapy.Request:
+        if isinstance(follow, RefreshFetch):
+            return self.refresh(follow.url, follow.reason)
+        return self.scheduled(follow)
 
-        # Skip completed URLs on resume
-        if self.writer.state.is_finished(canonical):
-            return None
-
-        # Persist scheduled decision
-        self.writer.record_scheduled(
-            {
-                "url": canonical,
-                "status": "scheduled",
-                "seed_type": candidate.source_mode,
-                "discovered_from": candidate.discovered_from,
-                "frontier_action": "scheduled",
-                "discovery_source": candidate.discovery_source,
-                "response_purpose": candidate.purpose,
-                "explicit": candidate.explicit,
-                "link_kind": candidate.link_kind,
-                "family_key": candidate.family_key,
-                "ordinal": candidate.ordinal,
-                "asset_role": candidate.asset_role,
-                "asset_group": candidate.asset_group,
-                "priority": decision.priority,
-            }
-        )
-
-        req_host = (urlsplit(canonical).hostname or "").lower().rstrip(".")
-
-        # Call coordinator.record_html_target for scheduled page candidates
-        if candidate.purpose == "page":
-            self.coordinator.record_html_target(req_host, canonical)
-
+    def scheduled(self, scheduled: Scheduled) -> scrapy.Request:
+        canonical = scheduled.url
+        candidate = scheduled.candidate
         meta: dict[str, Any] = {
-            "allowed_hostnames": frozenset({req_host}),
+            "allowed_hostnames": frozenset({_host(canonical)}),
             "input_url": canonical,
             "seed_mode": candidate.source_mode,
             "explicit": candidate.explicit,
@@ -108,142 +122,46 @@ class RequestFactory:
                     "referring_page": candidate.discovered_from,
                 }
             )
-
+        if scheduled.http_fallback:
+            meta["http_fallback"] = True
         return scrapy.Request(
             canonical,
             callback=self.callback,
             errback=self.errback,
-            priority=decision.priority,
+            priority=scheduled.priority,
             meta=meta,
             dont_filter=True,
         )
 
-    def for_candidate(self, candidate: Candidate) -> scrapy.Request | None:
-        if candidate.purpose in {"robots", "sitemap"}:
-            decision = self.frontier.consider(candidate)
-            if decision.action == "reject":
-                if decision.canonical_url:
-                    self.writer.record_rejected(
-                        {
-                            "url": decision.canonical_url,
-                            "final_url": decision.canonical_url,
-                            "status": "skipped",
-                            "reason": decision.reason,
-                            "discovery_source": candidate.discovery_source,
-                            "response_purpose": candidate.purpose,
-                        }
-                    )
-                return None
-            return self.for_scheduled(candidate, decision)
-
-        is_binary = is_recognizable_binary(candidate.url)
-        is_asset = candidate.purpose == "asset" or is_binary
-
-        if is_asset:
-            if self.options.assets == "content-only":
-                decision = self.frontier.consider(candidate)
-                if decision.canonical_url and decision.action in {"schedule", "record_only"}:
-                    self.writer.record_discovered(
-                        {
-                            "url": decision.canonical_url,
-                            "final_url": decision.canonical_url,
-                            "status": "discovered_not_downloaded",
-                            "seed_type": candidate.source_mode,
-                            "discovered_from": candidate.discovered_from,
-                            "content_type": None,
-                            "discovery_source": candidate.discovery_source,
-                            "response_purpose": "asset",
-                            "asset_role": candidate.asset_role,
-                        }
-                    )
-                elif decision.action == "reject" and decision.canonical_url:
-                    self.writer.record_rejected(
-                        {
-                            "url": decision.canonical_url,
-                            "final_url": decision.canonical_url,
-                            "status": "skipped",
-                            "reason": decision.reason,
-                            "discovery_source": candidate.discovery_source,
-                            "response_purpose": "asset",
-                        }
-                    )
-                return None
-            if (
-                is_binary
-                and recognizable_asset(candidate.url) is None
-                and candidate.purpose != "asset"
-            ):
-                decision = self.frontier.consider(candidate)
-                if decision.canonical_url:
-                    self.writer.record_rejected(
-                        {
-                            "url": decision.canonical_url,
-                            "final_url": decision.canonical_url,
-                            "status": "skipped",
-                            "reason": "unsupported_asset_type",
-                            "discovery_source": candidate.discovery_source,
-                            "response_purpose": "asset",
-                        }
-                    )
-                return None
-
-        decision = self.frontier.consider(candidate)
-        if decision.action == "reject":
-            if decision.canonical_url:
-                self.writer.record_rejected(
-                    {
-                        "url": decision.canonical_url,
-                        "final_url": decision.canonical_url,
-                        "status": "skipped",
-                        "reason": decision.reason,
-                        "discovery_source": candidate.discovery_source,
-                        "response_purpose": candidate.purpose,
-                    }
-                )
-            return None
-
-        if decision.action == "record_only":
-            return None
-
-        return self.for_scheduled(candidate, decision)
-
-    def resume(self, records: Iterable[Mapping[str, object]]) -> Iterator[scrapy.Request]:
-        for record in records:
-            url = str(record["url"])
-            purpose_value = str(record.get("response_purpose") or "page")
-            purpose = cast(
-                Purpose,
-                purpose_value
-                if purpose_value in {"robots", "sitemap", "page", "asset"}
-                else "page",
-            )
-            source_value = str(record.get("discovery_source") or "html_link")
-            discovery_source = cast(
-                DiscoverySource,
-                source_value if source_value in {"seed", "sitemap", "html_link"} else "html_link",
-            )
-            candidate = Candidate(
-                url=url,
-                source_mode="exact" if record.get("seed_type") == "exact" else "recursive",
-                discovered_from=(
-                    str(record["discovered_from"])
-                    if record.get("discovered_from") is not None
-                    else None
-                ),
-                purpose=purpose,
-                explicit=bool(record.get("explicit", False)),
-                discovery_source=discovery_source,
-                link_kind=cast(Any, record.get("link_kind")),
-                family_key=(
-                    str(record["family_key"]) if record.get("family_key") is not None else None
-                ),
-                ordinal=cast(int | None, record.get("ordinal")),
-                asset_role=cast(Any, record.get("asset_role")),
-                asset_group=cast(Any, record.get("asset_group")),
-            )
-            decision = FrontierDecision(
-                "schedule", url, None, int(cast("int | str", record.get("priority") or 0))
-            )
-            request = self.for_scheduled(candidate, decision)
-            if request is not None:
-                yield request
+    def refresh(self, url: str, reason: str) -> scrapy.Request:
+        """A conditional refetch of a known page during a refresh run."""
+        record = self.state.url_record(url) or {}
+        meta: dict[str, Any] = {
+            "allowed_hostnames": frozenset({_host(url)}),
+            "input_url": url,
+            "seed_mode": "exact" if record.get("seed_type") == "exact" else "recursive",
+            "explicit": bool(record.get("explicit", False)),
+            "response_purpose": str(record.get("response_purpose") or "page"),
+            "discovery_source": record.get("discovery_source") or "seed",
+            "discovered_from": record.get("discovered_from"),
+            "handle_httpstatus_all": True,
+            "request_scope": "page",
+            "asset_mode": self.options.assets,
+            "link_kind": record.get("link_kind"),
+            "family_key": record.get("family_key"),
+            "ordinal": record.get("ordinal"),
+            "refresh_reason": reason,
+            "previous_content_id": (
+                record.get("content_id") if record.get("status") == "extracted" else None
+            ),
+            "previous_duplicate_of": record.get("duplicate_of"),
+        }
+        return scrapy.Request(
+            url,
+            callback=self.callback,
+            errback=self.errback,
+            priority=500,
+            headers=conditional_headers(record),
+            meta=meta,
+            dont_filter=True,
+        )

@@ -6,7 +6,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from data_pipeline.crawl.application.asset_responses import AssetResponses
 from data_pipeline.crawl.application.common import exact_only_hosts, record_invalid_seeds
+from data_pipeline.crawl.application.page_pipeline import PagePipeline
 from data_pipeline.crawl.application.ports import (
     CrawlEngine,
     CrawlStateStore,
@@ -256,24 +258,27 @@ class _CrawlRun:
                 "reuse",
                 {
                     "config": ctx.config,
-                    "options": ctx.options,
-                    "writer": prepared.writer,
-                    "policy": prepared.policy,
+                    "assets": AssetResponses(
+                        options=ctx.options, writer=prepared.writer, policy=prepared.policy
+                    ),
                     "targets": prepared.reused_targets,
                 },
             )
+        pipeline = PagePipeline(
+            options=ctx.options,
+            frontier=self.frontier,
+            writer=prepared.writer,
+            policy=prepared.policy,
+            coordinator=self.coordinator,
+            refresh=prepared.refresh_session,
+        )
         return SpiderSetup(
             "unified",
             {
                 "seeds": ctx.seeds,
                 "config": ctx.config,
-                "options": ctx.options,
-                "frontier": self.frontier,
-                "writer": prepared.writer,
-                "policy": prepared.policy,
-                "coordinator": self.coordinator,
+                "pipeline": pipeline,
                 "resume_records": self.resume_records,
-                "refresh": prepared.refresh_session,
                 "refresh_targets": prepared.refresh_targets,
             },
         )

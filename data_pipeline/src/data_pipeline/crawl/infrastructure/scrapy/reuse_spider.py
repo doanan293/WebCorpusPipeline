@@ -7,54 +7,32 @@ from urllib.parse import urlsplit
 import scrapy
 from scrapy.http import Response
 
-from data_pipeline.crawl.application.writer import CrawlWriter
+from data_pipeline.crawl.application.ports import AssetResponsesLike
 from data_pipeline.crawl.domain.config import CrawlerConfig
-from data_pipeline.crawl.domain.frontier.assets import AssetPolicy
 from data_pipeline.crawl.domain.models import ReusedAssetTarget
-from data_pipeline.crawl.domain.options import CrawlOptions
-from data_pipeline.crawl.infrastructure.scrapy.assets import AssetResponseHandler
-from data_pipeline.crawl.infrastructure.scrapy.unified_spider import UnifiedSpider
+from data_pipeline.crawl.infrastructure.scrapy.requests import failed_request, fetched_page
 
 
-class ReusedAssetSpider(UnifiedSpider):
+class ReusedAssetSpider(scrapy.Spider):
+    """Fetches again the assets a reused crawl referenced; every request is an asset request."""
+
     name = "hust_reused_assets"
 
     def __init__(
         self,
         *,
         config: CrawlerConfig,
-        options: CrawlOptions,
-        writer: CrawlWriter,
-        policy: AssetPolicy,
+        assets: AssetResponsesLike,
         targets: Iterable[ReusedAssetTarget],
         **kwargs: Any,
     ) -> None:
-        scrapy.Spider.__init__(self, **kwargs)
+        super().__init__(**kwargs)
         self.config = config
-        self.options = options
-        self.writer = writer
-        self.policy = policy
+        self.assets = assets
         self.targets = targets
-        self.assets = AssetResponseHandler(options=options, writer=writer, policy=policy)
 
-    @override
     def start_requests(self) -> Iterator[scrapy.Request]:
-        for target in self.targets:
-            for referring_page in target.referring_pages:
-                self.writer.state.add_asset_referrer(target.url, referring_page, target.role)
-            self.writer.record_scheduled(
-                {
-                    "url": target.url,
-                    "status": "scheduled",
-                    "seed_type": "exact",
-                    "discovered_from": (
-                        target.referring_pages[0] if target.referring_pages else None
-                    ),
-                    "frontier_action": "scheduled",
-                    "discovery_source": "reused_content",
-                    "response_purpose": "asset",
-                }
-            )
+        for target in self.assets.reused(self.targets):
             hostname = (urlsplit(target.url).hostname or "").lower().rstrip(".")
             yield scrapy.Request(
                 target.url,
@@ -80,12 +58,14 @@ class ReusedAssetSpider(UnifiedSpider):
             )
 
     @override
-    def parse_response(self, response: Response) -> Iterator[scrapy.Request]:
-        # Reused targets are always asset requests, so no HTML expansion can follow.
-        self.assets.try_handle(response)
-        return iter(())
-
-    @override
     async def start(self) -> AsyncIterator[scrapy.Request]:
         for request in self.start_requests():
             yield request
+
+    def parse_response(self, response: Response) -> Iterator[scrapy.Request]:
+        # Reused targets are always asset requests, so no HTML expansion can follow.
+        self.assets.try_handle(fetched_page(response))
+        return iter(())
+
+    def on_request_error(self, failure: Any) -> None:
+        self.assets.handle_failure(failed_request(failure))

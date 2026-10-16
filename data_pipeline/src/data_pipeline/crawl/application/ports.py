@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +9,9 @@ from typing import Any, Literal, Protocol
 from data_pipeline.crawl.domain.config import CrawlerConfig
 from data_pipeline.crawl.domain.frontier.assets import AssetRole
 from data_pipeline.crawl.domain.models import RawPage, ReusedAssetTarget, RouteFamilyState
+from data_pipeline.crawl.domain.options import CrawlOptions
+from data_pipeline.crawl.domain.pages import FailedRequest, FetchedPage, FollowUp, Scheduled
+from data_pipeline.crawl.domain.seeds import SeedSet
 from data_pipeline.crawl.domain.tuning import RuntimeTuning
 
 
@@ -256,3 +259,34 @@ class CrawlEngine(Protocol):
     ) -> PreparedCrawl:
         """Build the crawler; raises before anything is fetched if the engine cannot start."""
         ...
+
+
+class PagePipelineLike(Protocol):
+    """What a spider hands fetched pages and failures to (the application's PagePipeline)."""
+
+    options: CrawlOptions
+    stats: Callable[[], Any]
+
+    @property
+    def state(self) -> CrawlStateStore: ...
+
+    @property
+    def refreshing(self) -> bool: ...
+
+    def resume(self, records: Iterable[Mapping[str, object]]) -> Iterator[Scheduled]: ...
+
+    def start(self, seeds: SeedSet) -> Iterator[Scheduled]: ...
+
+    def handle(self, page: FetchedPage) -> Iterator[FollowUp]: ...
+
+    def handle_failure(self, failure: FailedRequest) -> list[FollowUp]: ...
+
+
+class AssetResponsesLike(Protocol):
+    """What the reused-asset spider hands its responses and failures to."""
+
+    def try_handle(self, page: FetchedPage) -> bool: ...
+
+    def handle_failure(self, failure: FailedRequest) -> bool: ...
+
+    def reused(self, targets: Iterable[ReusedAssetTarget]) -> Iterator[ReusedAssetTarget]: ...

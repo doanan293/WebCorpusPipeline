@@ -1,8 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 from http import HTTPStatus
-
-from scrapy.http import Response
 
 from data_pipeline.crawl.application.writer import CrawlWriter, StorageLimitError
 from data_pipeline.crawl.domain.frontier.assets import (
@@ -10,11 +9,24 @@ from data_pipeline.crawl.domain.frontier.assets import (
     recognizable_asset,
     role_for_group,
 )
+from data_pipeline.crawl.domain.models import ReusedAssetTarget
 from data_pipeline.crawl.domain.options import CrawlOptions
+from data_pipeline.crawl.domain.pages import FailedRequest, FetchedPage
 from data_pipeline.crawl.domain.routing import route_response
 
+_ACCESS_GATES = ("captcha_blocked", "login_required")
+_ASSET_SAFETY_REASONS = {
+    "non_public_address",
+    "unsupported_scheme",
+    "credentials_not_allowed",
+    "non_default_port",
+    "redirect_without_location",
+    "redirect_limit",
+    "redirect_loop",
+}
 
-class AssetResponseHandler:
+
+class AssetResponses:
     """Stores or skips responses that are binary assets rather than HTML pages."""
 
     def __init__(self, *, options: CrawlOptions, writer: CrawlWriter, policy: AssetPolicy) -> None:
@@ -22,32 +34,28 @@ class AssetResponseHandler:
         self.writer = writer
         self.policy = policy
 
-    def try_handle(self, response: Response) -> bool:
-        """Handle ``response`` if it is an asset; return True when it was consumed."""
-        input_url = response.meta.get("input_url", response.url)
-        purpose = response.meta.get("response_purpose", "page")
-        seed_mode = response.meta.get("seed_mode", "exact")
-        request_scope = response.meta.get("request_scope", "page")
-        discovery_source = response.meta.get("discovery_source", "seed")
-        asset_role = response.meta.get("asset_role")
-        content_type = (response.headers.get(b"Content-Type") or b"").decode(
-            "latin1", errors="replace"
-        )
+    def try_handle(self, page: FetchedPage) -> bool:
+        """Handle ``page`` if it is an asset; return True when it was consumed."""
+        meta = page.meta
+        input_url = page.input_url
+        purpose = page.purpose
+        request_scope = meta.get("request_scope", "page")
+        discovery_source = page.discovery_source
+        asset_role = meta.get("asset_role")
+        content_type = page.content_type
         route = route_response(
-            url=response.url, status=response.status, content_type=content_type, purpose=purpose
+            url=page.url, status=page.status, content_type=content_type, purpose=purpose
         )
 
         # 1. Header guard stop
-        if "download_stopped" in getattr(response, "flags", []) or response.meta.get(
-            "header_stop_reason"
-        ):
+        if "download_stopped" in page.flags or meta.get("header_stop_reason"):
             self.writer.record_discovered(
                 {
                     "url": input_url,
-                    "final_url": response.url,
+                    "final_url": page.url,
                     "status": "discovered_not_downloaded",
-                    "seed_type": seed_mode,
-                    "discovered_from": response.meta.get("discovered_from"),
+                    "seed_type": page.seed_mode,
+                    "discovered_from": meta.get("discovered_from"),
                     "content_type": content_type or None,
                     "discovery_source": discovery_source,
                     "response_purpose": "asset" if request_scope == "asset" else purpose,
@@ -59,34 +67,34 @@ class AssetResponseHandler:
 
         # 2. Terminal asset response
         if request_scope == "asset":
-            if response.status >= HTTPStatus.BAD_REQUEST:
+            if page.status >= HTTPStatus.BAD_REQUEST:
                 self.writer.write_error(
                     {
                         "url": input_url,
-                        "final_url": response.url,
-                        "error": route.error or f"http_{response.status}",
+                        "final_url": page.url,
+                        "error": route.error or f"http_{page.status}",
                     }
                 )
                 self.writer.checkpoint(input_url)
                 return True
 
-            decision = self.policy.validate_response(content_type, response.url)
+            decision = self.policy.validate_response(content_type, page.url)
             if decision.persist:
                 try:
                     self.writer.write_file(
                         input_url,
-                        response.url,
+                        page.url,
                         content_type,
-                        response.body,
-                        asset_group=decision.group or response.meta.get("asset_group", "document"),
+                        page.body,
+                        asset_group=decision.group or meta.get("asset_group", "document"),
                         asset_role=asset_role or "document_attachment",
-                        referring_page=response.meta.get("referring_page"),
+                        referring_page=meta.get("referring_page"),
                     )
                 except StorageLimitError as exc:
                     self.writer.record_skipped(
                         {
                             "url": input_url,
-                            "final_url": response.url,
+                            "final_url": page.url,
                             "status": "skipped",
                             "reason": exc.reason,
                             "asset_role": asset_role,
@@ -98,7 +106,7 @@ class AssetResponseHandler:
                 self.writer.record_skipped(
                     {
                         "url": input_url,
-                        "final_url": response.url,
+                        "final_url": page.url,
                         "status": "skipped",
                         "reason": decision.reason or "unsupported_asset_type",
                         "asset_role": asset_role,
@@ -116,10 +124,10 @@ class AssetResponseHandler:
                 self.writer.record_discovered(
                     {
                         "url": input_url,
-                        "final_url": response.url,
+                        "final_url": page.url,
                         "status": "discovered_not_downloaded",
-                        "seed_type": seed_mode,
-                        "discovered_from": response.meta.get("discovered_from"),
+                        "seed_type": page.seed_mode,
+                        "discovered_from": meta.get("discovered_from"),
                         "content_type": content_type or None,
                         "discovery_source": discovery_source,
                         "response_purpose": "asset",
@@ -128,29 +136,27 @@ class AssetResponseHandler:
                 )
                 self.writer.checkpoint(input_url)
                 return True
-            val_decision = self.policy.validate_response(content_type, response.url)
+            val_decision = self.policy.validate_response(content_type, page.url)
             if val_decision.persist:
                 group = (
-                    val_decision.group
-                    or recognizable_asset(response.url, content_type)
-                    or "document"
+                    val_decision.group or recognizable_asset(page.url, content_type) or "document"
                 )
                 derived_role = role_for_group(group)
                 try:
                     self.writer.write_file(
                         input_url,
-                        response.url,
+                        page.url,
                         content_type,
-                        response.body,
+                        page.body,
                         asset_group=group,
                         asset_role=derived_role,
-                        referring_page=response.meta.get("discovered_from"),
+                        referring_page=meta.get("discovered_from"),
                     )
                 except StorageLimitError as exc:
                     self.writer.record_skipped(
                         {
                             "url": input_url,
-                            "final_url": response.url,
+                            "final_url": page.url,
                             "status": "skipped",
                             "reason": exc.reason,
                             "asset_role": derived_role,
@@ -163,7 +169,7 @@ class AssetResponseHandler:
             self.writer.record_skipped(
                 {
                     "url": input_url,
-                    "final_url": response.url,
+                    "final_url": page.url,
                     "status": "skipped",
                     "reason": val_decision.reason or "unsupported_asset_type",
                     "discovery_source": discovery_source,
@@ -174,3 +180,66 @@ class AssetResponseHandler:
             return True
 
         return False
+
+    def handle_failure(self, failure: FailedRequest) -> bool:
+        """Record an access-gated or asset request failure; return True when it was consumed."""
+        input_url = failure.input_url
+        error = failure.error
+        access_reason = next(
+            (reason for reason in _ACCESS_GATES if error.startswith(f"{reason}:")), None
+        )
+        if failure.ignored and access_reason is not None:
+            self.writer.record_skipped(
+                {"url": input_url, "status": "skipped", "reason": access_reason}
+            )
+            self.writer.checkpoint(input_url)
+            return True
+
+        if failure.request_scope == "asset" and failure.ignored:
+            matched_reason = next((r for r in _ASSET_SAFETY_REASONS if r in error), None)
+            if matched_reason:
+                self.writer.record_skipped(
+                    {
+                        "url": input_url,
+                        "final_url": failure.url,
+                        "status": "skipped",
+                        "reason": matched_reason,
+                        "discovery_source": failure.discovery_source,
+                        "response_purpose": "asset",
+                    }
+                )
+                self.writer.checkpoint(input_url)
+                return True
+
+        if failure.request_scope == "asset":
+            self.writer.write_error(
+                {
+                    "url": input_url,
+                    "final_url": failure.url,
+                    "error": "request_failed",
+                    "message": error,
+                }
+            )
+            self.writer.checkpoint(input_url)
+            return True
+        return False
+
+    def reused(self, targets: Iterable[ReusedAssetTarget]) -> Iterator[ReusedAssetTarget]:
+        """Record each reused asset target as scheduled, then hand it on to be fetched."""
+        for target in targets:
+            for referring_page in target.referring_pages:
+                self.writer.state.add_asset_referrer(target.url, referring_page, target.role)
+            self.writer.record_scheduled(
+                {
+                    "url": target.url,
+                    "status": "scheduled",
+                    "seed_type": "exact",
+                    "discovered_from": (
+                        target.referring_pages[0] if target.referring_pages else None
+                    ),
+                    "frontier_action": "scheduled",
+                    "discovery_source": "reused_content",
+                    "response_purpose": "asset",
+                }
+            )
+            yield target

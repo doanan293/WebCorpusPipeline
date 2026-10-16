@@ -15,8 +15,8 @@ from data_pipeline.crawl.application.refresh import (
     select_recent,
     select_targets,
 )
-from data_pipeline.crawl.infrastructure.scrapy.refresh_handler import (
-    RefreshSession,
+from data_pipeline.crawl.application.refresh_pipeline import RefreshSession
+from data_pipeline.crawl.domain.refresh_rules import (
     RefreshSettings,
     classify_refetch,
     conditional_headers,
@@ -171,9 +171,8 @@ def test_select_recent_orders_newest_first_and_ignores_bad_dates(tmp_path: Path)
 
 
 def test_validators_round_trip_to_conditional_headers() -> None:
-    validators = response_validators(
-        {b"ETag": b'"v1"', b"Last-Modified": b"Tue, 06 Oct 2026 00:00:00 GMT"}
-    )
+    headers = {b"ETag": b'"v1"', b"Last-Modified": b"Tue, 06 Oct 2026 00:00:00 GMT"}
+    validators = response_validators(headers.get)
     assert validators == {"etag": '"v1"', "last_modified": "Tue, 06 Oct 2026 00:00:00 GMT"}
     assert conditional_headers(validators) == {
         "If-None-Match": '"v1"',

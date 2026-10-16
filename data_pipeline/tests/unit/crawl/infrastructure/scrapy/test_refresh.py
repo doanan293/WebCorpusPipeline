@@ -8,6 +8,8 @@ from typing import Any, cast
 
 from scrapy.http import HtmlResponse, Request, TextResponse
 
+from data_pipeline.crawl.application.page_pipeline import PagePipeline
+from data_pipeline.crawl.application.refresh_pipeline import RefreshSession
 from data_pipeline.crawl.application.writer import CrawlWriter
 from data_pipeline.crawl.domain.config import CrawlerConfig
 from data_pipeline.crawl.domain.extract.article import analyze_article
@@ -15,11 +17,8 @@ from data_pipeline.crawl.domain.frontier.assets import AssetPolicy
 from data_pipeline.crawl.domain.frontier.frontier import FrontierPolicy
 from data_pipeline.crawl.domain.frontier.sitemaps import SitemapDiscoveryCoordinator
 from data_pipeline.crawl.domain.options import CrawlOptions
+from data_pipeline.crawl.domain.refresh_rules import RefreshSettings
 from data_pipeline.crawl.domain.seeds import SeedSet
-from data_pipeline.crawl.infrastructure.scrapy.refresh_handler import (
-    RefreshSession,
-    RefreshSettings,
-)
 from data_pipeline.crawl.infrastructure.scrapy.unified_spider import UnifiedSpider
 from data_pipeline.crawl.infrastructure.sqlite.html_store import HtmlStore
 from data_pipeline.crawl.infrastructure.sqlite.refresh_store import RefreshStore
@@ -47,17 +46,23 @@ def open_writer(tmp_path: Path) -> CrawlWriter:
     return CrawlWriter(tmp_path, state, options)
 
 
-def make_spider(writer: CrawlWriter, **kwargs: Any) -> UnifiedSpider:
+def make_spider(
+    writer: CrawlWriter, refresh: RefreshSession | None = None, **kwargs: Any
+) -> UnifiedSpider:
     frontier = FrontierPolicy(SEEDS, writer.options)
     frontier.restore(writer.state.iter_url_records())
-    return UnifiedSpider(
-        seeds=SEEDS,
-        config=CrawlerConfig(hostnames=SEEDS.allowed_hostnames, contact="ops@example.com"),
+    pipeline = PagePipeline(
         options=writer.options,
         frontier=frontier,
         writer=writer,
         policy=AssetPolicy(writer.options),
         coordinator=SitemapDiscoveryCoordinator(strategy="hybrid-unified"),
+        refresh=refresh,
+    )
+    return UnifiedSpider(
+        seeds=SEEDS,
+        config=CrawlerConfig(hostnames=SEEDS.allowed_hostnames, contact="ops@example.com"),
+        pipeline=pipeline,
         **kwargs,
     )
 

@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 
+from data_pipeline.crawl.application.page_pipeline import PagePipeline
 from data_pipeline.crawl.application.run_crawl import run_crawl as run_crawl_with
 from data_pipeline.crawl.domain.config import CrawlerConfig, semantic_config_snapshot
 from data_pipeline.crawl.domain.frontier.assets import AssetPolicy
@@ -114,10 +115,12 @@ def test_crawl_runner_uses_crawl_phase_and_unified_spider(
     assert observed["spider"] is UnifiedSpider
     crawl_kwargs = observed["crawl_kwargs"]
     assert isinstance(crawl_kwargs["seeds"], SeedSet)
-    assert isinstance(crawl_kwargs["frontier"], FrontierPolicy)
-    assert isinstance(crawl_kwargs["policy"], AssetPolicy)
-    assert isinstance(crawl_kwargs["coordinator"], SitemapDiscoveryCoordinator)
-    assert crawl_kwargs["coordinator"].strategy == "hybrid-unified"
+    pipeline = crawl_kwargs["pipeline"]
+    assert isinstance(pipeline, PagePipeline)
+    assert isinstance(pipeline.frontier, FrontierPolicy)
+    assert isinstance(pipeline.policy, AssetPolicy)
+    assert isinstance(pipeline.coordinator, SitemapDiscoveryCoordinator)
+    assert pipeline.coordinator.strategy == "hybrid-unified"
 
     manifest_path = tmp_path / "crawl-output" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -446,8 +449,8 @@ def test_crawl_runner_resume_restores_frontier_and_coordinator(
     observed.clear()
     exit_code2 = run_unified_for_test(tmp_path, resume=True)
     assert exit_code2 == 0
-    resumed_frontier = observed["crawl_kwargs"]["frontier"]
-    resumed_coordinator = observed["crawl_kwargs"]["coordinator"]
+    resumed_frontier = observed["crawl_kwargs"]["pipeline"].frontier
+    resumed_coordinator = observed["crawl_kwargs"]["pipeline"].coordinator
     resume_records = observed["crawl_kwargs"]["resume_records"]
     assert resumed_frontier.snapshot()["total_scheduled"] == 1
     assert resumed_coordinator.hosts["a.test"].mode == "sitemap"

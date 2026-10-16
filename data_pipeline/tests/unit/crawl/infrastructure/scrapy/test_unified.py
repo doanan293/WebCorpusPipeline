@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import hashlib
-from collections import defaultdict
 from types import SimpleNamespace
 from typing import Any, cast
 
 from scrapy.exceptions import IgnoreRequest
 from scrapy.http import HtmlResponse, Request, Response
 
+from data_pipeline.crawl.application.page_pipeline import PagePipeline
 from data_pipeline.crawl.domain.config import CrawlerConfig
 from data_pipeline.crawl.domain.frontier.assets import AssetPolicy
 from data_pipeline.crawl.domain.frontier.frontier import Candidate, FrontierPolicy
@@ -15,166 +14,7 @@ from data_pipeline.crawl.domain.frontier.sitemaps import SitemapDiscoveryCoordin
 from data_pipeline.crawl.domain.options import AssetMode, CrawlOptions
 from data_pipeline.crawl.domain.seeds import SeedSet
 from data_pipeline.crawl.infrastructure.scrapy.unified_spider import UnifiedSpider
-
-
-class FakeState:
-    def __init__(self) -> None:
-        self.completed: set[str] = set()
-        self.articles: list[dict[str, Any]] = []
-        self.files: list[dict[str, Any]] = []
-        self.errors: list[dict[str, Any]] = []
-        self.discovered: list[dict[str, Any]] = []
-        self.skipped: list[dict[str, Any]] = []
-        self.url_records: dict[str, dict[str, Any]] = {}
-        self.content_owners: dict[str, str] = {}
-        self._asset_referrers: dict[str, set[tuple[str, str]]] = defaultdict(set)
-
-    def is_complete(self, url: str) -> bool:
-        return url in self.completed
-
-    def is_finished(self, url: str) -> bool:
-        record = self.url_records.get(url, {})
-        return url in self.completed and (
-            record.get("status") in {"extracted", "file_saved", "failed", "absent"}
-            or (record.get("status") == "skipped" and record.get("frontier_action") == "scheduled")
-        )
-
-    def checkpoint(self, url: str) -> None:
-        self.completed.add(url)
-
-    def merge_url(self, record: dict[str, Any], *, completed: bool = False) -> dict[str, Any]:
-        url = str(record["url"])
-        existing = self.url_records.get(url, {})
-        merged = dict(existing)
-        merged.update({k: v for k, v in record.items() if v is not None})
-        self.url_records[url] = merged
-        if completed or merged.get("completed"):
-            self.completed.add(url)
-        return merged
-
-    def complete_url(
-        self,
-        disposition: dict[str, Any],
-        *,
-        article: dict[str, Any] | None = None,
-        file: dict[str, Any] | None = None,
-        error: dict[str, Any] | None = None,
-    ) -> None:
-        if article is not None:
-            self.articles.append(article)
-        if file is not None:
-            self.files.append(file)
-        if error is not None:
-            self.errors.append(error)
-        self.merge_url(disposition, completed=True)
-
-    def put_error(self, record: dict[str, Any]) -> None:
-        self.errors.append(record)
-
-    def claim_content(self, content_id: str, url: str) -> str:
-        if content_id not in self.content_owners:
-            self.content_owners[content_id] = url
-        return self.content_owners[content_id]
-
-    def add_asset_referrer(self, url: str, page_url: str, role: str) -> None:
-        self._asset_referrers[url].add((page_url, role))
-
-    def asset_referrers(self, url: str) -> tuple[str, ...]:
-        return tuple(sorted({page for page, _ in self._asset_referrers.get(url, ())}))
-
-
-class FakeCrawlWriter:
-    def __init__(self, state: FakeState, options: CrawlOptions) -> None:
-        self.state = state
-        self.options = options
-        self.articles: list[dict[str, Any]] = state.articles
-        self.files: list[dict[str, Any]] = state.files
-        self.errors: list[dict[str, Any]] = state.errors
-        self.discovered: list[dict[str, Any]] = state.discovered
-        self.skipped: list[dict[str, Any]] = state.skipped
-        self.url_records = state.url_records
-        self.checkpoints: list[str] = []
-        self.next_duplicate_of: str | None = None
-
-    @property
-    def discovered_assets(self) -> list[dict[str, Any]]:
-        return [r for r in self.discovered if r.get("status") == "discovered_not_downloaded"]
-
-    def record_scheduled(self, record: dict[str, Any]) -> None:
-        self.state.merge_url(record, completed=False)
-
-    def record_discovered(self, record: dict[str, Any], *, completed: bool = True) -> None:
-        self.discovered.append(record)
-        self.state.merge_url(record, completed=completed)
-
-    def record_skipped(self, record: dict[str, Any]) -> None:
-        self.skipped.append(record)
-        self.state.merge_url(record, completed=True)
-
-    def store_html(self, url: str, body: bytes, **metadata: object) -> None:
-        return None
-
-    def record_rejected(self, record: dict[str, Any]) -> None:
-        self.record_skipped(record)
-
-    def record_navigation_skip(self, record: dict[str, Any]) -> None:
-        if record["url"] not in self.state.url_records:
-            self.record_skipped(record)
-
-    def record_absent(self, record: dict[str, Any]) -> None:
-        self.discovered.append(record)
-        self.state.complete_url(record)
-
-    def write_article(self, record: dict[str, Any]) -> dict[str, Any]:
-        text = str(record.get("text") or "").strip()
-        content_id = record.get("content_id") or hashlib.sha256(text.encode("utf-8")).hexdigest()
-        rec = dict(record)
-        rec["content_id"] = content_id
-        if self.next_duplicate_of is not None:
-            rec["duplicate_of"] = self.next_duplicate_of
-            self.next_duplicate_of = None
-        self.state.complete_url({"url": record["url"], "status": "extracted"}, article=rec)
-        return rec
-
-    def write_file(
-        self,
-        url: str,
-        final_url: str,
-        content_type: str,
-        body: bytes,
-        *,
-        asset_group: str = "document",
-        asset_role: str | None = None,
-        referring_page: str | None = None,
-    ) -> dict[str, Any]:
-        rec = {
-            "url": url,
-            "final_url": final_url,
-            "content_type": content_type,
-            "size": len(body),
-            "asset_group": asset_group,
-            "asset_role": asset_role,
-            "referring_page": referring_page,
-        }
-        self.state.complete_url(
-            {"url": url, "final_url": final_url, "status": "file_saved", "asset_role": asset_role},
-            file=rec,
-        )
-        return rec
-
-    def write_error(self, record: dict[str, Any]) -> None:
-        self.state.complete_url(
-            {
-                "url": record["url"],
-                "status": "failed",
-                "reason": record.get("reason", record.get("error", "error")),
-            },
-            error=record,
-        )
-
-    def checkpoint(self, url: str) -> None:
-        self.checkpoints.append(url)
-        self.state.checkpoint(url)
+from tests.fakes.crawl import FakeCrawlState, FakeCrawlWriter
 
 
 def make_spider(
@@ -194,19 +34,23 @@ def make_spider(
     frontier = FrontierPolicy(seeds, options)
     policy = AssetPolicy(options)
     coordinator = SitemapDiscoveryCoordinator(strategy="hybrid-unified")
-    state = FakeState()
+    state = FakeCrawlState()
     writer = FakeCrawlWriter(state, options)
-    spider = UnifiedSpider(
-        seeds=seeds,
-        config=config,
+    pipeline = PagePipeline(
         options=options,
         frontier=frontier,
         writer=cast(Any, writer),
         policy=policy,
         coordinator=coordinator,
-        resume_records=resume_records,
+    )
+    spider = UnifiedSpider(
+        seeds=seeds, config=config, pipeline=pipeline, resume_records=resume_records
     )
     return spider, writer
+
+
+def pipeline_of(spider: UnifiedSpider) -> PagePipeline:
+    return cast(PagePipeline, spider.pipeline)
 
 
 def page_request(
@@ -280,7 +124,7 @@ def test_resume_schedules_pending_record_from_sqlite_state() -> None:
         recursive_hostnames=frozenset({"a.test"}),
         resume_records=(pending,),
     )
-    spider.frontier.restore((pending,))
+    pipeline_of(spider).frontier.restore((pending,))
 
     requests = list(spider.start_requests())
     resumed = next(request for request in requests if request.url == pending["url"])
@@ -735,7 +579,7 @@ def test_index_child_failure_produces_sitemap_partial_without_fallback() -> None
         if "sitemap" in r.url and r.url != sm_req.url:
             list(spider.parse_response(Response(r.url, status=404, request=r)))
 
-    snapshot = spider.coordinator.snapshot()
+    snapshot = pipeline_of(spider).coordinator.snapshot()
     assert snapshot["hosts"]["a.test"]["mode"] == "sitemap_partial"
     assert "https://a.test/" not in [t.url for t in targets]
 
@@ -767,16 +611,18 @@ def test_same_host_media_obeys_host_url_budget() -> None:
     frontier = FrontierPolicy(seeds, options)
     policy = AssetPolicy(options)
     coordinator = SitemapDiscoveryCoordinator(strategy="hybrid-unified")
-    state = FakeState()
+    state = FakeCrawlState()
     writer = FakeCrawlWriter(state, options)
     spider = UnifiedSpider(
         seeds=seeds,
         config=config,
-        options=options,
-        frontier=frontier,
-        writer=cast(Any, writer),
-        policy=policy,
-        coordinator=coordinator,
+        pipeline=PagePipeline(
+            options=options,
+            frontier=frontier,
+            writer=cast(Any, writer),
+            policy=policy,
+            coordinator=coordinator,
+        ),
     )
     request = page_request("https://a.test/", discovery_source="seed")
     html = '<main><h1>Header</h1><p>Text</p><img src="/first.png"><img src="/second.png"></main>'
@@ -864,7 +710,9 @@ def test_asset_error_record_does_not_replace_article() -> None:
             )
         )
     )
-    spider.writer.write_error({"url": "https://cdn.test/a.png", "error": "dns_failure"})
+    pipeline_of(spider).writer.write_error(
+        {"url": "https://cdn.test/a.png", "error": "dns_failure"}
+    )
     assert writer.articles[0]["url"] == "https://a.test/p"
     assert writer.errors[0]["url"] == "https://cdn.test/a.png"
 

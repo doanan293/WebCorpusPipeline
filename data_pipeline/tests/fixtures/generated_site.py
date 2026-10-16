@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 from scrapy.http import HtmlResponse, Request, Response, TextResponse
 
+from data_pipeline.crawl.application.page_pipeline import PagePipeline
 from data_pipeline.crawl.application.writer import CrawlWriter
 from data_pipeline.crawl.domain.config import CrawlerConfig
 from data_pipeline.crawl.domain.frontier.assets import AssetPolicy
@@ -133,11 +134,13 @@ def run_generated_site(
     spider = UnifiedSpider(
         seeds=seeds,
         config=config,
-        options=options,
-        frontier=frontier,
-        writer=writer,
-        policy=policy,
-        coordinator=coordinator,
+        pipeline=PagePipeline(
+            options=options,
+            frontier=frontier,
+            writer=writer,
+            policy=policy,
+            coordinator=coordinator,
+        ),
     )
 
     active_routes = default_routes()

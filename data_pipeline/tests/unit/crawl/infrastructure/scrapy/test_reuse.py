@@ -5,6 +5,7 @@ from pathlib import Path
 
 from scrapy.http import Request, Response
 
+from data_pipeline.crawl.application.asset_responses import AssetResponses
 from data_pipeline.crawl.application.writer import CrawlWriter
 from data_pipeline.crawl.domain.config import CrawlerConfig
 from data_pipeline.crawl.domain.frontier.assets import AssetPolicy
@@ -34,9 +35,7 @@ def make_spider(tmp_path: Path) -> tuple[ReusedAssetSpider, SqliteCrawlState]:
     )
     spider = ReusedAssetSpider(
         config=CrawlerConfig(hostnames=frozenset({"a.test"}), contact="ops@example.org"),
-        options=options,
-        writer=writer,
-        policy=AssetPolicy(options),
+        assets=AssetResponses(options=options, writer=writer, policy=AssetPolicy(options)),
         targets=(target,),
     )
     return spider, state

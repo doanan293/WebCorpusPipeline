@@ -10,13 +10,11 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from data_pipeline.crawl.application.ports import CrawlStateStore, CrawlStorage, RefreshStorePort
+from data_pipeline.crawl.application.refresh_pipeline import RefreshSession
 from data_pipeline.crawl.application.requeue import restore_status
 from data_pipeline.crawl.domain.extract.dates import parse_page_date
+from data_pipeline.crawl.domain.refresh_rules import RefreshSettings
 from data_pipeline.crawl.domain.run_status import CONTINUABLE_RUN_STATUSES, FINISHED_STATUSES
-from data_pipeline.crawl.infrastructure.scrapy.refresh_handler import (
-    RefreshSession,
-    RefreshSettings,
-)
 
 RefreshReason = Literal[
     "homepage", "sitemap", "navigation", "pagination_head", "recent", "pagination_next"
