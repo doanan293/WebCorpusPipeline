@@ -5,6 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from data_pipeline.crawl.application.common import exact_only_hosts, record_invalid_seeds
+from data_pipeline.crawl.application.discovery_pipeline import DiscoveryPipeline
 from data_pipeline.crawl.application.discovery_writer import DiscoveryWriter
 from data_pipeline.crawl.application.ports import CrawlEngine, CrawlStorage, SpiderSetup
 from data_pipeline.crawl.domain.config import CrawlerConfig, semantic_config_snapshot
@@ -50,7 +51,10 @@ def run_discovery(
     start_time = time.time()
     setup = SpiderSetup(
         "discovery",
-        {"seeds": seeds, "config": config, "coordinator": coordinator, "writer": writer},
+        {
+            "config": config,
+            "pipeline": DiscoveryPipeline(seeds=seeds, coordinator=coordinator, writer=writer),
+        },
     )
     prepared = engine.prepare(config, tuning, setup)
 

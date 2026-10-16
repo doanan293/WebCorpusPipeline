@@ -249,3 +249,27 @@ class FakeRefreshStore:
 
     def failure_counts(self, run_id: str, truncation_reasons: Iterable[str]) -> tuple[int, int]:
         return 0, 0
+
+
+class FakeDiscoveryWriter:
+    """Discovery results in memory: targets, probe records, errors and checkpoints."""
+
+    def __init__(self, state: FakeCrawlState) -> None:
+        self.state = state
+        self.targets: list[dict[str, Any]] = []
+        self.probes: list[dict[str, Any]] = []
+        self.errors: list[dict[str, Any]] = []
+        self.checkpoints: list[str] = []
+
+    def record_target(self, record: dict[str, Any]) -> None:
+        self.targets.append(record)
+
+    def record_probe(self, record: dict[str, Any]) -> None:
+        self.probes.append(record)
+
+    def write_error(self, record: dict[str, Any]) -> None:
+        self.errors.append(record)
+
+    def checkpoint(self, url: str) -> None:
+        self.checkpoints.append(url)
+        self.state.checkpoint(url)

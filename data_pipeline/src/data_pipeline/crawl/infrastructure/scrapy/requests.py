@@ -25,8 +25,8 @@ def _host(url: str) -> str:
     return (urlsplit(url).hostname or "").lower().rstrip(".")
 
 
-def fetched_page(response: Response) -> FetchedPage:
-    """The parts of a Scrapy response the crawl rules read."""
+def fetched_page(response: Response, *, purpose: str = "page") -> FetchedPage:
+    """The parts of a Scrapy response the crawl rules read (``purpose`` when meta has none)."""
     meta = response.meta
     decode: Callable[[], str] | None = None
     if hasattr(response, "text"):
@@ -43,25 +43,26 @@ def fetched_page(response: Response) -> FetchedPage:
         ),
         body=response.body,
         encoding=getattr(response, "encoding", None),
-        purpose=meta.get("response_purpose", "page"),
+        purpose=meta.get("response_purpose", purpose),
         seed_mode=meta.get("seed_mode", "exact"),
         discovery_source=meta.get("discovery_source", "seed"),
         meta=meta,
         validators=response_validators(response.headers.get),
         flags=tuple(getattr(response, "flags", None) or ()),
         decode=decode,
+        request_url=response.request.url if response.request is not None else None,
     )
 
 
-def failed_request(failure: Any) -> FailedRequest:
-    """The parts of a failed Scrapy request the crawl rules read."""
+def failed_request(failure: Any, *, purpose: str = "page") -> FailedRequest:
+    """The parts of a failed Scrapy request the crawl rules read (``purpose`` if meta has none)."""
     request = failure.request
     meta = request.meta
     return FailedRequest(
         url=request.url,
         input_url=meta.get("input_url", request.url),
         seed_mode=meta.get("seed_mode", "exact"),
-        purpose=meta.get("response_purpose", "page"),
+        purpose=meta.get("response_purpose", purpose),
         request_scope=meta.get("request_scope", "page"),
         discovery_source=meta.get("discovery_source", "seed"),
         explicit=meta.get("explicit", False),
@@ -70,6 +71,7 @@ def failed_request(failure: Any) -> FailedRequest:
         error=str(failure.value),
         error_type=getattr(failure.type, "__name__", ""),
         ignored=isinstance(failure.value, IgnoreRequest),
+        meta=meta,
     )
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from data_pipeline.crawl.domain.frontier.frontier import Candidate, DiscoverySource, Purpose
 from data_pipeline.crawl.domain.seeds import SeedMode
@@ -26,6 +26,8 @@ class FetchedPage:
     flags: tuple[str, ...] = ()
     # Decodes the body the way the HTTP library would; None for a non-text response.
     decode: Callable[[], str] | None = None
+    # The URL of the request that got this response (after redirects), when known.
+    request_url: str | None = None
 
     def text(self) -> str:
         if self.decode is not None:
@@ -49,6 +51,7 @@ class FailedRequest:
     error: str
     error_type: str
     ignored: bool  # the request was dropped on purpose (IgnoreRequest), not by the network
+    meta: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,3 +73,15 @@ class RefreshFetch:
 
 
 type FollowUp = Scheduled | RefreshFetch
+
+
+@dataclass(frozen=True, slots=True)
+class Probe:
+    """A robots.txt or sitemap fetch of a discovery run."""
+
+    url: str
+    purpose: Literal["robots", "sitemap"]
+    logical_url: str | None = None
+    discovered_from: str | None = None
+    # An http:// retry of the request being handled: it keeps that request's metadata.
+    retry: bool = False

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, cast
 from urllib.parse import urlsplit
 
 from scrapy.http import Request, Response
 
+from data_pipeline.crawl.application.discovery_pipeline import DiscoveryPipeline
 from data_pipeline.crawl.domain.config import CrawlerConfig
 from data_pipeline.crawl.domain.frontier.sitemaps import SitemapDiscoveryCoordinator
 from data_pipeline.crawl.domain.seeds import SeedSet
@@ -61,12 +63,19 @@ def make_discovery_spider(
     )
     writer = FakeDiscoveryWriter()
     spider = DiscoverySpider(
-        seeds=seeds,
         config=config,
-        coordinator=coordinator,
-        writer=cast(Any, writer),
+        pipeline=DiscoveryPipeline(seeds=seeds, coordinator=coordinator, writer=cast(Any, writer)),
     )
     return spider, writer
+
+
+def pipeline_of(spider: DiscoverySpider) -> DiscoveryPipeline:
+    return cast(DiscoveryPipeline, spider.pipeline)
+
+
+def failure_of(request: Request) -> Any:
+    error = ConnectionRefusedError("refused")
+    return SimpleNamespace(request=request, value=error, type=type(error))
 
 
 def sitemap_response(
@@ -174,7 +183,7 @@ def test_empty_discovery_produces_no_root_request() -> None:
     )
     requests = list(spider.parse_response(resp))
     assert requests == []
-    assert spider.coordinator.snapshot()["hosts"]["a.test"]["mode"] == "pending"
+    assert pipeline_of(spider).coordinator.snapshot()["hosts"]["a.test"]["mode"] == "pending"
 
 
 def test_https_failure_yields_one_http_probe_with_same_logical_url() -> None:
@@ -187,11 +196,12 @@ def test_https_failure_yields_one_http_probe_with_same_logical_url() -> None:
             "response_purpose": "sitemap",
         },
     )
-    retry = spider._http_retry(req)
-    assert retry is not None
+    retries = spider.on_request_error(failure_of(req))
+    assert retries is not None
+    (retry,) = list(retries)
     assert retry.url == "http://a.test/sitemap.xml"
     assert retry.meta["logical_url"] == "https://a.test/sitemap.xml"
     assert retry.meta["http_fallback"] is True
 
     # No second retry
-    assert spider._http_retry(retry) is None
+    assert spider.on_request_error(failure_of(retry)) is None

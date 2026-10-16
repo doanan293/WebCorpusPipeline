@@ -10,7 +10,7 @@ from data_pipeline.crawl.domain.config import CrawlerConfig
 from data_pipeline.crawl.domain.frontier.assets import AssetRole
 from data_pipeline.crawl.domain.models import RawPage, ReusedAssetTarget, RouteFamilyState
 from data_pipeline.crawl.domain.options import CrawlOptions
-from data_pipeline.crawl.domain.pages import FailedRequest, FetchedPage, FollowUp, Scheduled
+from data_pipeline.crawl.domain.pages import FailedRequest, FetchedPage, FollowUp, Probe, Scheduled
 from data_pipeline.crawl.domain.seeds import SeedSet
 from data_pipeline.crawl.domain.tuning import RuntimeTuning
 
@@ -290,3 +290,13 @@ class AssetResponsesLike(Protocol):
     def handle_failure(self, failure: FailedRequest) -> bool: ...
 
     def reused(self, targets: Iterable[ReusedAssetTarget]) -> Iterator[ReusedAssetTarget]: ...
+
+
+class DiscoveryPipelineLike(Protocol):
+    """What the discovery spider hands its probe responses and failures to."""
+
+    def start(self) -> Iterator[Probe]: ...
+
+    def handle(self, page: FetchedPage) -> Iterator[Probe]: ...
+
+    def handle_failure(self, failure: FailedRequest) -> list[Probe]: ...
