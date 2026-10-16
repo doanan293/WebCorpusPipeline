@@ -270,6 +270,8 @@ class PlaywrightFallbackMiddleware:
         content_type = (response.headers.get(b"Content-Type") or b"").decode("latin1").lower()
         if "html" not in content_type:
             return response
+        if request.meta.get("response_purpose", "page") != "page":
+            return response  # robots, sitemaps and assets are never pages to render
         rendered = bool(request.meta.get("rendered") or request.meta.get("playwright"))
         decision = classify_access(
             status=response.status,
@@ -321,6 +323,8 @@ class ContentOnlyHeadersGuard:
     ) -> None:
         if request.meta.get("asset_mode") != "content-only":
             return
+        if request.meta.get("response_purpose") in {"robots", "sitemap"}:
+            return  # text and XML are what these requests are for
         raw = headers.get(b"Content-Type") or headers.get("Content-Type") or b""
         if isinstance(raw, list):
             raw = raw[0] if raw else b""

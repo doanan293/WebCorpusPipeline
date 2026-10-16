@@ -11,6 +11,7 @@ from data_pipeline.crawl.runtime.middlewares import (
     PublicAssetAddressMiddleware,
     SafeRedirectMiddleware,
 )
+from data_pipeline.crawl.runtime.playwright_driver import isolate_playwright_driver
 from data_pipeline.crawl.runtime.profiles import RuntimeTuning, resolve_runtime_tuning
 
 
@@ -21,6 +22,7 @@ def build_settings(
     extensions: dict[object, int] | None = None,
 ) -> dict[str, Any]:
     tuning = tuning or resolve_runtime_tuning(config=config)
+    isolate_playwright_driver()
     settings: dict[str, Any] = {
         # Robots rules are not applied; robots.txt is only read for its Sitemap lines.
         "ROBOTSTXT_OBEY": False,

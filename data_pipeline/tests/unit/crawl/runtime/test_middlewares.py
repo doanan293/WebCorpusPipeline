@@ -480,3 +480,40 @@ def test_content_only_stops_ambiguous_binary_at_headers() -> None:
             spider=cast(Any, SimpleNamespace()),
         )
     assert exc.value.fail is False
+
+
+@pytest.mark.parametrize(
+    ("purpose", "content_type"),
+    [("robots", "text/plain"), ("sitemap", "application/xml"), ("sitemap", "application/gzip")],
+)
+def test_content_only_guard_lets_robots_and_sitemaps_through(
+    purpose: str, content_type: str
+) -> None:
+    request = Request(
+        f"https://a.test/{purpose}",
+        meta={"asset_mode": "content-only", "request_scope": "page", "response_purpose": purpose},
+    )
+
+    ContentOnlyHeadersGuard().headers_received(
+        headers=Headers({"Content-Type": content_type}),
+        body_length=100,
+        request=request,
+        spider=cast(Any, SimpleNamespace()),
+    )
+
+    assert "header_stop_reason" not in request.meta
+
+
+@pytest.mark.parametrize("purpose", ["robots", "sitemap", "asset"])
+def test_html_shell_is_not_rendered_for_non_page_requests(purpose: str) -> None:
+    request = Request("https://a.test/sitemap.xml", meta={"response_purpose": purpose})
+    response = HtmlResponse(
+        request.url,
+        status=200,
+        headers={b"Content-Type": b"text/html"},
+        body=b'<div id="app"></div><script src="app.js"></script>',
+        request=request,
+        encoding="utf-8",
+    )
+
+    assert PlaywrightFallbackMiddleware().process_response(request, response) is response
