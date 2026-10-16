@@ -66,3 +66,10 @@ def parse_local(file: DownloadedFile):
         return _parse_text(file)
     msg = f"unsupported document extension: {ext}"
     raise ValueError(msg)
+
+
+class LocalParserAdapter:
+    """The ``LocalParser`` port over :func:`parse_local`."""
+
+    def parse(self, file: DownloadedFile) -> LocalResult:
+        return parse_local(file)

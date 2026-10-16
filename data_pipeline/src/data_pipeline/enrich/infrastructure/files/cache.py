@@ -9,11 +9,6 @@ from data_pipeline.enrich.domain.models import ParseResult, jsonable
 from data_pipeline.enrich.domain.serializers import parse_result_from_dict
 
 
-def cache_key(sha256: str, indices: list[int], parser: str, settings_digest: str = "") -> str:
-    payload = json.dumps([sha256, sorted(indices), parser, settings_digest], separators=(",", ":"))
-    return hashlib.sha256(payload.encode()).hexdigest()
-
-
 def read_cached(root: Path, key: str) -> ParseResult | None:
     path = root / f"{key}.json"
     if not path.exists():
@@ -42,3 +37,19 @@ def write_cached(root: Path, key: str, result: ParseResult) -> Path:
     temp.write_text(json.dumps(raw, ensure_ascii=False, sort_keys=True))
     temp.replace(target)
     return target
+
+
+class FileParseCache:
+    """Cloud parse results as checksummed ``<key>.json`` files under ``root``."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+
+    def read(self, key: str) -> ParseResult | None:
+        return read_cached(self.root, key)
+
+    def write(self, key: str, result: ParseResult) -> Path:
+        return write_cached(self.root, key, result)
+
+    def path_for(self, key: str) -> Path:
+        return self.root / f"{key}.json"

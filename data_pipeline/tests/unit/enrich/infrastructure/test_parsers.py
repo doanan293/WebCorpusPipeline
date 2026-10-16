@@ -9,11 +9,12 @@ from openpyxl import Workbook
 from pptx import Presentation
 from pptx.util import Inches
 
+from data_pipeline.enrich.domain.cloud_pages import cloud_part_indices
 from data_pipeline.enrich.domain.download_rules import extension_for
 from data_pipeline.enrich.domain.models import DownloadedFile
 from data_pipeline.enrich.infrastructure.parsers import dispatch
 from data_pipeline.enrich.infrastructure.parsers.dispatch import parse_local
-from data_pipeline.enrich.infrastructure.parsers.pdf import cloud_part_indices, parse_pdf
+from data_pipeline.enrich.infrastructure.parsers.pdf import parse_pdf
 
 
 def _file(path: Path) -> DownloadedFile:

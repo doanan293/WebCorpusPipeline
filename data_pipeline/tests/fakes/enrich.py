@@ -5,7 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from typing import Any
 
-from data_pipeline.enrich.domain.models import HttpResponse
+from data_pipeline.enrich.domain.models import (
+    DownloadedFile,
+    HttpResponse,
+    LocalResult,
+    ParseResult,
+)
 from data_pipeline.shared.domain.config import Settings
 
 
@@ -68,3 +73,27 @@ class FakeArticleSource:
     def rows(self, offset: int) -> Iterator[tuple[dict[str, Any], int]]:
         for index in range(offset, len(self._rows)):
             yield self._rows[index], index + 1
+
+
+class FakeLocalParser:
+    def __init__(self, parse: Callable[[DownloadedFile], LocalResult]) -> None:
+        self._parse = parse
+
+    def parse(self, file: DownloadedFile) -> LocalResult:
+        return self._parse(file)
+
+
+class FakeCloudParser:
+    """Calls ``parse(document_url, file, local, missing)``; records each document URL."""
+
+    def __init__(
+        self, parse: Callable[[str, DownloadedFile, LocalResult, list[int]], ParseResult]
+    ) -> None:
+        self._parse = parse
+        self.calls: list[str] = []
+
+    def parse(
+        self, document_url: str, file: DownloadedFile, local: LocalResult, missing: list[int]
+    ) -> ParseResult:
+        self.calls.append(document_url)
+        return self._parse(document_url, file, local, missing)

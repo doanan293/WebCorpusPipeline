@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pymupdf as fitz
 
+from data_pipeline.enrich.domain.cloud_pages import useful_text
 from data_pipeline.enrich.domain.models import DownloadedFile, ExtractedPart, LocalResult
-from data_pipeline.enrich.infrastructure.parsers.common import result, useful_text
+from data_pipeline.enrich.infrastructure.parsers.common import result
 
 
 def parse_pdf(file: DownloadedFile) -> LocalResult:
@@ -19,18 +18,3 @@ def parse_pdf(file: DownloadedFile) -> LocalResult:
             if not useful_text(text) and visual:
                 warnings.append(f"page {number} has visual content but no local text")
     return result(file, parts, f"pymupdf/{fitz.VersionBind}", warnings)
-
-
-def cloud_part_indices(local: LocalResult) -> list[int]:
-    return [p.index for p in local.parts if not useful_text(p.text) and p.has_visual_content]
-
-
-def build_pdf_subset(path: Path, indices: list[int], destination: Path) -> dict[int, int]:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    mapping: dict[int, int] = {}
-    with fitz.open(path) as source, fitz.open() as target:
-        for new_index, original in enumerate(indices, 1):
-            target.insert_pdf(source, from_page=original - 1, to_page=original - 1)
-            mapping[new_index] = original
-        target.save(destination)
-    return mapping

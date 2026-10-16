@@ -94,6 +94,9 @@ def extract(
     """Extract plain text from the downloaded documents."""
     from data_pipeline.enrich.application import extract as pipeline
     from data_pipeline.enrich.application import session
+    from data_pipeline.enrich.infrastructure.files.cache import FileParseCache
+    from data_pipeline.enrich.infrastructure.llamaparse import LlamaParseCloud
+    from data_pipeline.enrich.infrastructure.parsers.dispatch import LocalParserAdapter
     from data_pipeline.shared.infrastructure.settings import load_api_keys
 
     settings = context.build_settings(source, work_dir)
@@ -103,7 +106,14 @@ def extract(
     ) as state:
         if reparse_cloud:
             print(f"requeued {state.requeue_cloud_parses()} documents for LlamaParse")
-        summary = pipeline.extract_documents(state, settings, api_keys=api_keys)
+        summary = pipeline.extract_documents(
+            state,
+            settings,
+            api_keys=api_keys,
+            local=LocalParserAdapter(),
+            cloud=LlamaParseCloud(state, settings, api_keys),
+            cache=FileParseCache(state.root / "cache"),
+        )
     return _summary(summary, json_output)
 
 
@@ -119,8 +129,11 @@ def run(
     from data_pipeline.enrich.application import extract as pipeline
     from data_pipeline.enrich.application import inventory as enrich_inventory
     from data_pipeline.enrich.application import session
+    from data_pipeline.enrich.infrastructure.files.cache import FileParseCache
     from data_pipeline.enrich.infrastructure.files.download_files import LocalDownloadFiles
     from data_pipeline.enrich.infrastructure.http.aiohttp_transport import PublicTransport
+    from data_pipeline.enrich.infrastructure.llamaparse import LlamaParseCloud
+    from data_pipeline.enrich.infrastructure.parsers.dispatch import LocalParserAdapter
     from data_pipeline.shared.infrastructure.settings import load_api_keys
 
     settings = context.build_settings(source, work_dir)
@@ -135,7 +148,14 @@ def run(
                 state, settings, transport_factory=PublicTransport, files=LocalDownloadFiles()
             )
         )
-        summary = pipeline.extract_documents(state, settings, api_keys=api_keys)
+        summary = pipeline.extract_documents(
+            state,
+            settings,
+            api_keys=api_keys,
+            local=LocalParserAdapter(),
+            cloud=LlamaParseCloud(state, settings, api_keys),
+            cache=FileParseCache(state.root / "cache"),
+        )
     return _summary(summary, json_output)
 
 

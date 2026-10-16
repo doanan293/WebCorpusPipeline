@@ -1,13 +1,21 @@
 from __future__ import annotations
 
 import contextlib
+import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
 
+import pymupdf as fitz
+
 from data_pipeline.enrich.domain.cloud_errors import classify_cloud_error
 from data_pipeline.enrich.domain.key_pool import KeyPool
-from data_pipeline.enrich.domain.models import ExtractedPart, LocalResult, ParseResult
+from data_pipeline.enrich.domain.models import (
+    DownloadedFile,
+    ExtractedPart,
+    LocalResult,
+    ParseResult,
+)
 from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
 from data_pipeline.shared.domain.config import Settings
 
@@ -106,15 +114,31 @@ def parse_cloud_subset(
     return ParseResult(local.source_sha256, parts, "extracted", [], {"llamaparse": "fast/latest"})
 
 
-def merge_parts(local: LocalResult, remote: ParseResult) -> ParseResult:
-    by_index = {p.index: p for p in local.parts}
-    for part in remote.parts:
-        if part.text.strip():
-            by_index[part.index] = part
-    return ParseResult(
-        local.source_sha256,
-        [by_index[i] for i in sorted(by_index)],
-        remote.status,
-        local.warnings + remote.warnings,
-        {"local": local.parser_version, **remote.parser_versions},
-    )
+def build_pdf_subset(path: Path, indices: list[int], destination: Path) -> dict[int, int]:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    mapping: dict[int, int] = {}
+    with fitz.open(path) as source, fitz.open() as target:
+        for new_index, original in enumerate(indices, 1):
+            target.insert_pdf(source, from_page=original - 1, to_page=original - 1)
+            mapping[new_index] = original
+        target.save(destination)
+    return mapping
+
+
+class LlamaParseCloud:
+    """The ``CloudParser`` port: sends the missing pages of a PDF to LlamaParse."""
+
+    def __init__(self, state: WorkState, settings: Settings, keys: list[tuple[str, str]]) -> None:
+        self.state = state
+        self.settings = settings
+        self.pool = KeyPool(keys)
+
+    def parse(
+        self, document_url: str, file: DownloadedFile, local: LocalResult, missing: list[int]
+    ) -> ParseResult:
+        with tempfile.TemporaryDirectory(prefix="ir-parse-") as temp:
+            subset = Path(temp) / "subset.pdf"
+            mapping = build_pdf_subset(file.path, missing, subset)
+            return parse_cloud_subset(
+                document_url, subset, local, mapping, self.state, self.settings, self.pool
+            )

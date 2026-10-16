@@ -22,6 +22,7 @@ class FakeState:
     def __init__(self) -> None:
         self.inventory_is_done = False
         self.requeued = False
+        self.root = Path("work")
 
     def summary(self) -> RunSummary:
         return RunSummary(downloaded=2, parsed=1, failed=0, pending=0, quota_blocked=0)
@@ -93,7 +94,7 @@ def test_run_indexes_downloads_and_extracts_in_order(
         order.append("download")
         return RunSummary()
 
-    def extract(current: object, settings: object, *, api_keys: object) -> RunSummary:
+    def extract(current: object, settings: object, *, api_keys: object, **_: object) -> RunSummary:
         order.append("extract")
         return RunSummary()
 
@@ -116,7 +117,7 @@ def test_run_skips_inventory_when_it_is_already_done(
         order.append("download")
         return RunSummary()
 
-    def extract(current: object, settings: object, *, api_keys: object) -> RunSummary:
+    def extract(current: object, settings: object, *, api_keys: object, **_: object) -> RunSummary:
         order.append("extract")
         return RunSummary()
 
@@ -197,7 +198,9 @@ def test_extract_reparses_cloud_documents_only_on_request(
 ) -> None:
     seen: list[bool] = []
 
-    def extract(current: FakeState, settings: object, *, api_keys: object) -> RunSummary:
+    def extract(
+        current: FakeState, settings: object, *, api_keys: object, **_: object
+    ) -> RunSummary:
         seen.append(current.requeued)
         return current.summary()
 
