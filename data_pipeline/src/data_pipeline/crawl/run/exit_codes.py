@@ -30,7 +30,9 @@ def finish_reason_to_exit(
 ]:
     if finish_reason in {"shutdown", "signal"}:
         return "interrupted", 130
-    if queued > 0 and finish_reason != "finished":
+    if queued > 0:
+        # Scrapy only finishes normally with an empty queue; a forced shutdown (Ctrl-C twice)
+        # may not record a finish reason at all.
         return "interrupted", 130
     if truncated > 0:
         return "truncated", 4

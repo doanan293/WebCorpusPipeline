@@ -44,3 +44,8 @@ def test_clean_finish_has_exit_zero() -> None:
         "complete",
         0,
     )
+
+
+def test_queued_urls_mean_interrupted_even_if_scrapy_says_finished() -> None:
+    # A forced (double Ctrl-C) shutdown leaves no finish_reason; the queue is the evidence.
+    assert finish_reason_to_exit("finished", queued=66543, failed=224) == ("interrupted", 130)

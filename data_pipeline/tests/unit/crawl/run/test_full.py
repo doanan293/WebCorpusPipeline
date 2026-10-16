@@ -584,3 +584,20 @@ def test_average_rate_uses_responses_of_this_run(
 
     metrics = json.loads((tmp_path / "crawl-output/state/manifest.json").read_text())["metrics"]
     assert metrics["average_rate"] * metrics["elapsed_seconds"] == pytest.approx(30)
+
+
+def test_forced_shutdown_with_queued_urls_is_recorded_as_interrupted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    capture_runner_dependencies(monkeypatch)
+
+    def forced_shutdown(self: Any) -> None:
+        for crawler in self.crawlers:
+            crawler.stats.set_value("scheduler/enqueued", 5)
+            crawler.stats.set_value("scheduler/dequeued", 2)
+
+    monkeypatch.setattr(runner.CrawlerProcess, "start", forced_shutdown)
+
+    assert run_unified_for_test(tmp_path) == 130
+    manifest = json.loads((tmp_path / "crawl-output/state/manifest.json").read_text())
+    assert manifest["status"] == "interrupted"
