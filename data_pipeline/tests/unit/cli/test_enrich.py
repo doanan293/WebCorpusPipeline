@@ -89,7 +89,7 @@ def test_run_indexes_downloads_and_extracts_in_order(
         order.append("inventory")
         return InventorySummary(candidates=0, referrers=0)
 
-    async def download(current: object, settings: object) -> RunSummary:
+    async def download(current: object, settings: object, **_: object) -> RunSummary:
         order.append("download")
         return RunSummary()
 
@@ -112,7 +112,7 @@ def test_run_skips_inventory_when_it_is_already_done(
     state.inventory_is_done = True
     order: list[str] = []
 
-    async def download(current: object, settings: object) -> RunSummary:
+    async def download(current: object, settings: object, **_: object) -> RunSummary:
         order.append("download")
         return RunSummary()
 
@@ -216,7 +216,7 @@ def test_download_retry_failed_requeues_before_downloading(
         order.append("reset")
         return 2
 
-    async def download(current: object, settings: object) -> RunSummary:
+    async def download(current: object, settings: object, **_: object) -> RunSummary:
         order.append("download")
         return RunSummary()
 

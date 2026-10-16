@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,17 @@ class DownloadedFile:
     size: int
     mime_type: str
     final_url: str
+
+
+@dataclass
+class HttpResponse:
+    """One HTTP response as the downloader sees it; ``close`` releases the connection."""
+
+    status: int
+    headers: Mapping[str, str]
+    final_url: str
+    body: AsyncIterator[bytes]
+    close: Callable[[], Awaitable[None]]
 
 
 @dataclass

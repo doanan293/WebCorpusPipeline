@@ -12,7 +12,6 @@ from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 from typing import Any, Concatenate
 
-from data_pipeline.enrich.domain.download_rules import verify_file
 from data_pipeline.enrich.domain.models import (
     DownloadedFile,
     DownloadJob,
@@ -23,6 +22,7 @@ from data_pipeline.enrich.domain.models import (
     jsonable,
 )
 from data_pipeline.enrich.domain.serializers import parse_result_from_dict
+from data_pipeline.enrich.infrastructure.files.download_files import verify_file
 
 
 def read_crawl_id(source: Path) -> str | None:

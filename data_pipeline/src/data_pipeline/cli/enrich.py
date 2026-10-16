@@ -58,12 +58,18 @@ def download(
     """Download the inventoried documents (resumable)."""
     from data_pipeline.enrich.application import download as downloader
     from data_pipeline.enrich.application import session
+    from data_pipeline.enrich.infrastructure.files.download_files import LocalDownloadFiles
+    from data_pipeline.enrich.infrastructure.http.aiohttp_transport import PublicTransport
 
     settings = context.build_settings(source, work_dir)
     with session.open_work_state(settings, rebind=rebind_source) as state:
         if retry_failed:
             print(f"requeued {state.reset_failed_downloads()} failed downloads")
-        summary = asyncio.run(downloader.run_downloads(state, settings))
+        summary = asyncio.run(
+            downloader.run_downloads(
+                state, settings, transport_factory=PublicTransport, files=LocalDownloadFiles()
+            )
+        )
     return _summary(summary, json_output)
 
 
@@ -106,6 +112,8 @@ def run(
     from data_pipeline.enrich.application import extract as pipeline
     from data_pipeline.enrich.application import inventory as enrich_inventory
     from data_pipeline.enrich.application import session
+    from data_pipeline.enrich.infrastructure.files.download_files import LocalDownloadFiles
+    from data_pipeline.enrich.infrastructure.http.aiohttp_transport import PublicTransport
     from data_pipeline.shared.infrastructure.settings import load_api_keys
 
     settings = context.build_settings(source, work_dir)
@@ -113,7 +121,11 @@ def run(
     with session.open_work_state(settings, rebind=rebind_source) as state:
         if not state.inventory_done(enrich_inventory.source_key(settings.source_path)):
             enrich_inventory.index_inventory(settings.source_path, state)
-        asyncio.run(downloader.run_downloads(state, settings))
+        asyncio.run(
+            downloader.run_downloads(
+                state, settings, transport_factory=PublicTransport, files=LocalDownloadFiles()
+            )
+        )
         summary = pipeline.extract_documents(state, settings, api_keys=api_keys)
     return _summary(summary, json_output)
 

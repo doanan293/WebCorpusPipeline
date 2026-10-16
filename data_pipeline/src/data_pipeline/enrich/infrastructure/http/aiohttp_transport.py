@@ -1,37 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from dataclasses import dataclass
 from importlib.metadata import version
-from typing import Any, Protocol
 
 import aiohttp
 
+from data_pipeline.enrich.domain.models import HttpResponse
 from data_pipeline.shared.domain.config import Settings
 
 USER_AGENT = f"data-pipeline/{version('data-pipeline')}"
-
-
-class _Releasable(Protocol):
-    def release(self) -> object: ...
-
-
-@dataclass
-class Response:
-    status: int
-    headers: Any
-    final_url: str
-    body: AsyncIterator[bytes]
-    _response: _Releasable
-
-    async def close(self) -> None:
-        self._response.release()
-
-
-class HttpClient(Protocol):
-    """What the downloader needs from a transport (satisfied by PublicTransport)."""
-
-    async def get(self, url: str, headers: dict[str, str] | None = None) -> Response: ...
 
 
 class PublicTransport:
@@ -56,17 +32,22 @@ class PublicTransport:
         if self.session:
             await self.session.close()
 
-    async def get(self, url: str, headers: dict[str, str] | None = None) -> Response:
+    async def get(self, url: str, headers: dict[str, str] | None = None) -> HttpResponse:
         if self.session is None:
             msg = "PublicTransport must be used as an async context manager"
             raise RuntimeError(msg)
         response = await self.session.get(
             url, headers=headers, allow_redirects=True, max_redirects=self.settings.max_redirects
         )
-        return Response(
+
+        async def close() -> None:
+            response.release()
+
+        # The CIMultiDictProxy itself, so header lookups stay case-insensitive.
+        return HttpResponse(
             response.status,
             response.headers,
             str(response.url),
             response.content.iter_chunked(self.settings.chunk_bytes),
-            response,
+            close,
         )

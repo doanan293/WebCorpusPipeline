@@ -129,7 +129,7 @@ def test_missing_extra_prints_an_install_hint(
 
 def test_keyboard_interrupt_exits_130(monkeypatch: pytest.MonkeyPatch) -> None:
 
-    async def interrupted(state: object, settings: object) -> RunSummary:
+    async def interrupted(state: object, settings: object, **_: object) -> RunSummary:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(enrich_session, "open_work_state", fake_open_work_state({}))

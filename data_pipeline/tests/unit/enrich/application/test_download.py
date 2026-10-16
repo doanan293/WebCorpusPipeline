@@ -6,25 +6,31 @@ import time
 from collections.abc import AsyncIterator
 from importlib.metadata import version
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from data_pipeline.enrich.application.download import (
+from data_pipeline.enrich.application.download import download_one, run_downloads
+from data_pipeline.enrich.domain.download_rules import (
     PermanentDownloadError,
     RetryableDownloadError,
-    download_one,
-    run_downloads,
 )
-from data_pipeline.enrich.domain.models import DownloadedFile, DownloadJob, SourceProgress
-from data_pipeline.enrich.infrastructure.http.aiohttp_transport import USER_AGENT, Response
+from data_pipeline.enrich.domain.models import (
+    DownloadedFile,
+    DownloadJob,
+    HttpResponse,
+    SourceProgress,
+)
+from data_pipeline.enrich.infrastructure.files.download_files import LocalDownloadFiles
+from data_pipeline.enrich.infrastructure.http.aiohttp_transport import USER_AGENT
 from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
 from data_pipeline.shared.domain.config import ProjectPaths, Settings
 from data_pipeline.shared.infrastructure.settings import load_settings
+from tests.fakes.enrich import FakeTransport, Served, noop_close
 
 PDF = b"%PDF-1.4\n" + b"0123456789" * 10
 URL = "https://a.test/files/report.pdf"
+FILES = LocalDownloadFiles()
 
 
 async def chunks(data: bytes, size: int = 7) -> AsyncIterator[bytes]:
@@ -37,25 +43,13 @@ def reply(
     body: bytes = PDF,
     headers: dict[str, str] | None = None,
     url: str = URL,
-) -> Response:
+) -> HttpResponse:
     merged = {
         "Content-Type": "application/pdf",
         "Content-Length": str(len(body)),
         **(headers or {}),
     }
-    return Response(status, merged, url, chunks(body), SimpleNamespace(release=lambda: None))
-
-
-class FakeTransport:
-    """Hands out queued replies and records the headers each request carried."""
-
-    def __init__(self, *replies: Response) -> None:
-        self.replies = list(replies)
-        self.requests: list[dict[str, str] | None] = []
-
-    async def get(self, url: str, headers: dict[str, str] | None = None) -> Response:
-        self.requests.append(headers)
-        return self.replies.pop(0)
+    return HttpResponse(status, merged, url, chunks(body), noop_close)
 
 
 @pytest.fixture
@@ -81,7 +75,7 @@ def run(coroutine: Any) -> Any:
 def test_downloads_a_document_and_records_it(state: WorkState, settings: Settings) -> None:
     job = job_for(state)
 
-    result = run(download_one(job, state, settings, FakeTransport(reply())))
+    result = run(download_one(job, state, settings, FakeTransport(reply()), FILES))
 
     expected_name = hashlib.sha256(URL.encode()).hexdigest() + ".pdf"
     assert result.path == state.root / "files" / expected_name
@@ -105,7 +99,7 @@ def test_resumes_with_a_range_request_when_the_etag_is_strong(
         )
     )
 
-    result = run(download_one(job, state, settings, transport))
+    result = run(download_one(job, state, settings, transport, FILES))
 
     assert transport.requests == [{"Range": "bytes=20-", "If-Range": '"v1"'}]
     assert result.path.read_bytes() == PDF
@@ -118,7 +112,7 @@ def test_restarts_from_zero_when_the_server_ignores_the_range(
     job.part_path.parent.mkdir(parents=True)
     job.part_path.write_bytes(PDF[:20])
 
-    result = run(download_one(job, state, settings, FakeTransport(reply(200, PDF))))
+    result = run(download_one(job, state, settings, FakeTransport(reply(200, PDF)), FILES))
 
     assert result.path.read_bytes() == PDF
 
@@ -138,7 +132,7 @@ def test_restarts_with_a_plain_request_when_the_validator_changed(
         reply(200, PDF, {"ETag": '"v2"'}),
     )
 
-    result = run(download_one(job, state, settings, transport))
+    result = run(download_one(job, state, settings, transport, FILES))
 
     assert transport.requests == [{"Range": "bytes=20-", "If-Range": '"v1"'}, None]
     assert result.path.read_bytes() == PDF
@@ -157,13 +151,13 @@ def test_a_changed_validator_followed_by_a_bad_status_is_retryable(
     )
 
     with pytest.raises(RetryableDownloadError, match="validator changed"):
-        run(download_one(job, state, settings, transport))
+        run(download_one(job, state, settings, transport, FILES))
 
 
 @pytest.mark.parametrize("status", [404, 410, 403, 301])
 def test_client_errors_are_permanent(status: int, state: WorkState, settings: Settings) -> None:
     with pytest.raises(PermanentDownloadError, match=f"HTTP {status}"):
-        run(download_one(job_for(state), state, settings, FakeTransport(reply(status, b""))))
+        run(download_one(job_for(state), state, settings, FakeTransport(reply(status, b"")), FILES))
 
 
 @pytest.mark.parametrize("status", [408, 425, 429, 500, 503])
@@ -173,7 +167,7 @@ def test_transient_statuses_are_retryable_and_honour_retry_after(
     transport = FakeTransport(reply(status, b"", {"Retry-After": "7"}))
 
     with pytest.raises(RetryableDownloadError) as caught:
-        run(download_one(job_for(state), state, settings, transport))
+        run(download_one(job_for(state), state, settings, transport, FILES))
 
     assert str(caught.value) == f"HTTP {status}"
     assert caught.value.retry_after == 7.0
@@ -183,7 +177,7 @@ def test_a_declared_size_over_the_limit_is_permanent(state: WorkState, settings:
     big = reply(200, PDF, {"Content-Length": str(settings.max_file_bytes + 1)})
 
     with pytest.raises(PermanentDownloadError, match="max_file_bytes"):
-        run(download_one(job_for(state), state, settings, FakeTransport(big)))
+        run(download_one(job_for(state), state, settings, FakeTransport(big), FILES))
 
 
 def test_a_body_that_outgrows_the_limit_is_permanent(
@@ -195,7 +189,7 @@ def test_a_body_that_outgrows_the_limit_is_permanent(
     no_length = reply(200, PDF, {"Content-Length": ""})
 
     with pytest.raises(PermanentDownloadError, match="max_file_bytes"):
-        run(download_one(job_for(state), state, small, FakeTransport(no_length)))
+        run(download_one(job_for(state), state, small, FakeTransport(no_length), FILES))
     assert small.max_file_bytes == 50 and settings.max_file_bytes > 50
 
 
@@ -203,14 +197,14 @@ def test_a_short_body_is_a_truncated_response(state: WorkState, settings: Settin
     short = reply(200, PDF[:30], {"Content-Length": str(len(PDF))})
 
     with pytest.raises(RetryableDownloadError, match="truncated response"):
-        run(download_one(job_for(state), state, settings, FakeTransport(short)))
+        run(download_one(job_for(state), state, settings, FakeTransport(short), FILES))
 
 
 def test_html_pretending_to_be_a_pdf_is_rejected(state: WorkState, settings: Settings) -> None:
     page = reply(200, b"<html><body>not a pdf</body></html>")
 
     with pytest.raises(PermanentDownloadError, match="not a document"):
-        run(download_one(job_for(state), state, settings, FakeTransport(page)))
+        run(download_one(job_for(state), state, settings, FakeTransport(page), FILES))
 
 
 def test_run_downloads_downloads_pending_files_and_schedules_retries(
@@ -230,7 +224,7 @@ def test_run_downloads_downloads_pending_files_and_schedules_retries(
         async def __aexit__(self, *exc: object) -> None:
             return None
 
-        async def get(self, url: str, headers: dict[str, str] | None = None) -> Response:
+        async def get(self, url: str, headers: dict[str, str] | None = None) -> HttpResponse:
             return replies[url]()
 
     fast = load_settings(
@@ -238,7 +232,7 @@ def test_run_downloads_downloads_pending_files_and_schedules_retries(
         {"work_dir": settings.work_path, "retries": 1, "host_delay_seconds": 0.001},
     )
 
-    summary = run(run_downloads(state, fast, transport_factory=Transport))
+    summary = run(run_downloads(state, fast, transport_factory=Transport, files=FILES))
 
     assert summary.downloaded == 1
     failure = state.conn.execute(
@@ -246,29 +240,6 @@ def test_run_downloads_downloads_pending_files_and_schedules_retries(
     ).fetchone()
     assert failure is not None
     assert (failure["stage"], failure["reason"]) == ("download", "HTTP 503")
-
-
-class Served:
-    """A transport factory serving one reply per URL; counts sessions and requests."""
-
-    def __init__(self, replies: dict[str, Any]) -> None:
-        self.replies = replies
-        self.sessions = 0
-        self.calls: list[str] = []
-
-    def __call__(self, _settings: Settings) -> Served:
-        return self
-
-    async def __aenter__(self) -> Served:
-        self.sessions += 1
-        return self
-
-    async def __aexit__(self, *exc: object) -> None:
-        return None
-
-    async def get(self, url: str, headers: dict[str, str] | None = None) -> Response:
-        self.calls.append(url)
-        return self.replies[url]()
 
 
 def serve(state: WorkState, replies: dict[str, Any]) -> Served:
@@ -286,7 +257,7 @@ def quick(settings: Settings, **overrides: object) -> Settings:
 def test_permanent_error_is_not_retried(state: WorkState, settings: Settings) -> None:
     transport = serve(state, {URL: lambda: reply(404, b"", url=URL)})
 
-    run(run_downloads(state, quick(settings, retries=3), transport_factory=transport))
+    run(run_downloads(state, quick(settings, retries=3), transport_factory=transport, files=FILES))
 
     assert transport.calls == [URL]
     row = state.conn.execute(
@@ -299,7 +270,7 @@ def test_retry_after_http_date_is_parsed(state: WorkState, settings: Settings) -
     when = "Wed, 21 Oct 2099 07:28:00 GMT"
     transport = serve(state, {URL: lambda: reply(503, b"", {"Retry-After": when}, url=URL)})
 
-    run(run_downloads(state, quick(settings), transport_factory=transport))
+    run(run_downloads(state, quick(settings), transport_factory=transport, files=FILES))
 
     row = state.conn.execute(
         "SELECT status, retry_at FROM inventory WHERE url=?", (URL,)
@@ -312,7 +283,7 @@ def test_retry_after_is_capped_at_300_seconds(state: WorkState, settings: Settin
     transport = serve(state, {URL: lambda: reply(429, b"", {"Retry-After": "100000"}, url=URL)})
     started = time.monotonic()
 
-    summary = run(run_downloads(state, quick(settings), transport_factory=transport))
+    summary = run(run_downloads(state, quick(settings), transport_factory=transport, files=FILES))
 
     assert time.monotonic() - started < 5
     assert summary.pending == 1
@@ -323,7 +294,7 @@ def test_one_session_per_run(state: WorkState, settings: Settings) -> None:
     urls = [f"https://a.test/{n}.pdf" for n in range(3)]
     transport = serve(state, {url: (lambda u=url: reply(200, PDF, url=u)) for url in urls})
 
-    summary = run(run_downloads(state, quick(settings), transport_factory=transport))
+    summary = run(run_downloads(state, quick(settings), transport_factory=transport, files=FILES))
 
     assert summary.downloaded == 3
     assert transport.sessions == 1
