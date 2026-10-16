@@ -294,6 +294,8 @@ def test_html_shell_is_rescheduled_once_with_playwright() -> None:
     assert isinstance(rerender, Request)
     assert rerender.meta["playwright"] is True
     assert rerender.meta["rendered"] is True
+    # Waiting for "load" means waiting for every tracker and image; text is there before.
+    assert rerender.meta["playwright_page_goto_kwargs"] == {"wait_until": "domcontentloaded"}
     # Rendering shares the host's slot, so plain and rendered requests together stay within
     # concurrent_per_host.
     assert "download_slot" not in rerender.meta

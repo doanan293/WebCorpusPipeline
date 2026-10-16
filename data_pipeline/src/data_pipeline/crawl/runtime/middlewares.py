@@ -286,6 +286,7 @@ class PlaywrightFallbackMiddleware:
                     {
                         "playwright": True,
                         "rendered": True,
+                        "playwright_page_goto_kwargs": {"wait_until": "domcontentloaded"},
                     }
                 )
                 return request.replace(meta=meta, dont_filter=True)
@@ -299,6 +300,7 @@ class PlaywrightFallbackMiddleware:
             {
                 "playwright": True,
                 "rendered": True,
+                "playwright_page_goto_kwargs": {"wait_until": "domcontentloaded"},
                 "playwright_page_methods": {
                     "stable_body": PageMethod(_wait_for_stable_body),
                 },

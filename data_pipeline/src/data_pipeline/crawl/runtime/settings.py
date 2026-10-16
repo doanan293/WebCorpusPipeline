@@ -14,6 +14,14 @@ from data_pipeline.crawl.runtime.middlewares import (
 from data_pipeline.crawl.runtime.playwright_driver import isolate_playwright_driver
 from data_pipeline.crawl.runtime.profiles import RuntimeTuning, resolve_runtime_tuning
 
+# Rendering only needs the DOM's text and links. Every subresource a page loads passes
+# through Scrapy's event loop, so these are not fetched at all.
+_SKIPPED_RESOURCE_TYPES = frozenset({"image", "media", "font", "stylesheet"})
+
+
+def _skip_heavy_resource(request: Any) -> bool:
+    return request.resource_type in _SKIPPED_RESOURCE_TYPES
+
 
 def build_settings(
     config: CrawlerConfig,
@@ -56,6 +64,7 @@ def build_settings(
         },
         "PLAYWRIGHT_BROWSER_TYPE": "chromium",
         "PLAYWRIGHT_MAX_PAGES_PER_CONTEXT": tuning.playwright_max_pages,
+        "PLAYWRIGHT_ABORT_REQUEST": _skip_heavy_resource,
         "DOWNLOADER_MIDDLEWARES": {
             # Asset DNS safety must run before Scrapy's RobotsTxtMiddleware
             # (priority 100), otherwise Scrapy can fetch the asset host's

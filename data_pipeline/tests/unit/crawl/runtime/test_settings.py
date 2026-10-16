@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware
 from data_pipeline.crawl.runtime.settings import build_settings
@@ -41,3 +43,13 @@ def test_contact_sent_as_from_header() -> None:
 
 def test_settings_do_not_use_scrapy_jobdir() -> None:
     assert "JOBDIR" not in build_settings(config())
+
+
+def test_rendering_skips_images_media_fonts_and_styles() -> None:
+    abort = build_settings(config())["PLAYWRIGHT_ABORT_REQUEST"]
+
+    def request(kind: str) -> SimpleNamespace:
+        return SimpleNamespace(resource_type=kind)
+
+    assert [abort(request(k)) for k in ("image", "media", "font", "stylesheet")] == [True] * 4
+    assert [abort(request(k)) for k in ("document", "script", "xhr", "fetch")] == [False] * 4
