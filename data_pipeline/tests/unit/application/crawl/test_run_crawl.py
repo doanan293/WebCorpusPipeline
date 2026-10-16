@@ -115,7 +115,7 @@ def test_crawl_runner_uses_crawl_phase_and_unified_spider(
     assert observed["spider"] is UnifiedSpider
     crawl_kwargs = observed["crawl_kwargs"]
     assert isinstance(crawl_kwargs["seeds"], SeedSet)
-    pipeline = crawl_kwargs["pipeline"]
+    pipeline = crawl_kwargs["handler"]
     assert isinstance(pipeline, PagePipeline)
     assert isinstance(pipeline.frontier, FrontierPolicy)
     assert isinstance(pipeline.policy, AssetPolicy)
@@ -449,8 +449,8 @@ def test_crawl_runner_resume_restores_frontier_and_coordinator(
     observed.clear()
     exit_code2 = run_unified_for_test(tmp_path, resume=True)
     assert exit_code2 == 0
-    resumed_frontier = observed["crawl_kwargs"]["pipeline"].frontier
-    resumed_coordinator = observed["crawl_kwargs"]["pipeline"].coordinator
+    resumed_frontier = observed["crawl_kwargs"]["handler"].frontier
+    resumed_coordinator = observed["crawl_kwargs"]["handler"].coordinator
     resume_records = observed["crawl_kwargs"]["resume_records"]
     assert resumed_frontier.snapshot()["total_scheduled"] == 1
     assert resumed_coordinator.hosts["a.test"].mode == "sitemap"

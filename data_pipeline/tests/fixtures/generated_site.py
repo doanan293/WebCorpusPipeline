@@ -134,7 +134,7 @@ def run_generated_site(
     spider = UnifiedSpider(
         seeds=seeds,
         config=config,
-        pipeline=PagePipeline(
+        handler=PagePipeline(
             options=options,
             frontier=frontier,
             writer=writer,

@@ -4,6 +4,9 @@ from typing import Any
 
 from data_pipeline.application.corpus import ports as corpus_ports
 from data_pipeline.application.crawl import ports as crawl_ports
+from data_pipeline.application.crawl.asset_responses import AssetResponses
+from data_pipeline.application.crawl.discovery_pipeline import DiscoveryPipeline
+from data_pipeline.application.crawl.page_pipeline import PagePipeline
 from data_pipeline.application.enrich import ports
 from data_pipeline.application.hosts import ports as hosts_ports
 from tests.fakes.corpus import FakeCorpusDatabase, FakePublisher
@@ -114,3 +117,20 @@ def test_enrich_repository_fakes_satisfy_their_ports() -> None:
         (failures, ports.Failures),
     ):
         _check(fake, port)
+
+
+def test_pipelines_are_the_spiders_handlers() -> None:
+    handler_attrs = set(crawl_ports.CrawlHandler.__protocol_attrs__)  # type: ignore[attr-defined]
+    assert {"start", "resume", "handle", "handle_failure"} <= handler_attrs
+    assert "state" not in handler_attrs
+    asset_attrs = set(crawl_ports.AssetHandler.__protocol_attrs__)  # type: ignore[attr-defined]
+    assert {"try_handle", "handle_failure", "reused"} <= asset_attrs
+    discovery_attrs = set(crawl_ports.DiscoveryHandler.__protocol_attrs__)  # type: ignore[attr-defined]
+    assert {"start", "handle", "handle_failure"} <= discovery_attrs
+    instance_attrs = {"options", "stats", "refreshing", "urls"}
+    for cls, attrs in (
+        (PagePipeline, handler_attrs),
+        (AssetResponses, asset_attrs),
+        (DiscoveryPipeline, discovery_attrs),
+    ):
+        assert attrs <= set(dir(cls)) | instance_attrs, cls

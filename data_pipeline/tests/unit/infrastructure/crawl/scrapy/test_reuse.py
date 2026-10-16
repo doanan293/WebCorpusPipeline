@@ -35,7 +35,7 @@ def make_spider(tmp_path: Path) -> tuple[ReusedAssetSpider, SqliteCrawlUnitOfWor
     )
     spider = ReusedAssetSpider(
         config=CrawlerConfig(hostnames=frozenset({"a.test"}), contact="ops@example.org"),
-        assets=AssetResponses(options=options, writer=writer, policy=AssetPolicy(options)),
+        handler=AssetResponses(options=options, writer=writer, policy=AssetPolicy(options)),
         targets=(target,),
     )
     return spider, state

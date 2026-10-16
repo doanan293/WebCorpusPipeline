@@ -6,7 +6,7 @@ from typing import Any, override
 import scrapy
 from scrapy.http import Response
 
-from data_pipeline.application.crawl.ports import DiscoveryPipelineLike
+from data_pipeline.application.crawl.ports import DiscoveryHandler
 from data_pipeline.domain.crawl.config import CrawlerConfig
 from data_pipeline.domain.crawl.pages import Probe
 from data_pipeline.infrastructure.crawl.scrapy.requests import failed_request, fetched_page
@@ -17,12 +17,10 @@ class DiscoverySpider(scrapy.Spider):
 
     name = "discovery_spider"
 
-    def __init__(
-        self, *, config: CrawlerConfig, pipeline: DiscoveryPipelineLike, **kwargs: Any
-    ) -> None:
+    def __init__(self, *, config: CrawlerConfig, handler: DiscoveryHandler, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.config = config
-        self.pipeline = pipeline
+        self.handler = handler
 
     @override
     async def start(self) -> AsyncIterator[scrapy.Request]:
@@ -30,7 +28,7 @@ class DiscoverySpider(scrapy.Spider):
             yield req
 
     def start_requests(self) -> Iterator[scrapy.Request]:
-        for probe in self.pipeline.start():
+        for probe in self.handler.start():
             yield self._request(probe)
 
     def _request(self, probe: Probe, current: scrapy.Request | None = None) -> scrapy.Request:
@@ -61,11 +59,11 @@ class DiscoverySpider(scrapy.Spider):
             "robots" if response.url.endswith("/robots.txt") else "sitemap",
         )
         page = fetched_page(response, purpose=purpose)
-        for probe in self.pipeline.handle(page):
+        for probe in self.handler.handle(page):
             yield self._request(probe, response.request)
 
     def on_request_error(self, failure: Any) -> Iterator[scrapy.Request] | None:
-        probes = self.pipeline.handle_failure(failed_request(failure, purpose="sitemap"))
+        probes = self.handler.handle_failure(failed_request(failure, purpose="sitemap"))
         if probes:
             return iter([self._request(probe, failure.request) for probe in probes])
         return None

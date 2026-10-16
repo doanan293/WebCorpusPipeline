@@ -20,8 +20,8 @@ def _errback(failure: Any) -> None:
 def make_factory() -> RequestFactory:
     spider, _ = make_spider()
     return RequestFactory(
-        options=spider.pipeline.options,
-        urls=spider.pipeline.urls,
+        options=spider.handler.options,
+        urls=spider.handler.urls,
         callback=_callback,
         errback=_errback,
     )
@@ -104,7 +104,7 @@ def test_http_fallback_and_refresh_fetches_carry_their_meta() -> None:
         "etag": '"v1"',
     }
     refetch = RequestFactory(
-        options=spider.pipeline.options,
+        options=spider.handler.options,
         urls=cast(Any, writer.urls),
         callback=_callback,
         errback=_errback,

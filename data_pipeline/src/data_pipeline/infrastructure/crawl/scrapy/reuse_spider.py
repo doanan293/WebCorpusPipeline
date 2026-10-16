@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 import scrapy
 from scrapy.http import Response
 
-from data_pipeline.application.crawl.ports import AssetResponsesLike
+from data_pipeline.application.crawl.ports import AssetHandler
 from data_pipeline.domain.crawl.config import CrawlerConfig
 from data_pipeline.domain.crawl.models import ReusedAssetTarget
 from data_pipeline.infrastructure.crawl.scrapy.requests import failed_request, fetched_page
@@ -22,17 +22,17 @@ class ReusedAssetSpider(scrapy.Spider):
         self,
         *,
         config: CrawlerConfig,
-        assets: AssetResponsesLike,
+        handler: AssetHandler,
         targets: Iterable[ReusedAssetTarget],
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self.config = config
-        self.assets = assets
+        self.handler = handler
         self.targets = targets
 
     def start_requests(self) -> Iterator[scrapy.Request]:
-        for target in self.assets.reused(self.targets):
+        for target in self.handler.reused(self.targets):
             hostname = (urlsplit(target.url).hostname or "").lower().rstrip(".")
             yield scrapy.Request(
                 target.url,
@@ -64,8 +64,8 @@ class ReusedAssetSpider(scrapy.Spider):
 
     def parse_response(self, response: Response) -> Iterator[scrapy.Request]:
         # Reused targets are always asset requests, so no HTML expansion can follow.
-        self.assets.try_handle(fetched_page(response))
+        self.handler.try_handle(fetched_page(response))
         return iter(())
 
     def on_request_error(self, failure: Any) -> None:
-        self.assets.handle_failure(failed_request(failure))
+        self.handler.handle_failure(failed_request(failure))

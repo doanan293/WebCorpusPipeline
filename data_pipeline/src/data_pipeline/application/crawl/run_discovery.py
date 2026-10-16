@@ -54,7 +54,7 @@ def run_discovery(
         "discovery",
         {
             "config": config,
-            "pipeline": DiscoveryPipeline(seeds=seeds, coordinator=coordinator, writer=writer),
+            "handler": DiscoveryPipeline(seeds=seeds, coordinator=coordinator, writer=writer),
         },
     )
     prepared = engine.prepare(config, tuning, setup)

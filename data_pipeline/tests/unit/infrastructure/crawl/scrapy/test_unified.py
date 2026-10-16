@@ -43,13 +43,13 @@ def make_spider(
         coordinator=coordinator,
     )
     spider = UnifiedSpider(
-        seeds=seeds, config=config, pipeline=pipeline, resume_records=resume_records
+        seeds=seeds, config=config, handler=pipeline, resume_records=resume_records
     )
     return spider, writer
 
 
 def pipeline_of(spider: UnifiedSpider) -> PagePipeline:
-    return cast(PagePipeline, spider.pipeline)
+    return cast(PagePipeline, spider.handler)
 
 
 def page_request(
@@ -614,7 +614,7 @@ def test_same_host_media_obeys_host_url_budget() -> None:
     spider = UnifiedSpider(
         seeds=seeds,
         config=config,
-        pipeline=PagePipeline(
+        handler=PagePipeline(
             options=options,
             frontier=frontier,
             writer=cast(Any, writer),

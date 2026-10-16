@@ -315,7 +315,7 @@ class CrawlEngine(Protocol):
         ...
 
 
-class PagePipelineLike(Protocol):
+class CrawlHandler(Protocol):
     """What a spider hands fetched pages and failures to (the application's PagePipeline)."""
 
     options: CrawlOptions
@@ -336,7 +336,7 @@ class PagePipelineLike(Protocol):
     def handle_failure(self, failure: FailedRequest) -> list[FollowUp]: ...
 
 
-class AssetResponsesLike(Protocol):
+class AssetHandler(Protocol):
     """What the reused-asset spider hands its responses and failures to."""
 
     def try_handle(self, page: FetchedPage) -> bool: ...
@@ -346,7 +346,7 @@ class AssetResponsesLike(Protocol):
     def reused(self, targets: Iterable[ReusedAssetTarget]) -> Iterator[ReusedAssetTarget]: ...
 
 
-class DiscoveryPipelineLike(Protocol):
+class DiscoveryHandler(Protocol):
     """What the discovery spider hands its probe responses and failures to."""
 
     def start(self) -> Iterator[Probe]: ...

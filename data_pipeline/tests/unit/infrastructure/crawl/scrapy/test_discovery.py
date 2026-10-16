@@ -64,13 +64,13 @@ def make_discovery_spider(
     writer = FakeDiscoveryWriter()
     spider = DiscoverySpider(
         config=config,
-        pipeline=DiscoveryPipeline(seeds=seeds, coordinator=coordinator, writer=cast(Any, writer)),
+        handler=DiscoveryPipeline(seeds=seeds, coordinator=coordinator, writer=cast(Any, writer)),
     )
     return spider, writer
 
 
 def pipeline_of(spider: DiscoverySpider) -> DiscoveryPipeline:
-    return cast(DiscoveryPipeline, spider.pipeline)
+    return cast(DiscoveryPipeline, spider.handler)
 
 
 def failure_of(request: Request) -> Any:

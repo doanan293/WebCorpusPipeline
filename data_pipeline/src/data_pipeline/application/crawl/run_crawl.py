@@ -253,7 +253,7 @@ class _CrawlRun:
                 "reuse",
                 {
                     "config": ctx.config,
-                    "assets": AssetResponses(
+                    "handler": AssetResponses(
                         options=ctx.options, writer=prepared.writer, policy=prepared.policy
                     ),
                     "targets": prepared.reused_targets,
@@ -272,7 +272,7 @@ class _CrawlRun:
             {
                 "seeds": ctx.seeds,
                 "config": ctx.config,
-                "pipeline": pipeline,
+                "handler": pipeline,
                 "resume_records": self.resume_records,
                 "refresh_targets": prepared.refresh_targets,
             },

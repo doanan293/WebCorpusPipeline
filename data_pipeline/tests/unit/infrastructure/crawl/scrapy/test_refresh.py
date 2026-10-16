@@ -62,7 +62,7 @@ def make_spider(
     return UnifiedSpider(
         seeds=SEEDS,
         config=CrawlerConfig(hostnames=SEEDS.allowed_hostnames, contact="ops@example.com"),
-        pipeline=pipeline,
+        handler=pipeline,
         **kwargs,
     )
 

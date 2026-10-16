@@ -62,8 +62,8 @@ src/data_pipeline/
 
 | Nghiệp vụ | Port (trong `application/<nghiệp vụ>/ports.py`) | Adapter (trong `infrastructure/<nghiệp vụ>/`) |
 |---|---|---|
-| `crawl` | `CrawlStateStore`, `CrawlStorage`, `RefreshStorePort`, `RawHtmlStore`, `CrawlEngine`, `PagePipelineLike`, `AssetResponsesLike`, `DiscoveryPipelineLike` | `SqliteCrawlState`, `SqliteCrawlStorage`, `RefreshStore`, `HtmlStore`, `ScrapyEngine`; spider Scrapy chỉ chuyển đổi `Response` ↔ `FetchedPage` và `Scheduled` ↔ `Request` |
-| `enrich` | `WorkState`, `ArticleSource`, `HttpTransport`, `DownloadFiles`, `LocalParser`, `CloudParser`, `ParseCache` | `SqliteWorkState`, `JsonlArticleSource`, `PublicTransport`, `LocalDownloadFiles`, `LocalParserAdapter`, `LlamaParseCloud`, `FileParseCache` |
+| `crawl` | `CrawlUnitOfWork` gồm `UrlRecords`, `Articles`, `ContentOwners`, `Assets`, `RouteFamilies`, `HostDiscovery`, `RefreshRuns`, `RawHtml`, `CrawlRun`; `CrawlStorage`, `CrawlEngine`; port đầu vào của spider `CrawlHandler`, `AssetHandler`, `DiscoveryHandler` | `SqliteCrawlUnitOfWork` (một kết nối SQLite, một transaction cho mọi repository: `SqliteUrlRecords`, `SqliteArticles`, ...), `SqliteCrawlStorage`, `RefreshStore`, `HtmlStore`, `ScrapyEngine`; spider Scrapy chỉ chuyển đổi `Response` ↔ `FetchedPage` và `Scheduled` ↔ `Request` |
+| `enrich` | `EnrichUnitOfWork` gồm `Inventory`, `Downloads`, `Parses`, `Failures`; `ArticleSource`, `HttpTransport`, `DownloadFiles`, `LocalParser`, `CloudParser`, `ParseCache` | `SqliteEnrichUnitOfWork` (một kết nối, một khoá ghi chung), `JsonlArticleSource`, `PublicTransport`, `LocalDownloadFiles`, `LocalParserAdapter`, `LlamaParseCloud`, `FileParseCache` |
 | `corpus` | `CorpusFiles`, `EdgeIndex`, `CorpusDatabase`, `DatasetPublisher`, `EnrichmentStatus`, `ExportDocuments` | `LocalCorpusFiles`, `SqliteEdgeIndex`, `MongoCorpusDatabase`, `KaggleCli` |
 | `hosts` | `HostProber`, `BrowserProber`, `AuditReports` | `HttpHostProber`, `PlaywrightBrowserProber`, `FileAuditReports` |
 

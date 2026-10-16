@@ -6,7 +6,7 @@ from typing import Any, override
 import scrapy
 from scrapy.http import Response
 
-from data_pipeline.application.crawl.ports import PagePipelineLike
+from data_pipeline.application.crawl.ports import CrawlHandler
 from data_pipeline.domain.crawl.config import CrawlerConfig
 from data_pipeline.domain.crawl.seeds import SeedSet
 from data_pipeline.infrastructure.crawl.scrapy.requests import (
@@ -26,7 +26,7 @@ class UnifiedSpider(scrapy.Spider):
         *,
         seeds: SeedSet,
         config: CrawlerConfig,
-        pipeline: PagePipelineLike,
+        handler: CrawlHandler,
         resume_records: Iterable[Mapping[str, object]] = (),
         refresh_targets: Iterable[tuple[str, str]] = (),
         **kwargs: Any,
@@ -34,13 +34,13 @@ class UnifiedSpider(scrapy.Spider):
         super().__init__(**kwargs)
         self.seeds = seeds
         self.config = config
-        self.pipeline = pipeline
+        self.handler = handler
         self.resume_records = tuple(resume_records)
         self.refresh_targets = tuple(refresh_targets)
-        pipeline.stats = self._crawler_stats
+        handler.stats = self._crawler_stats
         self.requests = RequestFactory(
-            options=pipeline.options,
-            urls=pipeline.urls,
+            options=handler.options,
+            urls=handler.urls,
             callback=self.parse_response,
             errback=self.on_request_error,
         )
@@ -50,13 +50,13 @@ class UnifiedSpider(scrapy.Spider):
         return getattr(crawler, "stats", None) if crawler else None
 
     def start_requests(self) -> Iterator[scrapy.Request]:
-        for scheduled in self.pipeline.resume(self.resume_records):
+        for scheduled in self.handler.resume(self.resume_records):
             yield self.requests.build(scheduled)
-        if self.pipeline.refreshing:
+        if self.handler.refreshing:
             for url, reason in self.refresh_targets:
                 yield self.requests.refresh(url, reason)
             return
-        for scheduled in self.pipeline.start(self.seeds):
+        for scheduled in self.handler.start(self.seeds):
             yield self.requests.build(scheduled)
 
     @override
@@ -65,11 +65,11 @@ class UnifiedSpider(scrapy.Spider):
             yield req
 
     def parse_response(self, response: Response) -> Iterator[scrapy.Request]:
-        for follow in self.pipeline.handle(fetched_page(response)):
+        for follow in self.handler.handle(fetched_page(response)):
             yield self.requests.build(follow)
 
     def on_request_error(self, failure: Any) -> Iterator[scrapy.Request] | None:
-        fallbacks = self.pipeline.handle_failure(failed_request(failure))
+        fallbacks = self.handler.handle_failure(failed_request(failure))
         if fallbacks:
             return iter([self.requests.build(follow) for follow in fallbacks])
         return None
