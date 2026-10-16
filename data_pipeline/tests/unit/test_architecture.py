@@ -107,16 +107,28 @@ def test_domain_modules_do_no_io() -> None:
     assert violations == []
 
 
+def is_stray(module: str, migrating: set[str] | None = None) -> bool:
+    """A module of a context (or shared) that is not inside one of the three layers."""
+    migrating = MIGRATING if migrating is None else migrating
+    context, layer = placement(module)
+    return (
+        context in (CONTEXTS | {"shared"}) - migrating and layer is None and module.count(".") >= 2
+    )
+
+
 def test_every_context_module_sits_in_a_layer() -> None:
-    strays = [
-        module
-        for module, _ in all_modules()
-        if placement(module)[0] in (CONTEXTS | {"shared"}) - MIGRATING
-        and placement(module)[1] is None
-        and not module.endswith(("__init__", ".domain", ".application", ".infrastructure"))
-        and module.count(".") >= 2
-    ]
-    assert strays == []
+    assert [module for module, _ in all_modules() if is_stray(module)] == []
+
+
+def test_a_module_outside_the_layers_is_a_stray_whatever_its_name() -> None:
+    for module in (
+        "data_pipeline.crawl.helpers",
+        "data_pipeline.crawl.legacy.domain",
+        "data_pipeline.shared.util",
+    ):
+        assert is_stray(module, migrating=set()), module
+    for module in ("data_pipeline.crawl", "data_pipeline.crawl.domain", "data_pipeline.cli.main"):
+        assert not is_stray(module, migrating=set()), module
 
 
 def test_infrastructure_may_import_only_ports_from_application() -> None:
