@@ -8,13 +8,13 @@ from pathlib import Path
 import pytest
 
 from data_pipeline.cli.main import main
-from data_pipeline.enrich import export as enrich_export
-from data_pipeline.enrich import inventory as enrich_inventory
-from data_pipeline.enrich import session as enrich_session
-from data_pipeline.enrich.download import downloader
-from data_pipeline.enrich.models import InventorySummary, RunSummary
-from data_pipeline.enrich.parsing import pipeline
-from data_pipeline.enrich.state import WorkState
+from data_pipeline.enrich.application import download as downloader
+from data_pipeline.enrich.application import export as enrich_export
+from data_pipeline.enrich.application import extract as pipeline
+from data_pipeline.enrich.application import inventory as enrich_inventory
+from data_pipeline.enrich.application import session as enrich_session
+from data_pipeline.enrich.domain.models import InventorySummary, RunSummary
+from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
 from data_pipeline.shared.domain.config import ProjectPaths, Settings
 
 

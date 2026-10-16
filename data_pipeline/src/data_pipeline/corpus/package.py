@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from data_pipeline.corpus.graph import build_graph
-from data_pipeline.enrich.export import export_enrichment
-from data_pipeline.enrich.inventory import source_key
-from data_pipeline.enrich.state import WorkState
+from data_pipeline.enrich.application.export import export_enrichment
+from data_pipeline.enrich.application.inventory import source_key
+from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
 from data_pipeline.shared.infrastructure.files import swap_into_place
 
 PAYLOAD = (

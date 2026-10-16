@@ -1,1 +1,0 @@
-"""Quota-aware LlamaParse adapter."""

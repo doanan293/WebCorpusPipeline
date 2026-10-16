@@ -9,7 +9,7 @@ import typer
 
 from data_pipeline.cli import context
 from data_pipeline.cli.context import JsonOption, RebindOption, SourceOption, WorkDirOption
-from data_pipeline.enrich.models import RunSummary, jsonable
+from data_pipeline.enrich.domain.models import RunSummary, jsonable
 
 app = typer.Typer(help="Download crawled documents and extract their text.", no_args_is_help=True)
 
@@ -34,8 +34,8 @@ def inventory(
     rebind_source: RebindOption = False,
 ) -> int:
     """Index the document links found in the crawl output."""
-    from data_pipeline.enrich import inventory as enrich_inventory
-    from data_pipeline.enrich import session
+    from data_pipeline.enrich.application import inventory as enrich_inventory
+    from data_pipeline.enrich.application import session
 
     settings = context.build_settings(source, work_dir)
     with session.open_work_state(settings, rebind=rebind_source) as state:
@@ -56,8 +56,8 @@ def download(
     ] = False,
 ) -> int:
     """Download the inventoried documents (resumable)."""
-    from data_pipeline.enrich import session
-    from data_pipeline.enrich.download import downloader
+    from data_pipeline.enrich.application import download as downloader
+    from data_pipeline.enrich.application import session
 
     settings = context.build_settings(source, work_dir)
     with session.open_work_state(settings, rebind=rebind_source) as state:
@@ -81,8 +81,8 @@ def extract(
     ] = False,
 ) -> int:
     """Extract plain text from the downloaded documents."""
-    from data_pipeline.enrich import session
-    from data_pipeline.enrich.parsing import pipeline
+    from data_pipeline.enrich.application import extract as pipeline
+    from data_pipeline.enrich.application import session
     from data_pipeline.shared.infrastructure.settings import load_api_keys
 
     settings = context.build_settings(source, work_dir)
@@ -102,10 +102,10 @@ def run(
     rebind_source: RebindOption = False,
 ) -> int:
     """Run inventory (if needed), download and extract in one go."""
-    from data_pipeline.enrich import inventory as enrich_inventory
-    from data_pipeline.enrich import session
-    from data_pipeline.enrich.download import downloader
-    from data_pipeline.enrich.parsing import pipeline
+    from data_pipeline.enrich.application import download as downloader
+    from data_pipeline.enrich.application import extract as pipeline
+    from data_pipeline.enrich.application import inventory as enrich_inventory
+    from data_pipeline.enrich.application import session
     from data_pipeline.shared.infrastructure.settings import load_api_keys
 
     settings = context.build_settings(source, work_dir)
@@ -126,7 +126,7 @@ def status(
     rebind_source: RebindOption = False,
 ) -> int:
     """Report downloaded, parsed, failed, pending and quota-blocked work."""
-    from data_pipeline.enrich import session
+    from data_pipeline.enrich.application import session
 
     settings = context.build_settings(source, work_dir)
     with session.open_work_state(settings, rebind=rebind_source) as state:
@@ -142,8 +142,8 @@ def export(
     rebind_source: RebindOption = False,
 ) -> int:
     """Export the extracted documents of the work directory."""
-    from data_pipeline.enrich import export as enrich_export
-    from data_pipeline.enrich import session
+    from data_pipeline.enrich.application import export as enrich_export
+    from data_pipeline.enrich.application import session
 
     settings = context.build_settings(source, work_dir)
     with session.open_work_state(settings, rebind=rebind_source) as state:
@@ -158,7 +158,7 @@ def reconcile_job(
     work_dir: WorkDirOption = None,
 ) -> int:
     """Show the recorded status of a cloud parse job."""
-    from data_pipeline.enrich import state as enrich_state
+    from data_pipeline.enrich.infrastructure.sqlite import work_state as enrich_state
 
     settings = context.build_settings(None, work_dir)
     status_value = enrich_state.read_cloud_job_status(settings.work_path, request_id, job_id)

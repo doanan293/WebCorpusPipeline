@@ -46,7 +46,7 @@ def package(
 ) -> int:
     """Package articles, documents, images and links into a versioned corpus."""
     from data_pipeline.corpus import package as corpus_package
-    from data_pipeline.enrich import session
+    from data_pipeline.enrich.application import session
 
     settings = context.build_settings(source, work_dir)
     with session.open_work_state(settings, rebind=rebind_source) as state:

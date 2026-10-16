@@ -6,9 +6,9 @@ import pytest
 
 from data_pipeline.corpus import package as corpus_package
 from data_pipeline.corpus.package import package_corpus, verify_corpus
-from data_pipeline.enrich.inventory import index_inventory
-from data_pipeline.enrich.models import DownloadedFile, ParseResult
-from data_pipeline.enrich.state import WorkState
+from data_pipeline.enrich.application.inventory import index_inventory
+from data_pipeline.enrich.domain.models import DownloadedFile, ParseResult
+from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
 
 
 def write_source(folder: Path, urls: list[str]) -> Path:
