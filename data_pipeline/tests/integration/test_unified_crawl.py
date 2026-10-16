@@ -236,3 +236,24 @@ def test_a_copied_finished_state_resumes_unchanged(tmp_path: Path) -> None:
     # Robots and sitemaps are probed again on every start; no page is fetched twice.
     refetched = [url for url in requested_urls(second) if not url.endswith((".txt", ".xml"))]
     assert refetched == []
+
+
+def test_state_interrupted_by_the_pre_refactor_code_resumes(tmp_path: Path) -> None:
+    """The fixture state was written by commit 25c1a09 (before the clean-architecture move),
+    interrupted mid-crawl; the current code must resume it without refetching finished pages."""
+    shutil.copytree(Path(__file__).parents[1] / "fixtures" / "pre_refactor_crawl", tmp_path / "run")
+    run_dir = tmp_path / "run"
+    first = requested_urls(run_dir)
+    before = read_json(run_dir / "crawl" / "state" / "manifest.json")
+    assert before["status"] == "interrupted"
+
+    resumed = run_fixture(run_dir, mode="resume")
+
+    assert resumed.returncode == 0, f"STDOUT:\n{resumed.stdout}\nSTDERR:\n{resumed.stderr}"
+    after = read_json(run_dir / "crawl" / "manifest.json")
+    assert after["status"] == "complete"
+    assert after["counts"]["url_status_extracted"] > before["counts"]["url_status_extracted"]
+    second = requested_urls(run_dir)[len(first) :]
+    pages_done_before = completed_urls(run_dir, first)
+    assert pages_done_before
+    assert [url for url in second if url in pages_done_before] == []

@@ -1,0 +1,38 @@
+assets: content-only
+autothrottle_enabled: true
+autothrottle_target_concurrency: 4.0
+browser_user_agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
+  like Gecko) Chrome/140.0.0.0 Safari/537.36
+concurrent_per_host: 4
+concurrent_requests: 64
+cookies_enabled: false
+download_delay_seconds: 0.001
+download_timeout_seconds: 60
+max_file_bytes: 104857600
+max_response_bytes: 104857600
+max_total_file_bytes: 107374182400
+max_total_urls: 1000000
+max_urls_per_host: 100000
+pagination_empty_pages: 3
+playwright_max_pages: 8
+progress_interval_seconds: 10.0
+redirect_max_times: 20
+refresh_pagination_empty_pages: 1
+refresh_recent_days: 60
+refresh_recent_runs: 4
+refresh_recheck_limit: 5000
+resource_limit_percent: 90
+retry_backoff_base_seconds: 0.01
+retry_max_delay_seconds: 3600
+retry_statuses:
+- 408
+- 425
+- 429
+- 500
+- 502
+- 503
+- 504
+retry_times: 3
+store_html: true
+throttle_max_seconds: 5
+throttle_start_seconds: 0.25
