@@ -222,3 +222,24 @@ def test_cloud_failed_makes_exit_code_4(
 
     assert main(["enrich", "status"]) == 4
     assert "cloud_failed=2" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("command", ["download", "extract", "run"])
+def test_the_summary_is_read_after_the_work(
+    command: str, state: FakeEnrichUnitOfWork, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def leave_one_pending() -> None:
+        state._summary = RunSummary(downloaded=1, pending=1)
+
+    async def download(*_: object, **__: object) -> None:
+        leave_one_pending()
+
+    def extract(*_: object, **__: object) -> None:
+        leave_one_pending()
+
+    state.memory.inventory_is_done = True
+    monkeypatch.setattr(downloader, "run_downloads", download)
+    monkeypatch.setattr(pipeline, "extract_documents", extract)
+
+    # The default summary has nothing pending (exit 0); only the summary after the work has.
+    assert main(["enrich", command]) == 4
