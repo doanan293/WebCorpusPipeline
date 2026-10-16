@@ -45,11 +45,12 @@ def test_settings_do_not_use_scrapy_jobdir() -> None:
     assert "JOBDIR" not in build_settings(config())
 
 
-def test_rendering_skips_images_media_fonts_and_styles() -> None:
+def test_rendering_skips_images_media_and_fonts() -> None:
     abort = build_settings(config())["PLAYWRIGHT_ABORT_REQUEST"]
 
     def request(kind: str) -> SimpleNamespace:
         return SimpleNamespace(resource_type=kind)
 
-    assert [abort(request(k)) for k in ("image", "media", "font", "stylesheet")] == [True] * 4
-    assert [abort(request(k)) for k in ("document", "script", "xhr", "fetch")] == [False] * 4
+    assert [abort(request(k)) for k in ("image", "media", "font")] == [True] * 3
+    kept = ("document", "script", "stylesheet", "xhr", "fetch")
+    assert [abort(request(k)) for k in kept] == [False] * len(kept)

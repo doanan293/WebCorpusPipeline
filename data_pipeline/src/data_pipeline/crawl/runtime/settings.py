@@ -15,8 +15,9 @@ from data_pipeline.crawl.runtime.playwright_driver import isolate_playwright_dri
 from data_pipeline.crawl.runtime.profiles import RuntimeTuning, resolve_runtime_tuning
 
 # Rendering only needs the DOM's text and links. Every subresource a page loads passes
-# through Scrapy's event loop, so these are not fetched at all.
-_SKIPPED_RESOURCE_TYPES = frozenset({"image", "media", "font", "stylesheet"})
+# through Scrapy's event loop, so these are not fetched at all. Stylesheets are kept: some
+# sites (ctsv, work) reveal their content only after their CSS has loaded.
+_SKIPPED_RESOURCE_TYPES = frozenset({"image", "media", "font"})
 
 
 def _skip_heavy_resource(request: Any) -> bool:
