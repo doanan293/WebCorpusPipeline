@@ -14,33 +14,19 @@ from data_pipeline.enrich.application import extract as pipeline
 from data_pipeline.enrich.application import inventory as enrich_inventory
 from data_pipeline.enrich.application import session as enrich_session
 from data_pipeline.enrich.domain.models import InventorySummary, RunSummary
-from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
+from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
 from data_pipeline.shared.domain.config import ProjectPaths, Settings
-
-
-class FakeState:
-    def __init__(self) -> None:
-        self.inventory_is_done = False
-        self.requeued = False
-        self.root = Path("work")
-
-    def summary(self) -> RunSummary:
-        return RunSummary(downloaded=2, parsed=1, failed=0, pending=0, quota_blocked=0)
-
-    def inventory_done(self, key: str) -> bool:
-        return self.inventory_is_done
-
-    def requeue_cloud_parses(self) -> int:
-        self.requeued = True
-        return 3
+from tests.fakes.enrich import FakeWorkState
 
 
 @pytest.fixture
-def state(monkeypatch: pytest.MonkeyPatch) -> FakeState:
-    fake = FakeState()
+def state(monkeypatch: pytest.MonkeyPatch) -> FakeWorkState:
+    fake = FakeWorkState()
 
     @contextmanager
-    def open_work_state(settings: Settings, *, rebind: bool, **_: object) -> Iterator[FakeState]:
+    def open_work_state(
+        settings: Settings, *, rebind: bool, **_: object
+    ) -> Iterator[FakeWorkState]:
         yield fake
 
     monkeypatch.setattr(enrich_session, "open_work_state", open_work_state)
@@ -48,7 +34,7 @@ def state(monkeypatch: pytest.MonkeyPatch) -> FakeState:
 
 
 def test_status_prints_a_one_line_summary(
-    state: FakeState, capsys: pytest.CaptureFixture[str]
+    state: FakeWorkState, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert main(["enrich", "status"]) == 0
     assert (
@@ -58,14 +44,14 @@ def test_status_prints_a_one_line_summary(
 
 
 def test_status_json_prints_the_summary(
-    state: FakeState, capsys: pytest.CaptureFixture[str]
+    state: FakeWorkState, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert main(["enrich", "status", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["downloaded"] == 2
 
 
 def test_inventory_indexes_the_source(
-    state: FakeState, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    state: FakeWorkState, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     calls: list[Path] = []
 
@@ -81,7 +67,7 @@ def test_inventory_indexes_the_source(
 
 
 def test_run_indexes_downloads_and_extracts_in_order(
-    state: FakeState, monkeypatch: pytest.MonkeyPatch
+    state: FakeWorkState, monkeypatch: pytest.MonkeyPatch
 ) -> None:
 
     order: list[str] = []
@@ -107,7 +93,7 @@ def test_run_indexes_downloads_and_extracts_in_order(
 
 
 def test_run_skips_inventory_when_it_is_already_done(
-    state: FakeState, monkeypatch: pytest.MonkeyPatch
+    state: FakeWorkState, monkeypatch: pytest.MonkeyPatch
 ) -> None:
 
     state.inventory_is_done = True
@@ -128,12 +114,12 @@ def test_run_skips_inventory_when_it_is_already_done(
     assert order == ["download", "extract"]
 
 
-def test_export_requires_an_output_directory(state: FakeState) -> None:
+def test_export_requires_an_output_directory(state: FakeWorkState) -> None:
     assert main(["enrich", "export"]) == 2
 
 
 def test_export_writes_to_the_output_directory(
-    state: FakeState, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    state: FakeWorkState, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[Path] = []
 
@@ -151,7 +137,7 @@ def test_reconcile_job_reports_the_job_status(
     project: ProjectPaths, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     work = tmp_path / "work"
-    with WorkState.open(work, "c1") as current:
+    with SqliteWorkState.open(work, "c1") as current:
         current.save_cloud_job(
             "req-1", "https://a.test/f.pdf", file_id="file-1", job_id="job-1", status="running"
         )
@@ -181,7 +167,7 @@ def test_reconcile_job_rejects_an_unknown_pair(
     project: ProjectPaths, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     work = tmp_path / "work"
-    with WorkState.open(work, "c1"):
+    with SqliteWorkState.open(work, "c1"):
         pass
 
     code = main(
@@ -194,12 +180,12 @@ def test_reconcile_job_rejects_an_unknown_pair(
 
 @pytest.mark.parametrize(("args", "requeued"), [([], False), (["--reparse-cloud"], True)])
 def test_extract_reparses_cloud_documents_only_on_request(
-    state: FakeState, monkeypatch: pytest.MonkeyPatch, args: list[str], requeued: bool
+    state: FakeWorkState, monkeypatch: pytest.MonkeyPatch, args: list[str], requeued: bool
 ) -> None:
     seen: list[bool] = []
 
     def extract(
-        current: FakeState, settings: object, *, api_keys: object, **_: object
+        current: FakeWorkState, settings: object, *, api_keys: object, **_: object
     ) -> RunSummary:
         seen.append(current.requeued)
         return current.summary()
@@ -211,7 +197,7 @@ def test_extract_reparses_cloud_documents_only_on_request(
 
 
 def test_download_retry_failed_requeues_before_downloading(
-    state: FakeState, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    state: FakeWorkState, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     order: list[str] = []
 
@@ -232,7 +218,7 @@ def test_download_retry_failed_requeues_before_downloading(
 
 
 def test_cloud_failed_makes_exit_code_4(
-    state: FakeState, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    state: FakeWorkState, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(state, "summary", lambda: RunSummary(parsed=1, cloud_failed=2))
 

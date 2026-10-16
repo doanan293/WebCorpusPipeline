@@ -10,7 +10,7 @@ import pytest
 from data_pipeline.enrich.domain.key_pool import KeyPool
 from data_pipeline.enrich.domain.models import ExtractedPart, LocalResult
 from data_pipeline.enrich.infrastructure.llamaparse import parse_cloud_subset
-from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
+from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
 from data_pipeline.shared.domain.config import Settings
 
 DOC = "https://a.test/report.pdf"
@@ -66,7 +66,7 @@ def cloud(monkeypatch: pytest.MonkeyPatch) -> type[FakeCloud]:
 
 def run_subset(tmp_path: Path, pool: KeyPool) -> tuple[Any, list[dict[str, Any]]]:
     local = LocalResult("sha", [ExtractedPart(1, "page", "", True, "pymupdf")], [], "pymupdf")
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         result = parse_cloud_subset(
             DOC, tmp_path / "subset.pdf", local, {1: 1}, state, Settings(tmp_path), pool
         )

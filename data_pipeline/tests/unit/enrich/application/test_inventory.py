@@ -9,7 +9,7 @@ from data_pipeline.enrich.application.inventory import index_inventory
 from data_pipeline.enrich.application.session import open_work_state
 from data_pipeline.enrich.domain.models import SourceProgress
 from data_pipeline.enrich.infrastructure.files.articles import JsonlArticleSource, source_key
-from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
+from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
 from data_pipeline.shared.domain.config import Settings
 from tests.fakes.enrich import FakeArticleSource
 
@@ -30,7 +30,7 @@ def page(url: str, *links: str) -> dict[str, object]:
     return {"url": url, "links": [{"url": link, "text": link} for link in links], "assets": []}
 
 
-def refs(state: WorkState) -> set[tuple[str, str]]:
+def refs(state: SqliteWorkState) -> set[tuple[str, str]]:
     return {(r[0], r[1]) for r in state.conn.execute("SELECT source_url, target_url FROM refs")}
 
 
@@ -47,25 +47,25 @@ def test_read_crawl_id_from_readme_or_summary(tmp_path: Path) -> None:
 
 
 def test_open_rejects_other_crawl_id(tmp_path: Path) -> None:
-    with WorkState.open(tmp_path / "work", "c1"):
+    with SqliteWorkState.open(tmp_path / "work", "c1"):
         pass
 
-    with WorkState.open(tmp_path / "work", "c1"):
+    with SqliteWorkState.open(tmp_path / "work", "c1"):
         pass
     with (
         pytest.raises(ValueError, match="--rebind-source"),
-        WorkState.open(tmp_path / "work", "c2"),
+        SqliteWorkState.open(tmp_path / "work", "c2"),
     ):
         pass
 
 
 def test_rebind_switches_crawl_id(tmp_path: Path) -> None:
-    with WorkState.open(tmp_path / "work", "c1"):
+    with SqliteWorkState.open(tmp_path / "work", "c1"):
         pass
 
-    with WorkState.open(tmp_path / "work", "c2", rebind=True):
+    with SqliteWorkState.open(tmp_path / "work", "c2", rebind=True):
         pass
-    with WorkState.open(tmp_path / "work", "c2"):
+    with SqliteWorkState.open(tmp_path / "work", "c2"):
         pass
 
 
@@ -75,7 +75,7 @@ def test_source_without_crawl_id_is_rejected(tmp_path: Path) -> None:
 
     with (
         pytest.raises(ValueError, match="crawl_id"),
-        open_work_state(settings, rebind=False, crawl_id=None),
+        open_work_state(settings, rebind=False, crawl_id=None, opener=SqliteWorkState.open),
     ):
         pass
 
@@ -85,7 +85,7 @@ def test_inventory_keeps_a_cursor_per_source(tmp_path: Path) -> None:
     changes = write_source(
         tmp_path / "changes" / "R", [page("https://a.test/new", "https://a.test/g.pdf")]
     )
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         index_inventory(JsonlArticleSource(final), state)
         index_inventory(JsonlArticleSource(changes), state)
         index_inventory(JsonlArticleSource(final), state)
@@ -104,7 +104,7 @@ def test_modified_page_refs_are_replaced(tmp_path: Path) -> None:
     (changes / "changes.jsonl").write_text(
         json.dumps({"url": "https://a.test/hub", "change": "modified"}) + "\n", encoding="utf-8"
     )
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         index_inventory(JsonlArticleSource(final), state)
         index_inventory(JsonlArticleSource(changes), state)
 
@@ -119,7 +119,7 @@ def test_resumed_changes_inventory_does_not_delete_refs_again(tmp_path: Path) ->
     (changes / "changes.jsonl").write_text(
         json.dumps({"url": "https://a.test/hub", "change": "modified"}) + "\n", encoding="utf-8"
     )
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         stat = (changes / "articles.jsonl").stat()
         progress = SourceProgress(source_key(changes), stat.st_size, stat.st_mtime_ns, stat.st_size)
         state.add_inventory_batch([], [], progress)
@@ -136,7 +136,7 @@ def test_resumed_changes_inventory_does_not_delete_refs_again(tmp_path: Path) ->
 
 def test_inventory_restarts_when_source_file_changes(tmp_path: Path) -> None:
     final = write_source(tmp_path / "final", [page("https://a.test/", "https://a.test/f.pdf")])
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         index_inventory(JsonlArticleSource(final), state)
         write_source(
             final,
@@ -151,7 +151,7 @@ def test_inventory_restarts_when_source_file_changes(tmp_path: Path) -> None:
 
 def test_inventory_returns_early_when_done(tmp_path: Path) -> None:
     source = FakeArticleSource([page("https://a.test/", "https://a.test/f.pdf")])
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         index_inventory(source, state)
         state.conn.execute("DELETE FROM inventory")
         state.conn.commit()
@@ -166,7 +166,7 @@ def test_refs_stored_only_for_document_targets(tmp_path: Path) -> None:
     row = page("https://a.test/", "https://a.test/f.pdf", "https://a.test/other-page")
     row["assets"] = [{"url": "https://a.test/logo.png", "role": "inline_image"}]
     final = write_source(tmp_path / "final", [row])
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         index_inventory(JsonlArticleSource(final), state)
 
         assert refs(state) == {("https://a.test/", "https://a.test/f.pdf")}
@@ -174,7 +174,7 @@ def test_refs_stored_only_for_document_targets(tmp_path: Path) -> None:
 
 def test_inventory_is_not_done_after_source_rewrite(tmp_path: Path) -> None:
     final = write_source(tmp_path / "final", [page("https://a.test/", "https://a.test/f.pdf")])
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         index_inventory(JsonlArticleSource(final), state)
         assert state.inventory_done(source_key(final))
 

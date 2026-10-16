@@ -47,10 +47,14 @@ def package(
     """Package articles, documents, images and links into a versioned corpus."""
     from data_pipeline.corpus import package as corpus_package
     from data_pipeline.enrich.application import session
+    from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
 
     settings = context.build_settings(source, work_dir)
     with session.open_work_state(
-        settings, rebind=rebind_source, crawl_id=context.source_crawl_id(settings)
+        settings,
+        rebind=rebind_source,
+        crawl_id=context.source_crawl_id(settings),
+        opener=SqliteWorkState.open,
     ) as state:
         corpus_package.package_corpus(settings.source_path, state, output)
     return 0

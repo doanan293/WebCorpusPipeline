@@ -3,13 +3,12 @@ from __future__ import annotations
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 
-from data_pipeline.enrich.application.ports import CloudParser, LocalParser, ParseCache
+from data_pipeline.enrich.application.ports import CloudParser, LocalParser, ParseCache, WorkState
 from data_pipeline.enrich.domain.cache_key import CLOUD_CACHE_REVISION, cache_key
 from data_pipeline.enrich.domain.cloud_pages import cloud_part_indices
 from data_pipeline.enrich.domain.key_pool import KeysExhaustedError
 from data_pipeline.enrich.domain.merge import merge_parts
 from data_pipeline.enrich.domain.models import DownloadedFile, LocalResult, ParseResult, RunSummary
-from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
 from data_pipeline.shared.domain.config import Settings
 
 

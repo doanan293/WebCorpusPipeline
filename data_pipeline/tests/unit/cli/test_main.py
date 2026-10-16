@@ -17,22 +17,17 @@ from data_pipeline.enrich.application import session as enrich_session
 from data_pipeline.enrich.domain.models import RunSummary
 from data_pipeline.shared.domain.config import ProjectPaths, Settings
 from data_pipeline.shared.infrastructure.settings import project_paths
-
-
-class FakeState:
-    def __init__(self, summary: RunSummary) -> None:
-        self._summary = summary
-
-    def summary(self) -> RunSummary:
-        return self._summary
+from tests.fakes.enrich import FakeWorkState
 
 
 def fake_open_work_state(seen: dict[str, object], summary: RunSummary | None = None) -> object:
     @contextmanager
-    def open_work_state(settings: Settings, *, rebind: bool, **_: object) -> Iterator[FakeState]:
+    def open_work_state(
+        settings: Settings, *, rebind: bool, **_: object
+    ) -> Iterator[FakeWorkState]:
         seen["settings"] = settings
         seen["rebind"] = rebind
-        yield FakeState(summary or RunSummary())
+        yield FakeWorkState(summary or RunSummary())
 
     return open_work_state
 

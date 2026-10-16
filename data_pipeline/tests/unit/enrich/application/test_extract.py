@@ -16,7 +16,7 @@ from data_pipeline.enrich.domain.models import (
     ParseResult,
 )
 from data_pipeline.enrich.infrastructure.files.cache import FileParseCache
-from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
+from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
 from data_pipeline.shared.domain.config import Settings
 from tests.fakes.enrich import FakeCloudParser, FakeLocalParser
 
@@ -48,7 +48,7 @@ def run_extract(
     local: Callable[[DownloadedFile], LocalResult] = textless,
     settings: Settings | None = None,
 ) -> dict[str, dict[str, Any]]:
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         state.pending_parse = lambda: iter(files)  # type: ignore[method-assign]
         summary = extract_documents(
             state,

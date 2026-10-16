@@ -10,7 +10,7 @@ CONTEXTS = frozenset({"crawl", "enrich", "corpus", "domains"})
 LAYERS = ("domain", "application", "infrastructure")
 RANK = {layer: index for index, layer in enumerate(LAYERS)}
 # Contexts whose per-layer rule is not enforced yet; emptied as each context is migrated.
-MIGRATING = {"crawl", "enrich", "corpus", "domains"}
+MIGRATING = {"crawl", "corpus", "domains"}
 IO_MODULES = frozenset(
     {
         "sqlite3",

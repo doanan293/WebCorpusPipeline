@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from data_pipeline.enrich.application.ports import WorkState
 from data_pipeline.enrich.domain.models import jsonable
-from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
 
 
 def export_enrichment(state: WorkState, destination: Path) -> Path:

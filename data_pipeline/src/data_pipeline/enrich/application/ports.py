@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterable, Iterator, Mapping
 from contextlib import AbstractAsyncContextManager
 from pathlib import Path
 from typing import Any, Protocol
@@ -9,9 +9,12 @@ from data_pipeline.enrich.domain.models import (
     DownloadedFile,
     DownloadJob,
     HttpResponse,
+    InventorySummary,
     LocalResult,
     ParseResult,
     RunSummary,
+    SourceProgress,
+    SourceRef,
 )
 from data_pipeline.shared.domain.config import Settings
 
@@ -56,10 +59,22 @@ class DownloadFiles(Protocol):
 
 
 class WorkState(Protocol):
-    """The enrichment work state, as the download use case needs it."""
+    """The enrichment work state: inventory, downloads, parse results and failures."""
 
     @property
     def root(self) -> Path: ...
+
+    def source_progress(self, source_key: str) -> SourceProgress | None: ...
+
+    def add_inventory_batch(
+        self, candidates: list[str], refs: list[SourceRef], progress: SourceProgress
+    ) -> None: ...
+
+    def inventory_done(self, source_key: str) -> bool: ...
+
+    def inventory_counts(self) -> InventorySummary: ...
+
+    def delete_refs_from(self, source_urls: Iterable[str]) -> None: ...
 
     def claim_download(self) -> DownloadJob | None: ...
 
@@ -69,13 +84,51 @@ class WorkState(Protocol):
 
     def mark_downloaded(self, file: DownloadedFile) -> None: ...
 
+    def next_retry_delay(self) -> float | None: ...
+
+    def pending_parse(self) -> Iterator[DownloadedFile]: ...
+
+    def mark_parse(
+        self,
+        url: str,
+        result: ParseResult,
+        cache_path: Path | None = None,
+        *,
+        used_cloud: bool = False,
+    ) -> None: ...
+
+    def requeue_cloud_parses(self) -> int: ...
+
+    def parse_record(self, url: str) -> ParseResult | None: ...
+
     def record_failure(
         self, url: str, stage: str, reason: str, retry_at: float | None = None
     ) -> None: ...
 
-    def next_retry_delay(self) -> float | None: ...
+    def recover(self) -> None: ...
+
+    def reset_failed_downloads(self) -> int: ...
 
     def summary(self) -> RunSummary: ...
+
+    def refs_for(self, target: str) -> list[dict[str, Any]]: ...
+
+    def inventory_rows(self) -> Iterable[Mapping[str, Any]]: ...
+
+    def save_cloud_job(
+        self,
+        request_id: str,
+        url: str,
+        *,
+        file_id: str | None = None,
+        job_id: str | None = None,
+        key_label: str | None = None,
+        key_fingerprint: str | None = None,
+        status: str = "accepted",
+        payload: str | None = None,
+    ) -> None: ...
+
+    def close(self) -> None: ...
 
 
 class ArticleSource(Protocol):

@@ -10,11 +10,11 @@ from data_pipeline.enrich.domain.models import (
     ParseResult,
     SourceProgress,
 )
-from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
+from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
 
 
 def test_requeue_cloud_parses_forgets_only_results_that_used_the_cloud(tmp_path: Path) -> None:
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         local_only = ParseResult("a", [], "extracted", [], {"local": "pymupdf"})
         with_cloud = ParseResult("b", [], "extracted", [], {"local": "pymupdf", "llamaparse": "x"})
         state.mark_parse("https://a.test/local.pdf", local_only)
@@ -30,7 +30,7 @@ def test_requeue_cloud_parses_forgets_only_results_that_used_the_cloud(tmp_path:
 
 def test_reparse_cloud_deletes_cache_files(tmp_path: Path) -> None:
     cached = tmp_path / "work" / "cache" / "k.json"
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         cached.parent.mkdir(parents=True)
         cached.write_text("{}", encoding="utf-8")
         result = ParseResult("b", [], "extracted", [], {"llamaparse": "x"})
@@ -42,7 +42,7 @@ def test_reparse_cloud_deletes_cache_files(tmp_path: Path) -> None:
 
 
 def test_summary_counts_cloud_failed(tmp_path: Path) -> None:
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         failed = ParseResult("a", [], "cloud_failed", ["transient: boom"], {})
         state.mark_parse("https://a.test/x.pdf", failed, used_cloud=True)
 
@@ -51,7 +51,7 @@ def test_summary_counts_cloud_failed(tmp_path: Path) -> None:
 
 def test_cloud_failed_is_retried_next_run(tmp_path: Path) -> None:
     url = "https://a.test/x.pdf"
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         state.add_inventory_batch([url], [], SourceProgress("s", 0, 0, 0, done=True))
         state.mark_downloaded(
             DownloadedFile(url, tmp_path / "x.pdf", "sha", 1, "application/pdf", url)
@@ -79,7 +79,7 @@ class RecordingLock:
 def test_all_writes_hold_write_lock(tmp_path: Path) -> None:
     url = "https://a.test/x.pdf"
     file = DownloadedFile(url, tmp_path / "x.pdf", "sha", 1, "application/pdf", url)
-    writes: list[Callable[[WorkState], object]] = [
+    writes: list[Callable[[SqliteWorkState], object]] = [
         lambda s: s.add_inventory_batch([url], [], SourceProgress("s", 0, 0, 0)),
         lambda s: s.delete_refs_from(["https://a.test/"]),
         lambda s: s.claim_download(),
@@ -93,7 +93,7 @@ def test_all_writes_hold_write_lock(tmp_path: Path) -> None:
         lambda s: s.reset_failed_downloads(),
         lambda s: s.save_cloud_job("r", url),
     ]
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         lock = RecordingLock()
         state._write_lock = lock
         for write in writes:

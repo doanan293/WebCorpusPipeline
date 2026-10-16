@@ -15,6 +15,7 @@ from typing import Any, Concatenate
 from data_pipeline.enrich.domain.models import (
     DownloadedFile,
     DownloadJob,
+    InventorySummary,
     ParseResult,
     RunSummary,
     SourceProgress,
@@ -26,19 +27,19 @@ from data_pipeline.enrich.infrastructure.files.download_files import verify_file
 
 
 def _locked[**P, R](
-    method: Callable[Concatenate[WorkState, P], R],
-) -> Callable[Concatenate[WorkState, P], R]:
+    method: Callable[Concatenate[SqliteWorkState, P], R],
+) -> Callable[Concatenate[SqliteWorkState, P], R]:
     """Run a write method while holding the state's write lock."""
 
     @functools.wraps(method)
-    def wrapper(self: WorkState, *args: P.args, **kwargs: P.kwargs) -> R:
+    def wrapper(self: SqliteWorkState, *args: P.args, **kwargs: P.kwargs) -> R:
         with self._write_lock:
             return method(self, *args, **kwargs)
 
     return wrapper
 
 
-class WorkState:
+class SqliteWorkState:
     def __init__(self, root: Path, conn: sqlite3.Connection, lock_fd: int):
         self.root, self.conn = root, conn
         self._lock_fd: int | None = lock_fd
@@ -54,7 +55,7 @@ class WorkState:
         crawl_id: str,
         *,
         rebind: bool = False,
-    ) -> Iterator[WorkState]:
+    ) -> Iterator[SqliteWorkState]:
         """Open the work directory of one crawl; ``rebind`` moves it to another crawl."""
         root.mkdir(parents=True, exist_ok=True)
         lock_path = root / ".writer.lock"
@@ -437,14 +438,20 @@ class WorkState:
             ),
         )
 
+    def inventory_counts(self) -> InventorySummary:
+        return InventorySummary(
+            self.conn.execute("SELECT count(*) FROM inventory").fetchone()[0],
+            self.conn.execute("SELECT count(*) FROM refs").fetchone()[0],
+        )
+
     def refs_for(self, target: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             "SELECT * FROM refs WHERE target_url=? ORDER BY source_url", (target,)
         )
         return [dict(r) for r in rows]
 
-    def inventory_rows(self):
-        return self.conn.execute("SELECT * FROM inventory ORDER BY url")
+    def inventory_rows(self) -> Iterator[dict[str, Any]]:
+        return (dict(row) for row in self.conn.execute("SELECT * FROM inventory ORDER BY url"))
 
     def save_cloud_job(
         self,

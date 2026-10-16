@@ -9,7 +9,7 @@ from data_pipeline.corpus.package import package_corpus, verify_corpus
 from data_pipeline.enrich.application.inventory import index_inventory
 from data_pipeline.enrich.domain.models import DownloadedFile, ParseResult
 from data_pipeline.enrich.infrastructure.files.articles import JsonlArticleSource
-from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
+from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
 
 
 def write_source(folder: Path, urls: list[str]) -> Path:
@@ -24,7 +24,7 @@ def write_source(folder: Path, urls: list[str]) -> Path:
 
 
 def package(tmp_path: Path, source: Path, work: str = "work", out: str = "corpus") -> Path:
-    with WorkState.open(tmp_path / work, "c1") as state:
+    with SqliteWorkState.open(tmp_path / work, "c1") as state:
         index_inventory(JsonlArticleSource(source), state)
         settle(state)
         return package_corpus(source, state, tmp_path / out)
@@ -43,7 +43,7 @@ def test_package_and_verify(tmp_path: Path) -> None:
 def test_package_refuses_unresolved_enrichment(tmp_path: Path) -> None:
     source = write_source(tmp_path / "source", ["https://example.test/a"])
 
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         index_inventory(JsonlArticleSource(source), state)
         with pytest.raises(ValueError, match="downloads are pending"):
             package_corpus(source, state, tmp_path / "corpus")
@@ -53,19 +53,19 @@ def test_package_refuses_without_inventory(tmp_path: Path) -> None:
     source = write_source(tmp_path / "source", ["https://example.test/a"])
 
     with (
-        WorkState.open(tmp_path / "work", "c1") as state,
+        SqliteWorkState.open(tmp_path / "work", "c1") as state,
         pytest.raises(ValueError, match="inventory"),
     ):
         package_corpus(source, state, tmp_path / "corpus")
 
 
-def settle(state: WorkState) -> None:
+def settle(state: SqliteWorkState) -> None:
     """Mark every inventoried document as given up, so packaging is allowed."""
     for row in state.inventory_rows():
         state.record_failure(row["url"], "download", "HTTP 404")
 
 
-def download_all(state: WorkState, urls: list[str]) -> None:
+def download_all(state: SqliteWorkState, urls: list[str]) -> None:
     """Record each document as downloaded and parsed, in the given order."""
     for url in urls:
         file = DownloadedFile(url, Path(f"{len(url)}.pdf"), "sha", 1, "application/pdf", url)
@@ -78,7 +78,7 @@ def test_package_is_deterministic_across_insert_order(tmp_path: Path) -> None:
     snapshots = []
     for name, order in (("one", urls), ("two", list(reversed(urls)))):
         source = write_source(tmp_path / f"source-{name}", urls)
-        with WorkState.open(tmp_path / f"work-{name}", "c1") as state:
+        with SqliteWorkState.open(tmp_path / f"work-{name}", "c1") as state:
             index_inventory(JsonlArticleSource(source), state)
             download_all(state, [f"{url}.pdf" for url in order])
             output = package_corpus(source, state, tmp_path / f"corpus-{name}")
@@ -91,7 +91,7 @@ def test_report_comes_from_state_summary(tmp_path: Path) -> None:
     source = write_source(tmp_path / "source", ["https://example.test/a"])
     (tmp_path / "work").mkdir()
     (tmp_path / "work" / "extraction-report.json").write_text('{"stale": true}')
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         index_inventory(JsonlArticleSource(source), state)
         settle(state)
         output = package_corpus(source, state, tmp_path / "corpus")
@@ -114,7 +114,7 @@ def test_package_keeps_old_output_when_copy_fails(
         raise OSError(msg)
 
     monkeypatch.setattr(corpus_package, "build_graph", fail)
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         index_inventory(JsonlArticleSource(source), state)
         settle(state)
         with pytest.raises(OSError, match="disk full"):
@@ -126,7 +126,7 @@ def test_package_keeps_old_output_when_copy_fails(
 
 def test_output_dir_mode_is_0755(tmp_path: Path) -> None:
     source = write_source(tmp_path / "source", ["https://example.test/a"])
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         index_inventory(JsonlArticleSource(source), state)
         settle(state)
         output = package_corpus(source, state, tmp_path / "corpus")
@@ -136,7 +136,7 @@ def test_output_dir_mode_is_0755(tmp_path: Path) -> None:
 
 def test_manifest_counts_lines(tmp_path: Path) -> None:
     source = write_source(tmp_path / "source", ["https://example.test/a", "https://example.test/b"])
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         index_inventory(JsonlArticleSource(source), state)
         settle(state)
         output = package_corpus(source, state, tmp_path / "corpus")
@@ -149,7 +149,7 @@ def test_manifest_counts_lines(tmp_path: Path) -> None:
 
 def test_package_names_cloud_failures(tmp_path: Path) -> None:
     source = write_source(tmp_path / "source", ["https://example.test/a"])
-    with WorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         index_inventory(JsonlArticleSource(source), state)
         download_all(state, ["https://example.test/a.pdf"])
         failed = ParseResult("sha", [], "cloud_failed", ["transient: boom"], {})

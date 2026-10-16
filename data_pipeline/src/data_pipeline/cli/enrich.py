@@ -37,10 +37,14 @@ def inventory(
     """Index the document links found in the crawl output."""
     from data_pipeline.enrich.application import inventory as enrich_inventory
     from data_pipeline.enrich.application import session
+    from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
 
     settings = context.build_settings(source, work_dir)
     with session.open_work_state(
-        settings, rebind=rebind_source, crawl_id=context.source_crawl_id(settings)
+        settings,
+        rebind=rebind_source,
+        crawl_id=context.source_crawl_id(settings),
+        opener=SqliteWorkState.open,
     ) as state:
         summary = enrich_inventory.index_inventory(JsonlArticleSource(settings.source_path), state)
     print(json.dumps(jsonable(summary), ensure_ascii=False, indent=2))
@@ -63,10 +67,14 @@ def download(
     from data_pipeline.enrich.application import session
     from data_pipeline.enrich.infrastructure.files.download_files import LocalDownloadFiles
     from data_pipeline.enrich.infrastructure.http.aiohttp_transport import PublicTransport
+    from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
 
     settings = context.build_settings(source, work_dir)
     with session.open_work_state(
-        settings, rebind=rebind_source, crawl_id=context.source_crawl_id(settings)
+        settings,
+        rebind=rebind_source,
+        crawl_id=context.source_crawl_id(settings),
+        opener=SqliteWorkState.open,
     ) as state:
         if retry_failed:
             print(f"requeued {state.reset_failed_downloads()} failed downloads")
@@ -97,12 +105,16 @@ def extract(
     from data_pipeline.enrich.infrastructure.files.cache import FileParseCache
     from data_pipeline.enrich.infrastructure.llamaparse import LlamaParseCloud
     from data_pipeline.enrich.infrastructure.parsers.dispatch import LocalParserAdapter
+    from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
     from data_pipeline.shared.infrastructure.settings import load_api_keys
 
     settings = context.build_settings(source, work_dir)
     api_keys = load_api_keys(context.current_paths().env_file)
     with session.open_work_state(
-        settings, rebind=rebind_source, crawl_id=context.source_crawl_id(settings)
+        settings,
+        rebind=rebind_source,
+        crawl_id=context.source_crawl_id(settings),
+        opener=SqliteWorkState.open,
     ) as state:
         if reparse_cloud:
             print(f"requeued {state.requeue_cloud_parses()} documents for LlamaParse")
@@ -134,12 +146,16 @@ def run(
     from data_pipeline.enrich.infrastructure.http.aiohttp_transport import PublicTransport
     from data_pipeline.enrich.infrastructure.llamaparse import LlamaParseCloud
     from data_pipeline.enrich.infrastructure.parsers.dispatch import LocalParserAdapter
+    from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
     from data_pipeline.shared.infrastructure.settings import load_api_keys
 
     settings = context.build_settings(source, work_dir)
     api_keys = load_api_keys(context.current_paths().env_file)
     with session.open_work_state(
-        settings, rebind=rebind_source, crawl_id=context.source_crawl_id(settings)
+        settings,
+        rebind=rebind_source,
+        crawl_id=context.source_crawl_id(settings),
+        opener=SqliteWorkState.open,
     ) as state:
         if not state.inventory_done(source_key(settings.source_path)):
             enrich_inventory.index_inventory(JsonlArticleSource(settings.source_path), state)
@@ -168,10 +184,14 @@ def status(
 ) -> int:
     """Report downloaded, parsed, failed, pending and quota-blocked work."""
     from data_pipeline.enrich.application import session
+    from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
 
     settings = context.build_settings(source, work_dir)
     with session.open_work_state(
-        settings, rebind=rebind_source, crawl_id=context.source_crawl_id(settings)
+        settings,
+        rebind=rebind_source,
+        crawl_id=context.source_crawl_id(settings),
+        opener=SqliteWorkState.open,
     ) as state:
         summary = state.summary()
     return _summary(summary, json_output)
@@ -187,10 +207,14 @@ def export(
     """Export the extracted documents of the work directory."""
     from data_pipeline.enrich.application import export as enrich_export
     from data_pipeline.enrich.application import session
+    from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
 
     settings = context.build_settings(source, work_dir)
     with session.open_work_state(
-        settings, rebind=rebind_source, crawl_id=context.source_crawl_id(settings)
+        settings,
+        rebind=rebind_source,
+        crawl_id=context.source_crawl_id(settings),
+        opener=SqliteWorkState.open,
     ) as state:
         enrich_export.export_enrichment(state, output)
     return 0

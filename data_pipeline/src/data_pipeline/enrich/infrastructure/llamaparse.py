@@ -8,6 +8,7 @@ from typing import Any
 
 import pymupdf as fitz
 
+from data_pipeline.enrich.application.ports import WorkState
 from data_pipeline.enrich.domain.cloud_errors import classify_cloud_error
 from data_pipeline.enrich.domain.key_pool import KeyPool
 from data_pipeline.enrich.domain.models import (
@@ -16,7 +17,6 @@ from data_pipeline.enrich.domain.models import (
     LocalResult,
     ParseResult,
 )
-from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
 from data_pipeline.shared.domain.config import Settings
 
 
