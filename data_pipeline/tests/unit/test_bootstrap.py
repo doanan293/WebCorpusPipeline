@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from data_pipeline import bootstrap
 from data_pipeline.domain.shared.config import Settings
-from data_pipeline.presentation.cli import wiring
 
 
 def test_mongo_database_closes_client_on_error(
@@ -23,9 +23,9 @@ def test_mongo_database_closes_client_on_error(
     def connect(settings: Settings) -> FakeClient:
         return FakeClient()
 
-    monkeypatch.setattr(wiring, "connect", connect)
+    monkeypatch.setattr(bootstrap, "connect", connect)
 
-    with pytest.raises(RuntimeError), wiring.mongo_database(Settings(project_root=tmp_path)):
+    with pytest.raises(RuntimeError), bootstrap.mongo_database(Settings(project_root=tmp_path)):
         msg = "boom"
         raise RuntimeError(msg)
 

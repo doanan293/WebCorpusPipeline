@@ -6,8 +6,8 @@ from typing import NoReturn
 
 import typer
 
-from data_pipeline.infrastructure.shared.env import load_env
-from data_pipeline.presentation.cli import context, corpus, crawl, domains, enrich, errors, eval
+from data_pipeline import bootstrap
+from data_pipeline.cli import context, corpus, crawl, domains, enrich, errors, eval
 
 app = typer.Typer(
     name="data-pipeline",
@@ -24,7 +24,7 @@ app.add_typer(eval.app, name="eval")
 
 @app.callback()
 def _load_project_env() -> None:
-    load_env(context.current_paths())
+    bootstrap.load_env(context.current_paths())
 
 
 def main(argv: Sequence[str] | None = None) -> int:

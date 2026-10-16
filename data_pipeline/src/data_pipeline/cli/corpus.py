@@ -7,8 +7,9 @@ from typing import Annotated
 
 import typer
 
-from data_pipeline.presentation.cli import context, wiring
-from data_pipeline.presentation.cli.context import RebindOption, SourceOption, WorkDirOption
+from data_pipeline import bootstrap
+from data_pipeline.cli import context
+from data_pipeline.cli.context import RebindOption, SourceOption, WorkDirOption
 
 app = typer.Typer(
     help="Package, verify, import and publish the processed corpus.", no_args_is_help=True
@@ -31,9 +32,9 @@ def build_graph(
     """Build the page/link graph from the crawl output alone."""
     from data_pipeline.application.corpus import graph
 
-    files = wiring.corpus_files()
+    files = bootstrap.corpus_files()
     articles = files.articles_path(context.build_settings(source, None).source_path)
-    graph.build_graph(files.read_jsonl(articles), output, wiring.edge_index())
+    graph.build_graph(files.read_jsonl(articles), output, bootstrap.edge_index())
     return 0
 
 
@@ -48,14 +49,14 @@ def package(
     from data_pipeline.application.corpus import package as corpus_package
 
     settings = context.build_settings(source, work_dir)
-    with wiring.work_state(settings, rebind=rebind_source) as state:
+    with bootstrap.work_state(settings, rebind=rebind_source) as state:
         corpus_package.package_corpus(
             settings.source_path,
             state,
             output,
-            export_documents=wiring.export_documents(state),
-            files=wiring.corpus_files(),
-            open_index=wiring.edge_index(),
+            export_documents=bootstrap.export_documents(state),
+            files=bootstrap.corpus_files(),
+            open_index=bootstrap.edge_index(),
         )
     return 0
 
@@ -65,7 +66,7 @@ def verify(corpus: CorpusOption) -> int:
     """Verify the files and checksums of a packaged corpus."""
     from data_pipeline.application.corpus import package as corpus_package
 
-    report = corpus_package.verify_corpus(corpus, wiring.corpus_files())
+    report = corpus_package.verify_corpus(corpus, bootstrap.corpus_files())
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["valid"] else 3
 
@@ -80,8 +81,8 @@ def import_mongo(
     """Import a packaged corpus into MongoDB."""
     from data_pipeline.application.corpus import mongo
 
-    with wiring.mongo_database(context.build_settings(None, None)) as db:
-        result = mongo.import_corpus(corpus, db, wiring.corpus_files(), force=force)
+    with bootstrap.mongo_database(context.build_settings(None, None)) as db:
+        result = mongo.import_corpus(corpus, db, bootstrap.corpus_files(), force=force)
         print(json.dumps(result, indent=2))
     return 0
 
@@ -98,7 +99,7 @@ def query(
     """Query the link graph of a ready snapshot in MongoDB."""
     from data_pipeline.application.corpus import query as corpus_query
 
-    with wiring.mongo_database(context.build_settings(None, None)) as db:
+    with bootstrap.mongo_database(context.build_settings(None, None)) as db:
         result = corpus_query.query_links(
             db,
             snapshot,
@@ -117,7 +118,7 @@ def prune_mongo(
     """Delete every MongoDB snapshot except the one to keep."""
     from data_pipeline.application.corpus import mongo
 
-    with wiring.mongo_database(context.build_settings(None, None)) as db:
+    with bootstrap.mongo_database(context.build_settings(None, None)) as db:
         print(json.dumps(mongo.prune_snapshots(db, keep), indent=2))
     return 0
 
@@ -141,8 +142,8 @@ def publish(
     result = kaggle.publish_corpus(
         corpus,
         config_path,
-        wiring.dataset_publisher(),
-        wiring.corpus_files(),
+        bootstrap.dataset_publisher(),
+        bootstrap.corpus_files(),
         update=update,
         message=message,
     )
@@ -167,8 +168,8 @@ def pull(
         kaggle.pull_corpus(
             context.pick(lock, paths.corpus_lock),
             context.pick(destination, paths.corpus_pulled),
-            wiring.dataset_publisher(),
-            wiring.corpus_files(),
+            bootstrap.dataset_publisher(),
+            bootstrap.corpus_files(),
         )
     )
     return 0

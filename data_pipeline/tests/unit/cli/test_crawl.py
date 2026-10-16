@@ -10,8 +10,8 @@ from data_pipeline.application.crawl import reextract as run_reextract
 from data_pipeline.application.crawl import run_crawl as run_full
 from data_pipeline.application.crawl import run_discovery
 from data_pipeline.application.crawl.reextract import ReextractSummary
+from data_pipeline.cli.main import main
 from data_pipeline.domain.shared.config import ProjectPaths
-from data_pipeline.presentation.cli.main import main
 
 
 def write_complete_config(directory: Path, name: str = "crawler.yaml") -> Path:

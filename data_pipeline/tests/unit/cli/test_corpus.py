@@ -8,13 +8,13 @@ from typing import Any
 
 import pytest
 
+from data_pipeline import bootstrap
 from data_pipeline.application.corpus import graph, kaggle, mongo, package, query
 from data_pipeline.application.enrich import session as enrich_session
+from data_pipeline.cli.main import main
 from data_pipeline.domain.shared.config import ProjectPaths, Settings
 from data_pipeline.infrastructure.corpus import mongo as mongo_adapter
 from data_pipeline.infrastructure.shared.settings import project_paths
-from data_pipeline.presentation.cli import wiring
-from data_pipeline.presentation.cli.main import main
 
 
 @pytest.fixture
@@ -104,7 +104,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> FakeClient:
     def connect(settings: Settings) -> FakeClient:
         return fake
 
-    monkeypatch.setattr(wiring, "connect", connect)
+    monkeypatch.setattr(bootstrap, "connect", connect)
     return fake
 
 

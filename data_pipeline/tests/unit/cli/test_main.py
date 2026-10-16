@@ -9,15 +9,15 @@ from pathlib import Path
 import pytest
 from pymongo.errors import ServerSelectionTimeoutError
 
+from data_pipeline import bootstrap
 from data_pipeline.application.corpus import package
 from data_pipeline.application.enrich import download as downloader
 from data_pipeline.application.enrich import session as enrich_session
+from data_pipeline.cli.main import main
 from data_pipeline.domain.enrich.models import RunSummary
 from data_pipeline.domain.shared.config import ProjectPaths, Settings
 from data_pipeline.infrastructure.crawl import scrapy as crawl_scrapy
 from data_pipeline.infrastructure.shared.settings import project_paths
-from data_pipeline.presentation.cli import wiring
-from data_pipeline.presentation.cli.main import main
 from tests.fakes.enrich import FakeWorkState
 
 
@@ -157,7 +157,7 @@ def test_mongo_error_is_one_line(
         msg = "localhost:27017: [Errno 111] Connection refused"
         raise ServerSelectionTimeoutError(msg)
 
-    monkeypatch.setattr(wiring, "connect", unreachable)
+    monkeypatch.setattr(bootstrap, "connect", unreachable)
 
     assert main(["corpus", "prune-mongo", "--keep", "s"]) == 1
     err = capsys.readouterr().err.strip()
@@ -172,7 +172,7 @@ def test_called_process_error_shows_stderr(
     def failing(*args: object, **kwargs: object) -> object:
         raise subprocess.CalledProcessError(2, ["soffice"], "", "source file could not be loaded")
 
-    monkeypatch.setattr(wiring, "connect", failing)
+    monkeypatch.setattr(bootstrap, "connect", failing)
 
     assert main(["corpus", "prune-mongo", "--keep", "s"]) == 1
     assert "source file could not be loaded" in capsys.readouterr().err

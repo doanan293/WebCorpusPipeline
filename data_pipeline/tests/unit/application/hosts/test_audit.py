@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 from data_pipeline.application.hosts.audit import run_audit, summarize
+from data_pipeline.cli import domains as cli_domains
 from data_pipeline.domain.hosts.models import ProbeAttempt, ProbeResult
-from data_pipeline.presentation.cli import domains as cli_domains
 from tests.fakes.hosts import FakeBrowser, FakeProber, MemoryReports
 
 

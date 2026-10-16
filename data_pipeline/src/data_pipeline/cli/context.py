@@ -5,8 +5,8 @@ from typing import Annotated
 
 import typer
 
+from data_pipeline import bootstrap
 from data_pipeline.domain.shared.config import ProjectPaths, Settings
-from data_pipeline.infrastructure.shared.settings import load_settings, project_paths
 
 SourceOption = Annotated[
     Path | None, typer.Option(help="Crawl output to read (default: data/crawl/final).")
@@ -25,7 +25,7 @@ RebindOption = Annotated[
 
 def current_paths() -> ProjectPaths:
     """Return the project layout the commands operate on."""
-    return project_paths()
+    return bootstrap.project_paths()
 
 
 def pick(value: Path | None, default: Path) -> Path:
@@ -44,4 +44,4 @@ def build_settings(source: Path | None, work_dir: Path | None) -> Settings:
         overrides["source"] = source.resolve()
     if work_dir is not None:
         overrides["work_dir"] = work_dir.resolve()
-    return load_settings(current_paths(), overrides)
+    return bootstrap.load_settings(current_paths(), overrides)

@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 
 from data_pipeline.application.corpus.graph import build_graph
+from data_pipeline.cli.main import main
 from data_pipeline.infrastructure.corpus.graph_index import open_edge_index
-from data_pipeline.presentation.cli.main import main
 
 
 def source(tmp_path: Path) -> Path:

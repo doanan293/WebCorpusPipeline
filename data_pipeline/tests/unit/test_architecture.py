@@ -7,12 +7,13 @@ ROOT = Path(__file__).parents[2]
 SRC = ROOT / "src"
 PACKAGE = SRC / "data_pipeline"
 # The package is split by layer first, then by context:
-#   data_pipeline.<layer>.<context>...   and   data_pipeline.presentation.cli...
+#   data_pipeline.<layer>.<context>...   and   data_pipeline.cli...
 LAYERS = ("domain", "application", "infrastructure")
 RANK = {layer: index for index, layer in enumerate(LAYERS)}
 CONTEXTS = frozenset({"crawl", "enrich", "corpus", "hosts"})
 SHARED = "shared"
-PRESENTATION = "presentation"
+OUTER = frozenset({"cli", "api"})  # entry points; bootstrap.py is the composition root
+BOOTSTRAP = "bootstrap"
 IO_MODULES = frozenset(
     {
         "sqlite3",
@@ -51,10 +52,10 @@ def imported_modules(path: Path) -> set[str]:
 
 
 def placement(module: str) -> tuple[str | None, str | None]:
-    """(layer, context): ('domain', 'crawl'), ('infrastructure', 'shared'), ('presentation', 'cli')."""
+    """(layer, context): ('domain', 'crawl'), ('cli', None), ('bootstrap', None)."""
     parts = module.split(".")
     layer = parts[1] if len(parts) > 1 else None
-    context = parts[2] if len(parts) > 2 else None
+    context = parts[2] if len(parts) > 2 and layer in RANK else None
     return layer, context
 
 
@@ -64,9 +65,14 @@ def allowed(importer: str, imported: str) -> bool:
         return True
     layer, context = placement(importer)
     target_layer, target_context = placement(imported)
-    if layer == PRESENTATION:
+    if layer == BOOTSTRAP:
         return True
-    if target_layer == PRESENTATION or layer not in RANK or target_layer not in RANK:
+    # Entry points call use cases and bootstrap; they never build adapters themselves.
+    if layer in OUTER:
+        return target_layer != "infrastructure" and target_layer not in OUTER - {layer}
+    if target_layer in OUTER or target_layer == BOOTSTRAP:
+        return False
+    if layer not in RANK or target_layer not in RANK:
         return False
     # Contexts never import each other; every context may use shared, shared uses only itself.
     if target_context is not None and target_context not in {context, SHARED}:
@@ -84,12 +90,15 @@ def all_modules() -> list[tuple[str, Path]]:
 
 
 def is_stray(module: str) -> bool:
-    """A module that is not inside ``<layer>.<context>`` (or ``presentation.cli``)."""
-    if module.count(".") < 2:
-        return module.count(".") == 1 and placement(module)[0] not in {*LAYERS, PRESENTATION}
+    """A module that is not inside ``<layer>.<context>``, an entry point, or bootstrap."""
+    depth = module.count(".")
     layer, context = placement(module)
-    if layer == PRESENTATION:
-        return context != "cli"
+    if depth == 0:
+        return False
+    if depth == 1:
+        return layer not in {*LAYERS, *OUTER, BOOTSTRAP}
+    if layer in OUTER:
+        return False
     return layer not in RANK or context not in CONTEXTS | {SHARED}
 
 
@@ -123,17 +132,29 @@ def test_a_module_outside_the_layers_is_a_stray() -> None:
         "data_pipeline.helpers",
         "data_pipeline.domain.helpers",
         "data_pipeline.domain.legacy.models",
-        "data_pipeline.presentation.web",
+        "data_pipeline.presentation.cli.main",
     ):
         assert is_stray(module), module
     for module in (
         "data_pipeline",
+        "data_pipeline.bootstrap",
         "data_pipeline.domain",
         "data_pipeline.domain.crawl",
         "data_pipeline.infrastructure.shared.files",
-        "data_pipeline.presentation.cli.main",
+        "data_pipeline.cli.main",
+        "data_pipeline.api.routes",
     ):
         assert not is_stray(module), module
+
+
+def test_entry_points_do_not_build_adapters() -> None:
+    assert not allowed(
+        "data_pipeline.cli.crawl", "data_pipeline.infrastructure.crawl.scrapy.runner"
+    )
+    assert allowed("data_pipeline.cli.crawl", "data_pipeline.bootstrap")
+    assert allowed("data_pipeline.cli.crawl", "data_pipeline.application.crawl.run_crawl")
+    assert allowed("data_pipeline.bootstrap", "data_pipeline.infrastructure.crawl.scrapy.runner")
+    assert not allowed("data_pipeline.application.crawl.run_crawl", "data_pipeline.bootstrap")
 
 
 def test_layers_point_inwards() -> None:
@@ -161,7 +182,7 @@ def test_contexts_never_import_each_other() -> None:
     assert allowed("data_pipeline.application.corpus.package", "data_pipeline.domain.shared.url")
     assert not allowed("data_pipeline.domain.shared.url", "data_pipeline.domain.crawl.access")
     assert allowed(
-        "data_pipeline.presentation.cli.wiring",
+        "data_pipeline.bootstrap",
         "data_pipeline.infrastructure.crawl.sqlite.state_store",
     )
 

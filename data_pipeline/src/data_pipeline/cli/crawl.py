@@ -5,7 +5,8 @@ from typing import Annotated, Literal
 
 import typer
 
-from data_pipeline.presentation.cli import context, errors, wiring
+from data_pipeline import bootstrap
+from data_pipeline.cli import context, errors
 
 app = typer.Typer(help="Crawl the HUST websites.", no_args_is_help=True)
 
@@ -88,7 +89,7 @@ def run(
     from data_pipeline.domain.crawl.tuning import resolve_runtime_tuning
 
     # Built first: without the 'crawl' extra this fails before any input is read.
-    engine, storage = wiring.crawl_engine(), wiring.crawl_storage()
+    engine, storage = bootstrap.crawl_engine(), bootstrap.crawl_storage()
     run_full.validate_mode_flags(
         resume=resume,
         retry_failed=retry_failed,
@@ -103,13 +104,13 @@ def run(
         return errors.fail(f"input file not found: {input_path}")
 
     try:
-        seeds = wiring.seed_file(input_path)
+        seeds = bootstrap.seed_file(input_path)
     except Exception as exc:  # noqa: BLE001 -- any unreadable seed file or configuration is a usage error
         return errors.fail(f"reading seed file: {exc}")
 
     config_path = context.pick(config, context.current_paths().crawler_config)
     try:
-        crawler_config = wiring.crawler_config(config_path, hostnames=seeds.allowed_hostnames)
+        crawler_config = bootstrap.crawler_config(config_path, hostnames=seeds.allowed_hostnames)
     except Exception as exc:  # noqa: BLE001 -- any unreadable seed file or configuration is a usage error
         return errors.fail(f"loading configuration: {exc}")
 
@@ -165,17 +166,17 @@ def discover(
     from data_pipeline.domain.crawl.tuning import resolve_runtime_tuning
 
     # Built first: without the 'crawl' extra this fails before any input is read.
-    engine, storage = wiring.crawl_engine(), wiring.crawl_storage()
+    engine, storage = bootstrap.crawl_engine(), bootstrap.crawl_storage()
     if not input_path.is_file():
         return errors.fail(f"input file not found: {input_path}")
     try:
-        seeds = wiring.seed_file(input_path)
+        seeds = bootstrap.seed_file(input_path)
     except ValueError as exc:
         return errors.fail(f"reading seeds: {exc}")
 
     config_path = context.pick(config, context.current_paths().crawler_config)
     try:
-        crawler_config = wiring.crawler_config(config_path, hostnames=seeds.allowed_hostnames)
+        crawler_config = bootstrap.crawler_config(config_path, hostnames=seeds.allowed_hostnames)
     except Exception as exc:  # noqa: BLE001 -- any unreadable seed file or configuration is a usage error
         return errors.fail(f"loading configuration: {exc}")
 
@@ -206,7 +207,7 @@ def reextract(
     """Re-run extraction on the stored raw HTML of a finished crawl and rebuild final/ (offline)."""
     from data_pipeline.application.crawl import reextract as run_reextract
 
-    summary = run_reextract.reextract(output, wiring.crawl_storage())
+    summary = run_reextract.reextract(output, bootstrap.crawl_storage())
     print(
         f"reextract: pages={summary.pages} changed={summary.changed} "
         f"duplicates={summary.duplicates}"

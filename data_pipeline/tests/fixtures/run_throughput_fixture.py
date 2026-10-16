@@ -12,8 +12,8 @@ from scrapy.utils.reactor import install_reactor
 install_reactor("twisted.internet.asyncioreactor.AsyncioSelectorReactor")
 
 import data_pipeline.infrastructure.crawl.scrapy.settings as crawl_settings
+from data_pipeline.cli.main import main as cli_main
 from data_pipeline.infrastructure.crawl.scrapy import runner
-from data_pipeline.presentation.cli.main import main as cli_main
 
 HOSTS = ("h1.test", "h2.test")
 

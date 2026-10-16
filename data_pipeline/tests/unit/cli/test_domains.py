@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
+from data_pipeline.cli.main import main
 from data_pipeline.domain.hosts.models import ProbeAttempt
 from data_pipeline.domain.shared.config import ProjectPaths
 from data_pipeline.infrastructure.hosts import http_probe
-from data_pipeline.presentation.cli.main import main
 
 
 def resolve_ok(hostname: str) -> None:

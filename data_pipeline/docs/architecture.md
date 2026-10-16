@@ -8,13 +8,15 @@ theo lớp trước**: ở gốc chỉ có bốn lớp. Trong mỗi lớp, code 
 
 ```mermaid
 flowchart TB
-    PRES["presentation/cli<br/>lệnh Typer + wiring.py (dựng adapter)"]
+    PRES["cli/ (sau này api/)<br/>lệnh Typer"]
+    BOOT["bootstrap.py<br/>dựng adapter cho mọi cửa vào"]
     INFRA["infrastructure/<br/>SQLite, Scrapy, aiohttp, LlamaParse, MongoDB, Kaggle, hệ tệp<br/>(cài đặt các port)"]
     APP["application/<br/>use case + ports.py (Protocol)"]
     DOM["domain/<br/>luật thuần, kiểu dữ liệu"]
 
-    PRES --> INFRA
+    PRES --> BOOT
     PRES --> APP
+    BOOT --> INFRA
     INFRA -->|"chỉ ports"| APP
     APP --> DOM
     INFRA --> DOM
@@ -23,14 +25,15 @@ flowchart TB
 Quy tắc phụ thuộc (kiểm tra tự động bằng `tests/unit/test_architecture.py`):
 
 1. **Lớp chỉ trỏ vào trong:** `domain` không import lớp nào khác; `application` chỉ dùng `domain`; `infrastructure`
-   dùng `domain` và chỉ `application/<nghiệp vụ>/ports.py` (không import use case); `presentation` được dùng mọi thứ.
+   dùng `domain` và chỉ `application/<nghiệp vụ>/ports.py` (không import use case). Cửa vào (`cli/`, sau này `api/`) gọi
+   use case và `bootstrap.py`, không import `infrastructure`; chỉ `bootstrap.py` dựng adapter.
    `domain` không import module I/O (`sqlite3`, `scrapy`, `twisted`, `aiohttp`, `pymongo`, `playwright`,
    `llama_cloud`, `subprocess`, `shutil`, `tempfile`, `os`, `yaml`, `dotenv`, `socket`).
 2. **Nghiệp vụ không import lẫn nhau:** `crawl`, `enrich`, `corpus`, `hosts` chỉ dùng phần của chính nó và `shared`
    (cùng lớp hoặc lớp trong hơn); `shared` không dùng nghiệp vụ nào.
-3. Mọi module nằm trong `<lớp>/<nghiệp vụ>/` (hoặc `presentation/cli/`). Use case nhận adapter qua tham số, không tự
-   dựng; `presentation/cli/wiring.py` là nơi duy nhất dựng adapter. Ví dụ `corpus package` cần tài liệu của
-   `enrich`: `wiring.export_documents` đưa use case export của `enrich` vào port `ExportDocuments` của `corpus`.
+3. Mọi module nằm trong `<lớp>/<nghiệp vụ>/`, `cli/`, `api/` hoặc là `bootstrap.py`. Use case nhận adapter qua tham số,
+   không tự dựng; `bootstrap.py` là nơi duy nhất dựng adapter. Ví dụ `corpus package` cần tài liệu của
+   `enrich`: `bootstrap.export_documents` đưa use case export của `enrich` vào port `ExportDocuments` của `corpus`.
 
 ```text
 src/data_pipeline/
@@ -53,8 +56,8 @@ src/data_pipeline/
     enrich/          sqlite/work_state, http/aiohttp_transport, parsers/, llamaparse, files/
     corpus/          files/corpus_files, graph_index, mongo, kaggle_cli
     hosts/           http_probe, browser_probe, report_files
-  presentation/
-    cli/             main, crawl, enrich, corpus, domains, eval, context, errors, wiring
+  cli/               main, crawl, enrich, corpus, domains, eval, context, errors
+  bootstrap.py       dựng adapter cho mọi cửa vào (cli nay, api sau)
 ```
 
 | Nghiệp vụ | Port (trong `application/<nghiệp vụ>/ports.py`) | Adapter (trong `infrastructure/<nghiệp vụ>/`) |

@@ -16,9 +16,9 @@ install_reactor("twisted.internet.asyncioreactor.AsyncioSelectorReactor")
 from scrapy import signals
 
 import data_pipeline.infrastructure.crawl.scrapy.settings as crawl_settings
+from data_pipeline.cli.main import main as cli_main
 from data_pipeline.infrastructure.crawl.scrapy import runner
 from data_pipeline.infrastructure.crawl.scrapy.adaptive import AdaptiveConcurrencyMiddleware
-from data_pipeline.presentation.cli.main import main as cli_main
 
 
 class StopAfterResponse:

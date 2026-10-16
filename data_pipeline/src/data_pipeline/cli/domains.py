@@ -7,7 +7,8 @@ from typing import Annotated
 
 import typer
 
-from data_pipeline.presentation.cli import context, errors, wiring
+from data_pipeline import bootstrap
+from data_pipeline.cli import context, errors
 
 app = typer.Typer(help="Check which HUST hostnames are alive.", no_args_is_help=True)
 
@@ -44,14 +45,14 @@ def audit(
     paths = context.current_paths()
     report_path = context.pick(report, paths.domains_status)
     results = domain_audit.run_audit(
-        wiring.audit_reports(
+        bootstrap.audit_reports(
             context.pick(all_domains, paths.domains_all),
             context.pick(active_domains, paths.domains_active),
             report_path,
         ),
         workers=workers,
-        prober=wiring.host_prober(timeout=timeout, attempts=retries + 1),
-        browser=wiring.browser_prober(
+        prober=bootstrap.host_prober(timeout=timeout, attempts=retries + 1),
+        browser=bootstrap.browser_prober(
             enabled=not no_browser, timeout=browser_timeout, workers=browser_workers
         ),
         progress=_print_progress,

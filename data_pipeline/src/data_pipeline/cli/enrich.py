@@ -7,14 +7,15 @@ from typing import Annotated
 
 import typer
 
-from data_pipeline.domain.enrich.models import RunSummary, jsonable
-from data_pipeline.presentation.cli import context, wiring
-from data_pipeline.presentation.cli.context import (
+from data_pipeline import bootstrap
+from data_pipeline.cli import context
+from data_pipeline.cli.context import (
     JsonOption,
     RebindOption,
     SourceOption,
     WorkDirOption,
 )
+from data_pipeline.domain.enrich.models import RunSummary, jsonable
 
 app = typer.Typer(help="Download crawled documents and extract their text.", no_args_is_help=True)
 
@@ -42,9 +43,9 @@ def inventory(
     from data_pipeline.application.enrich import inventory as enrich_inventory
 
     settings = context.build_settings(source, work_dir)
-    with wiring.work_state(settings, rebind=rebind_source) as state:
+    with bootstrap.work_state(settings, rebind=rebind_source) as state:
         summary = enrich_inventory.index_inventory(
-            wiring.article_source(settings.source_path), state
+            bootstrap.article_source(settings.source_path), state
         )
     print(json.dumps(jsonable(summary), ensure_ascii=False, indent=2))
     return 0
@@ -65,15 +66,15 @@ def download(
     from data_pipeline.application.enrich import download as downloader
 
     settings = context.build_settings(source, work_dir)
-    with wiring.work_state(settings, rebind=rebind_source) as state:
+    with bootstrap.work_state(settings, rebind=rebind_source) as state:
         if retry_failed:
             print(f"requeued {state.reset_failed_downloads()} failed downloads")
         summary = asyncio.run(
             downloader.run_downloads(
                 state,
                 settings,
-                transport_factory=wiring.http_transport_factory(),
-                files=wiring.download_files(),
+                transport_factory=bootstrap.http_transport_factory(),
+                files=bootstrap.download_files(),
             )
         )
     return _summary(summary, json_output)
@@ -96,17 +97,17 @@ def extract(
     from data_pipeline.application.enrich import extract as pipeline
 
     settings = context.build_settings(source, work_dir)
-    api_keys = wiring.api_keys(context.current_paths())
-    with wiring.work_state(settings, rebind=rebind_source) as state:
+    api_keys = bootstrap.api_keys(context.current_paths())
+    with bootstrap.work_state(settings, rebind=rebind_source) as state:
         if reparse_cloud:
             print(f"requeued {state.requeue_cloud_parses()} documents for LlamaParse")
         summary = pipeline.extract_documents(
             state,
             settings,
             api_keys=api_keys,
-            local=wiring.local_parser(),
-            cloud=wiring.cloud_parser(state, settings, api_keys),
-            cache=wiring.parse_cache(state),
+            local=bootstrap.local_parser(),
+            cloud=bootstrap.cloud_parser(state, settings, api_keys),
+            cache=bootstrap.parse_cache(state),
         )
     return _summary(summary, json_output)
 
@@ -124,25 +125,25 @@ def run(
     from data_pipeline.application.enrich import inventory as enrich_inventory
 
     settings = context.build_settings(source, work_dir)
-    api_keys = wiring.api_keys(context.current_paths())
-    with wiring.work_state(settings, rebind=rebind_source) as state:
-        if not state.inventory_done(wiring.inventory_key(settings.source_path)):
-            enrich_inventory.index_inventory(wiring.article_source(settings.source_path), state)
+    api_keys = bootstrap.api_keys(context.current_paths())
+    with bootstrap.work_state(settings, rebind=rebind_source) as state:
+        if not state.inventory_done(bootstrap.inventory_key(settings.source_path)):
+            enrich_inventory.index_inventory(bootstrap.article_source(settings.source_path), state)
         asyncio.run(
             downloader.run_downloads(
                 state,
                 settings,
-                transport_factory=wiring.http_transport_factory(),
-                files=wiring.download_files(),
+                transport_factory=bootstrap.http_transport_factory(),
+                files=bootstrap.download_files(),
             )
         )
         summary = pipeline.extract_documents(
             state,
             settings,
             api_keys=api_keys,
-            local=wiring.local_parser(),
-            cloud=wiring.cloud_parser(state, settings, api_keys),
-            cache=wiring.parse_cache(state),
+            local=bootstrap.local_parser(),
+            cloud=bootstrap.cloud_parser(state, settings, api_keys),
+            cache=bootstrap.parse_cache(state),
         )
     return _summary(summary, json_output)
 
@@ -157,7 +158,7 @@ def status(
     """Report downloaded, parsed, failed, pending and quota-blocked work."""
 
     settings = context.build_settings(source, work_dir)
-    with wiring.work_state(settings, rebind=rebind_source) as state:
+    with bootstrap.work_state(settings, rebind=rebind_source) as state:
         summary = state.summary()
     return _summary(summary, json_output)
 
@@ -173,7 +174,7 @@ def export(
     from data_pipeline.application.enrich import export as enrich_export
 
     settings = context.build_settings(source, work_dir)
-    with wiring.work_state(settings, rebind=rebind_source) as state:
+    with bootstrap.work_state(settings, rebind=rebind_source) as state:
         enrich_export.export_enrichment(state, output)
     return 0
 
@@ -187,7 +188,7 @@ def reconcile_job(
     """Show the recorded status of a cloud parse job."""
 
     settings = context.build_settings(None, work_dir)
-    status_value = wiring.cloud_job_status(settings.work_path, request_id, job_id)
+    status_value = bootstrap.cloud_job_status(settings.work_path, request_id, job_id)
     print(
         json.dumps({"request_id": request_id, "job_id": job_id, "status": status_value}, indent=2)
     )

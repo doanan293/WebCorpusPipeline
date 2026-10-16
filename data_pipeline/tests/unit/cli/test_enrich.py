@@ -12,10 +12,10 @@ from data_pipeline.application.enrich import export as enrich_export
 from data_pipeline.application.enrich import extract as pipeline
 from data_pipeline.application.enrich import inventory as enrich_inventory
 from data_pipeline.application.enrich import session as enrich_session
+from data_pipeline.cli.main import main
 from data_pipeline.domain.enrich.models import InventorySummary, RunSummary
 from data_pipeline.domain.shared.config import ProjectPaths, Settings
 from data_pipeline.infrastructure.enrich.sqlite.work_state import SqliteWorkState
-from data_pipeline.presentation.cli.main import main
 from tests.fakes.enrich import FakeWorkState
 
 

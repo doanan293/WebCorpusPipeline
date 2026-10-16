@@ -6,13 +6,14 @@ inside their function, so a command only needs the extras it actually uses.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from data_pipeline.domain.shared.config import ProjectPaths, Settings
 from data_pipeline.infrastructure.corpus.mongo import MongoCorpusDatabase, connect
+from data_pipeline.infrastructure.shared import env, settings
 
 if TYPE_CHECKING:
     from data_pipeline.application.corpus.ports import (
@@ -35,6 +36,24 @@ if TYPE_CHECKING:
     from data_pipeline.application.hosts.ports import AuditReports, BrowserProber, HostProber
     from data_pipeline.domain.crawl.config import CrawlerConfig
     from data_pipeline.domain.crawl.seeds import SeedSet
+
+# -- configuration ----------------------------------------------------------------------------
+
+
+def project_paths() -> ProjectPaths:
+    """The project's well-known locations (the directory holding ``pyproject.toml``)."""
+    return settings.project_paths()
+
+
+def load_settings(paths: ProjectPaths, overrides: Mapping[str, Any] | None = None) -> Settings:
+    """``config/pipeline.yaml`` and the environment, with command-line ``overrides`` on top."""
+    return settings.load_settings(paths, overrides)
+
+
+def load_env(paths: ProjectPaths) -> None:
+    """Load the project's ``.env`` into the process environment."""
+    env.load_env(paths)
+
 
 # -- crawl ------------------------------------------------------------------------------------
 
