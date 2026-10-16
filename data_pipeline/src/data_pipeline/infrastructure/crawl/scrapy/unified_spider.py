@@ -40,7 +40,7 @@ class UnifiedSpider(scrapy.Spider):
         pipeline.stats = self._crawler_stats
         self.requests = RequestFactory(
             options=pipeline.options,
-            state=pipeline.state,
+            urls=pipeline.urls,
             callback=self.parse_response,
             errback=self.on_request_error,
         )

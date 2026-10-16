@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from urllib.parse import urlsplit
 
-from data_pipeline.application.crawl.ports import CrawlStateStore
+from data_pipeline.application.crawl.ports import UrlRecords
 from data_pipeline.domain.crawl.seeds import SeedSet
 
 
@@ -12,10 +12,10 @@ def exact_only_hosts(seeds: SeedSet) -> frozenset[str]:
     return frozenset(host for host in hosts if host) - seeds.recursive_hostnames
 
 
-def record_invalid_seeds(seeds: SeedSet, state: CrawlStateStore) -> None:
+def record_invalid_seeds(seeds: SeedSet, urls: UrlRecords) -> None:
     """Persist every seed line that could not be parsed as a failed URL."""
     for invalid in seeds.invalid:
-        state.put_error(
+        urls.put_error(
             {
                 "url": invalid.value,
                 "line": invalid.line,
@@ -23,4 +23,4 @@ def record_invalid_seeds(seeds: SeedSet, state: CrawlStateStore) -> None:
                 "message": f"line {invalid.line}: {invalid.reason}",
             }
         )
-        state.upsert_url({"url": invalid.value, "status": "failed", "reason": invalid.reason})
+        urls.upsert_url({"url": invalid.value, "status": "failed", "reason": invalid.reason})

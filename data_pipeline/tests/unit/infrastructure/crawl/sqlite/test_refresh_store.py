@@ -3,15 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from data_pipeline.infrastructure.crawl.sqlite.refresh_store import RefreshStore
-from data_pipeline.infrastructure.crawl.sqlite.state_store import SqliteCrawlState
+from data_pipeline.infrastructure.crawl.sqlite.unit_of_work import SqliteCrawlUnitOfWork
 
 RUN = "20261006T000000Z"
 
 
-def open_state(tmp_path: Path) -> SqliteCrawlState:
+def open_state(tmp_path: Path) -> SqliteCrawlUnitOfWork:
     input_path = tmp_path / "seeds.txt"
     input_path.write_text("a.test\n", encoding="utf-8")
-    return SqliteCrawlState.open(
+    return SqliteCrawlUnitOfWork.open(
         tmp_path / "state",
         phase="crawl",
         input_path=input_path,
@@ -78,9 +78,9 @@ def test_failure_counts_only_cover_this_run(tmp_path: Path) -> None:
     store.add_targets(RUN, [("https://a.test/", "homepage"), ("https://a.test/x", "recent")])
     store.finish_target(RUN, "https://a.test/", "request_failed")
     store.finish_target(RUN, "https://a.test/x", "unchanged")
-    state.upsert_url({"url": "https://a.test/old", "status": "failed"})
-    state.upsert_url({"url": "https://a.test/new", "status": "failed", "first_seen_run": RUN})
-    state.upsert_url(
+    state.urls.upsert_url({"url": "https://a.test/old", "status": "failed"})
+    state.urls.upsert_url({"url": "https://a.test/new", "status": "failed", "first_seen_run": RUN})
+    state.urls.upsert_url(
         {
             "url": "https://a.test/cut",
             "status": "skipped",

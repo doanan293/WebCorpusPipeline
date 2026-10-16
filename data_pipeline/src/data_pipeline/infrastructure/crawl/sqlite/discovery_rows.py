@@ -9,10 +9,10 @@ from urllib.parse import urlsplit
 from data_pipeline.domain.crawl.models import RouteFamilyState
 
 if TYPE_CHECKING:
-    from data_pipeline.infrastructure.crawl.sqlite.state_store import SqliteCrawlState
+    import sqlite3
 
 
-def put_route_family(state: SqliteCrawlState, family: RouteFamilyState) -> None:
+def put_route_family(connection: sqlite3.Connection, family: RouteFamilyState) -> None:
     payload = json.dumps(
         {
             "family_key": family.family_key,
@@ -27,7 +27,7 @@ def put_route_family(state: SqliteCrawlState, family: RouteFamilyState) -> None:
         },
         ensure_ascii=False,
     )
-    state.connection.execute(
+    connection.execute(
         """
         INSERT INTO route_families (family_key, payload) VALUES (?, ?)
         ON CONFLICT(family_key) DO UPDATE SET payload = excluded.payload;
@@ -36,8 +36,8 @@ def put_route_family(state: SqliteCrawlState, family: RouteFamilyState) -> None:
     )
 
 
-def iter_route_families(state: SqliteCrawlState) -> Iterator[RouteFamilyState]:
-    cursor = state.connection.execute("SELECT payload FROM route_families ORDER BY family_key ASC;")
+def iter_route_families(connection: sqlite3.Connection) -> Iterator[RouteFamilyState]:
+    cursor = connection.execute("SELECT payload FROM route_families ORDER BY family_key ASC;")
     for (payload_str,) in cursor.fetchall():
         d = json.loads(payload_str)
         yield RouteFamilyState(
@@ -53,10 +53,10 @@ def iter_route_families(state: SqliteCrawlState) -> Iterator[RouteFamilyState]:
         )
 
 
-def upsert_host_discovery(state: SqliteCrawlState, record: Mapping[str, object]) -> None:
+def upsert_host_discovery(connection: sqlite3.Connection, record: Mapping[str, object]) -> None:
     hostname = str(record["hostname"])
     payload = json.dumps(dict(record), ensure_ascii=False)
-    state.connection.execute(
+    connection.execute(
         """
         INSERT INTO host_discovery (hostname, payload)
         VALUES (?, ?)
@@ -66,18 +66,19 @@ def upsert_host_discovery(state: SqliteCrawlState, record: Mapping[str, object])
     )
 
 
-def iter_host_discovery(state: SqliteCrawlState) -> Iterator[dict[str, object]]:
-    cursor = state.connection.execute("SELECT payload FROM host_discovery ORDER BY hostname;")
+def iter_host_discovery(connection: sqlite3.Connection) -> Iterator[dict[str, object]]:
+    cursor = connection.execute("SELECT payload FROM host_discovery ORDER BY hostname;")
     for row in cursor:
         yield json.loads(row[0])
 
 
 def host_completion(
-    state: SqliteCrawlState, hostnames: frozenset[str]
+    connection: sqlite3.Connection, hostnames: frozenset[str]
 ) -> dict[str, dict[str, object]]:
     extracted = Counter()
     terminal_reasons: dict[str, Counter[str]] = defaultdict(Counter)
-    for record in state.iter_url_records():
+    for (payload,) in connection.execute("SELECT payload FROM url_records ORDER BY url;"):
+        record = json.loads(payload)
         hostname = (urlsplit(str(record.get("url", ""))).hostname or "").lower().rstrip(".")
         if hostname not in hostnames:
             continue

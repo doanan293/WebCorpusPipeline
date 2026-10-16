@@ -16,7 +16,7 @@ def test_retry_access_gates_requeues_captcha_and_login_pages(tmp_path: Path) -> 
         ("https://a.test/login", "login_required"),
         ("https://a.test/feed", "feed_trap"),
     ):
-        state.merge_url(
+        state.urls.merge_url(
             {
                 "url": url,
                 "status": "scheduled",
@@ -27,17 +27,17 @@ def test_retry_access_gates_requeues_captcha_and_login_pages(tmp_path: Path) -> 
                 "link_kind": "content",
             }
         )
-        state.complete_url({"url": url, "status": "skipped", "reason": reason})
+        state.urls.complete_url({"url": url, "status": "skipped", "reason": reason})
 
-    assert requeue_access_gates(state) == 2
-    pending = list(state.iter_pending_scheduled_records())
+    assert requeue_access_gates(state.urls) == 2
+    pending = list(state.urls.iter_pending_scheduled_records())
     assert sorted(str(record["url"]) for record in pending) == [
         "https://a.test/false-captcha",
         "https://a.test/login",
     ]
     assert all(record["status"] == "scheduled" for record in pending)
     assert all("reason" not in record for record in pending)
-    assert state.is_complete("https://a.test/feed")
+    assert state.urls.is_complete("https://a.test/feed")
     state.close()
 
 
@@ -58,39 +58,39 @@ def test_requeue_retryable_failures_only_resets_transport_errors(tmp_path: Path)
         ),
     )
     for url, message in failures:
-        state.merge_url(
+        state.urls.merge_url(
             {
                 "url": url,
                 "status": "scheduled",
                 "frontier_action": "scheduled",
             }
         )
-        state.complete_url(
+        state.urls.complete_url(
             {"url": url, "status": "failed"},
             error={"url": url, "error": "request_failed", "message": message},
         )
-    state.complete_url(
+    state.urls.complete_url(
         {"url": "https://a.test/missing", "status": "failed"},
         error={"url": "https://a.test/missing", "error": "http_404"},
     )
-    state.complete_url(
+    state.urls.complete_url(
         {"url": "https://a.test/bad-request", "status": "failed"},
         error={"url": "https://a.test/bad-request", "error": "http_400"},
     )
-    state.complete_url(
+    state.urls.complete_url(
         {"url": "https://a.test/server-error", "status": "failed"},
         error={"url": "https://a.test/server-error", "error": "http_500"},
     )
 
-    assert requeue_retryable_failures(state) == 2
-    pending = list(state.iter_pending_scheduled_records())
+    assert requeue_retryable_failures(state.urls) == 2
+    pending = list(state.urls.iter_pending_scheduled_records())
     assert [record["url"] for record in pending] == [
         "https://a.test/no-route",
         "https://a.test/timeout",
     ]
     assert all(not record.get("completed") for record in pending)
 
-    export_crawl(state, tmp_path / "output")
+    export_crawl(state.connection, tmp_path / "output")
     remaining_errors = [
         json.loads(line) for line in (tmp_path / "output/errors.jsonl").read_text().splitlines()
     ]
@@ -110,11 +110,11 @@ def test_render_timeouts_are_retryable(tmp_path: Path) -> None:
         "https://a.test/stable": "rendered body did not stabilize within 45 seconds",
     }
     for url, message in messages.items():
-        state.merge_url({"url": url, "status": "scheduled", "frontier_action": "scheduled"})
-        state.complete_url(
+        state.urls.merge_url({"url": url, "status": "scheduled", "frontier_action": "scheduled"})
+        state.urls.complete_url(
             {"url": url, "status": "failed"},
             error={"url": url, "error": "request_failed", "message": message},
         )
 
-    assert requeue_retryable_failures(state) == 2
+    assert requeue_retryable_failures(state.urls) == 2
     state.close()

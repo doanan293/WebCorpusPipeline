@@ -20,7 +20,7 @@ from data_pipeline.domain.crawl.options import CrawlOptions
 from data_pipeline.domain.crawl.seeds import SeedSet
 from data_pipeline.infrastructure.crawl.scrapy.unified_spider import UnifiedSpider
 from data_pipeline.infrastructure.crawl.sqlite.discovery_rows import upsert_host_discovery
-from data_pipeline.infrastructure.crawl.sqlite.state_store import SqliteCrawlState
+from data_pipeline.infrastructure.crawl.sqlite.unit_of_work import SqliteCrawlUnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,7 +116,7 @@ def run_generated_site(
     config = CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
     frontier = FrontierPolicy(seeds, options)
 
-    state = SqliteCrawlState.open(
+    state = SqliteCrawlUnitOfWork.open(
         tmp_path / "state",
         phase="crawl",
         input_path=seeds_file,
@@ -128,7 +128,7 @@ def run_generated_site(
     policy = AssetPolicy(options)
     coordinator = SitemapDiscoveryCoordinator(
         exact_hostnames=frozenset(),
-        on_change=partial(upsert_host_discovery, state),
+        on_change=partial(upsert_host_discovery, state.connection),
         strategy="hybrid-unified",
     )
     spider = UnifiedSpider(

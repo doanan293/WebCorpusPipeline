@@ -12,14 +12,14 @@ from data_pipeline.domain.crawl.frontier.assets import AssetPolicy
 from data_pipeline.domain.crawl.models import ReusedAssetTarget
 from data_pipeline.domain.crawl.options import CrawlOptions
 from data_pipeline.infrastructure.crawl.scrapy.reuse_spider import ReusedAssetSpider
-from data_pipeline.infrastructure.crawl.sqlite.state_store import SqliteCrawlState
+from data_pipeline.infrastructure.crawl.sqlite.unit_of_work import SqliteCrawlUnitOfWork
 
 
-def make_spider(tmp_path: Path) -> tuple[ReusedAssetSpider, SqliteCrawlState]:
+def make_spider(tmp_path: Path) -> tuple[ReusedAssetSpider, SqliteCrawlUnitOfWork]:
     input_path = tmp_path / "seeds.txt"
     input_path.write_text("a.test\n", encoding="utf-8")
     options = CrawlOptions(assets="all")
-    state = SqliteCrawlState.open(
+    state = SqliteCrawlUnitOfWork.open(
         tmp_path / "crawl-all" / "state",
         phase="crawl",
         input_path=input_path,

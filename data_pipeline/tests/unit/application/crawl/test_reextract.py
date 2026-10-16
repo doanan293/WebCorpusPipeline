@@ -10,9 +10,8 @@ from data_pipeline.application.crawl.reextract import ReextractSummary, reextrac
 from data_pipeline.application.crawl.writer import CrawlWriter
 from data_pipeline.domain.crawl.extract.article import ArticleAnalysis, analyze_article
 from data_pipeline.domain.crawl.options import CrawlOptions
-from data_pipeline.infrastructure.crawl.sqlite.html_store import HtmlStore
-from data_pipeline.infrastructure.crawl.sqlite.state_store import SqliteCrawlState
 from data_pipeline.infrastructure.crawl.sqlite.storage import SqliteCrawlStorage
+from data_pipeline.infrastructure.crawl.sqlite.unit_of_work import SqliteCrawlUnitOfWork
 
 PAGES = {
     "https://a.test/a": "<main><h1>A</h1><p>Bài A có nội dung riêng, đủ dài để trích xuất.</p></main>",
@@ -25,28 +24,27 @@ def finished_crawl(tmp_path: Path) -> Path:
     output = tmp_path / "crawl"
     seeds = tmp_path / "seeds.txt"
     seeds.write_text("a.test\n", encoding="utf-8")
-    state = SqliteCrawlState.open(
+    state = SqliteCrawlUnitOfWork.open(
         output / "state",
         phase="crawl",
         input_path=seeds,
         semantic_config={},
         runtime_config={},
     )
-    store = HtmlStore(output / "html", state.connection)
-    writer = CrawlWriter(output, state, CrawlOptions(), html_store=store)
+    writer = CrawlWriter(output, state, CrawlOptions(), store_html=True)
     for url, html in PAGES.items():
         article = analyze_article(html.encode(), url, "utf-8").article
         writer.write_article({"url": url, "final_url": url, **article, "page_role": "content"})
         writer.store_html(
             url, html.encode(), final_url=url, status=200, content_type="text/html; charset=utf-8"
         )
-    state.finish("complete", 0, state.counts(), {}, public_output=output)
+    state.run.finish("complete", 0, state.run.counts(), {}, public_output=output)
     writer.close()
     return output
 
 
 def articles(output: Path) -> dict[str, dict[str, Any]]:
-    state = SqliteCrawlState.open_existing(output / "state")
+    state = SqliteCrawlUnitOfWork.open_existing(output / "state")
     try:
         rows = state.connection.execute("SELECT url, payload FROM articles ORDER BY url;")
         return {str(url): json.loads(payload) for url, payload in rows}
@@ -95,3 +93,34 @@ def test_reextract_refuses_while_locked(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="already running"):
         reextract(output, SqliteCrawlStorage())
+
+
+def test_reextract_rolls_back_when_extraction_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = finished_crawl(tmp_path)
+    before = SqliteCrawlUnitOfWork.open_existing(output / "state")
+    owners_before = before.owners.content_owners()
+    before.close()
+    articles_before = articles(output)
+
+    calls: list[str] = []
+
+    def explode(source: bytes | str, url: str, encoding: str | None = None) -> ArticleAnalysis:
+        # The first page is rewritten with new text; the second crashes the run.
+        calls.append(url)
+        if len(calls) > 1:
+            msg = "extractor crashed"
+            raise RuntimeError(msg)
+        analysis = analyze_article(source, url, encoding)
+        analysis.article["text"] = "rewritten before the crash"
+        return analysis
+
+    monkeypatch.setattr(reextract_module, "analyze_article", explode)
+    with pytest.raises(RuntimeError, match="extractor crashed"):
+        reextract(output, SqliteCrawlStorage())
+
+    after = SqliteCrawlUnitOfWork.open_existing(output / "state")
+    assert after.owners.content_owners() == owners_before
+    after.close()
+    assert articles(output) == articles_before

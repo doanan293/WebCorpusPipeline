@@ -228,7 +228,7 @@ class AssetResponses:
         """Record each reused asset target as scheduled, then hand it on to be fetched."""
         for target in targets:
             for referring_page in target.referring_pages:
-                self.writer.state.add_asset_referrer(target.url, referring_page, target.role)
+                self.writer.assets.add_asset_referrer(target.url, referring_page, target.role)
             self.writer.record_scheduled(
                 {
                     "url": target.url,

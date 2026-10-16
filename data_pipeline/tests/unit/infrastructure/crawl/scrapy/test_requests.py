@@ -21,7 +21,7 @@ def make_factory() -> RequestFactory:
     spider, _ = make_spider()
     return RequestFactory(
         options=spider.pipeline.options,
-        state=spider.pipeline.state,
+        urls=spider.pipeline.urls,
         callback=_callback,
         errback=_errback,
     )
@@ -47,8 +47,8 @@ def test_resume_yields_request_with_spider_callbacks() -> None:
 
 def test_resume_skips_urls_already_completed() -> None:
     spider, writer = make_spider()
-    writer.state.completed.add("https://a.test/done")
-    writer.state.url_records["https://a.test/done"] = {"status": "extracted"}
+    writer.memory.completed.add("https://a.test/done")
+    writer.memory.url_records["https://a.test/done"] = {"status": "extracted"}
 
     scheduled = list(
         pipeline_of(spider).resume(
@@ -80,8 +80,8 @@ def test_completed_skip_does_not_block_scheduling_final_statuses_only() -> None:
         ("https://a.test/skipped", "skipped"),
         ("https://a.test/done", "extracted"),
     ):
-        writer.state.url_records[url] = {"url": url, "status": status}
-        writer.state.completed.add(url)
+        writer.memory.url_records[url] = {"url": url, "status": status}
+        writer.memory.completed.add(url)
 
     def page(url: str) -> Candidate:
         return Candidate(url, "recursive", None, "page", discovery_source="html_link")
@@ -97,7 +97,7 @@ def test_http_fallback_and_refresh_fetches_carry_their_meta() -> None:
     scheduled = pipeline_of(spider).schedule(home)
     assert scheduled is not None
     fallback = factory.build(replace(scheduled, http_fallback=True))
-    writer.state.url_records["https://a.test/n"] = {
+    writer.memory.url_records["https://a.test/n"] = {
         "url": "https://a.test/n",
         "status": "extracted",
         "content_id": "c1",
@@ -105,7 +105,7 @@ def test_http_fallback_and_refresh_fetches_carry_their_meta() -> None:
     }
     refetch = RequestFactory(
         options=spider.pipeline.options,
-        state=cast(Any, writer.state),
+        urls=cast(Any, writer.urls),
         callback=_callback,
         errback=_errback,
     ).build(RefreshFetch("https://a.test/n", "recent"))

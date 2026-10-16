@@ -14,7 +14,7 @@ from data_pipeline.domain.crawl.frontier.sitemaps import SitemapDiscoveryCoordin
 from data_pipeline.domain.crawl.options import AssetMode, CrawlOptions
 from data_pipeline.domain.crawl.seeds import SeedSet
 from data_pipeline.infrastructure.crawl.scrapy.unified_spider import UnifiedSpider
-from tests.fakes.crawl import FakeCrawlState, FakeCrawlWriter
+from tests.fakes.crawl import FakeCrawlUnitOfWork, FakeCrawlWriter
 
 
 def make_spider(
@@ -34,8 +34,7 @@ def make_spider(
     frontier = FrontierPolicy(seeds, options)
     policy = AssetPolicy(options)
     coordinator = SitemapDiscoveryCoordinator(strategy="hybrid-unified")
-    state = FakeCrawlState()
-    writer = FakeCrawlWriter(state, options)
+    writer = FakeCrawlWriter(FakeCrawlUnitOfWork(), options)
     pipeline = PagePipeline(
         options=options,
         frontier=frontier,
@@ -154,7 +153,7 @@ def test_exact_seed_extracts_but_does_not_expand_html() -> None:
     request = next(spider.start_requests())
     children = list(spider.parse_response(html_response(request, '<a href="/two">Two</a>')))
     assert children == []
-    assert writer.articles[0]["url"] == "https://a.test/one"
+    assert writer.memory.articles[0]["url"] == "https://a.test/one"
 
 
 def test_exact_seed_schedules_document_attachment_but_not_html() -> None:
@@ -171,7 +170,7 @@ def test_exact_seed_schedules_document_attachment_but_not_html() -> None:
     assert len(children) == 1
     assert children[0].url == "https://a.test/report.pdf"
     assert children[0].meta["asset_role"] == "document_attachment"
-    assert writer.articles[0]["url"] == "https://a.test/one"
+    assert writer.memory.articles[0]["url"] == "https://a.test/one"
 
 
 def test_wordpress_shortlink_is_not_fetched() -> None:
@@ -214,7 +213,7 @@ def test_html_schedules_all_assets_in_all_mode() -> None:
     child_urls = {child.url for child in children}
     assert "https://a.test/report.pdf" in child_urls
     assert "https://a.test/photo.jpg" in child_urls
-    assert writer.articles[0]["assets"]
+    assert writer.memory.articles[0]["assets"]
 
 
 def test_extensionless_embedded_resource_outside_article_is_not_scheduled_as_page() -> None:
@@ -468,7 +467,7 @@ def test_unknown_binary_responses_are_not_persisted_in_content_only() -> None:
     assert (
         writer.url_records["https://a.test/download-slug"]["status"] == "discovered_not_downloaded"
     )
-    assert writer.state.is_complete("https://a.test/download-slug")
+    assert writer.urls.is_complete("https://a.test/download-slug")
 
 
 def test_explicit_binary_is_saved() -> None:
@@ -497,7 +496,7 @@ def test_accepted_request_records_scheduled_provenance() -> None:
     assert robots_rec["status"] == "scheduled"
     assert robots_rec["seed_type"] == "recursive"
     assert robots_rec["frontier_action"] == "scheduled"
-    assert "https://a.test/robots.txt" not in writer.state.completed
+    assert "https://a.test/robots.txt" not in writer.memory.completed
 
 
 INDEX_XML = b'<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://a.test/generated/site-map</loc></sitemap></sitemapindex>'
@@ -611,8 +610,7 @@ def test_same_host_media_obeys_host_url_budget() -> None:
     frontier = FrontierPolicy(seeds, options)
     policy = AssetPolicy(options)
     coordinator = SitemapDiscoveryCoordinator(strategy="hybrid-unified")
-    state = FakeCrawlState()
-    writer = FakeCrawlWriter(state, options)
+    writer = FakeCrawlWriter(FakeCrawlUnitOfWork(), options)
     spider = UnifiedSpider(
         seeds=seeds,
         config=config,
@@ -713,7 +711,7 @@ def test_asset_error_record_does_not_replace_article() -> None:
     pipeline_of(spider).writer.write_error(
         {"url": "https://cdn.test/a.png", "error": "dns_failure"}
     )
-    assert writer.articles[0]["url"] == "https://a.test/p"
+    assert writer.memory.articles[0]["url"] == "https://a.test/p"
     assert writer.errors[0]["url"] == "https://cdn.test/a.png"
 
 
@@ -730,16 +728,16 @@ def test_navigation_skip_uses_canonical_url_and_seed_hosts_only() -> None:
 
     skipped = {s["url"]: s["reason"] for s in writer.skipped}
     assert skipped == {"https://a.test/login/?a=1&b=2": "action_auth"}
-    assert "https://maps.google.com/login" not in writer.state.url_records
+    assert "https://maps.google.com/login" not in writer.memory.url_records
 
 
 def test_navigation_skip_does_not_overwrite_known_url() -> None:
     spider, writer = make_spider(recursive_hostnames=frozenset({"a.test"}))
     known = {"url": "https://a.test/login", "status": "extracted"}
-    writer.state.url_records["https://a.test/login"] = dict(known)
+    writer.memory.url_records["https://a.test/login"] = dict(known)
     request = page_request("https://a.test/", discovery_source="seed")
     html = '<main><h1>Header</h1><p>Text</p><a href="/login">Login</a></main>'
 
     list(spider.parse_response(html_response(request, html)))
 
-    assert writer.state.url_records["https://a.test/login"] == known
+    assert writer.memory.url_records["https://a.test/login"] == known

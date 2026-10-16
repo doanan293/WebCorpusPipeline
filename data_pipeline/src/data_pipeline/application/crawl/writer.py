@@ -8,7 +8,7 @@ from pathlib import Path, PurePosixPath
 from typing import Literal
 from urllib.parse import urlsplit
 
-from data_pipeline.application.crawl.ports import CrawlStateStore, RawHtmlStore
+from data_pipeline.application.crawl.ports import CrawlUnitOfWork
 from data_pipeline.domain.crawl.frontier.assets import AssetGroup, AssetRole
 from data_pipeline.domain.crawl.models import DUPLICATE_DROPPED_FIELDS
 from data_pipeline.domain.crawl.options import CrawlOptions
@@ -70,15 +70,21 @@ class CrawlWriter:
     def __init__(
         self,
         root: Path,
-        state: CrawlStateStore,
+        uow: CrawlUnitOfWork,
         options: CrawlOptions,
         *,
-        html_store: RawHtmlStore | None = None,
+        store_html: bool = False,
     ) -> None:
         self.root = root
-        self.state = state
+        self._uow = uow
+        self.urls = uow.urls
+        self.articles = uow.articles
+        self.owners = uow.owners
+        self.assets = uow.assets
+        self.families = uow.families
+        self.run = uow.run
         self.options = options
-        self.html_store = html_store
+        self.html_store = uow.html if store_html else None
         self.files_dir = root / "files"
         self._stored_bytes = 0
         if self.files_dir.exists():
@@ -102,23 +108,23 @@ class CrawlWriter:
         )
 
     def record_scheduled(self, record: dict[str, object]) -> None:
-        self.state.merge_url(record, completed=False)
+        self.urls.merge_url(record, completed=False)
 
     def record_discovered(self, record: dict[str, object], *, completed: bool = True) -> None:
-        self.state.merge_url(record, completed=completed)
+        self.urls.merge_url(record, completed=completed)
 
     def record_skipped(self, record: dict[str, object]) -> None:
-        self.state.merge_url(record, completed=True)
+        self.urls.merge_url(record, completed=True)
 
     def record_navigation_skip(self, record: dict[str, object]) -> None:
-        self.state.insert_url_if_absent(record)
+        self.urls.insert_url_if_absent(record)
 
     def record_rejected(self, record: dict[str, object]) -> None:
         """Record a frontier rejection; a URL already scheduled by another route stays pending."""
-        self.state.merge_url(record, completed=True, keep_scheduled=True)
+        self.urls.merge_url(record, completed=True, keep_scheduled=True)
 
     def record_absent(self, record: dict[str, object]) -> None:
-        self.state.complete_url(record)
+        self.urls.complete_url(record)
 
     def write_article(self, record: dict[str, object]) -> dict[str, object]:
         text = str(record.get("text") or "")
@@ -128,7 +134,7 @@ class CrawlWriter:
         record_copy["content_id"] = content_id
 
         # An empty page has no content to own, so it never makes another page a duplicate.
-        owner_url = self.state.claim_content(content_id, url) if text.strip() else url
+        owner_url = self.owners.claim_content(content_id, url) if text.strip() else url
         if owner_url != url:
             record_copy["duplicate_of"] = owner_url
             for field in ("text", *DUPLICATE_DROPPED_FIELDS):
@@ -143,7 +149,7 @@ class CrawlWriter:
             "http_status": record_copy.get("status", 200),
             "content_type": record_copy.get("content_type", "text/html"),
         }
-        self.state.complete_url(disposition, article=record_copy)
+        self.urls.complete_url(disposition, article=record_copy)
         return record_copy
 
     def write_file(
@@ -179,11 +185,11 @@ class CrawlWriter:
             self._stored_bytes += body_len
 
         if referring_page is not None:
-            self.state.add_asset_referrer(url, referring_page, asset_role)
+            self.assets.add_asset_referrer(url, referring_page, asset_role)
 
-        referring_pages = list(self.state.asset_referrers(url))
+        referring_pages = list(self.assets.asset_referrers(url))
 
-        existing_payload = self.state.file_record(url)
+        existing_payload = self.assets.file_record(url)
         if existing_payload:
             first_role = existing_payload.get("asset_role", asset_role)
             first_group = existing_payload.get("asset_group", asset_group)
@@ -211,7 +217,7 @@ class CrawlWriter:
             "asset_group": first_group,
             "asset_role": first_role,
         }
-        self.state.complete_url(disposition, file=file_record)
+        self.urls.complete_url(disposition, file=file_record)
         return file_record
 
     def _resolve_extension(self, final_url: str, url: str, content_type: str) -> str:
@@ -233,13 +239,13 @@ class CrawlWriter:
             "status": "failed",
             "reason": record.get("reason", record.get("error", "error")),
         }
-        self.state.complete_url(disposition, error=record)
+        self.urls.complete_url(disposition, error=record)
 
     def checkpoint(self, url: str) -> None:
-        self.state.checkpoint(url)
+        self.urls.checkpoint(url)
 
     def publish(self) -> None:
-        self.state.export_crawl(self.root)
+        self.run.export_crawl(self.root)
 
     def close(self) -> None:
-        self.state.close()
+        self._uow.close()

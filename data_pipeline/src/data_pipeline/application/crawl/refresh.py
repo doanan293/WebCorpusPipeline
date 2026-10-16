@@ -9,7 +9,13 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from data_pipeline.application.crawl.ports import CrawlStateStore, CrawlStorage, RefreshStorePort
+from data_pipeline.application.crawl.ports import (
+    Articles,
+    CrawlRun,
+    CrawlStorage,
+    CrawlUnitOfWork,
+    UrlRecords,
+)
 from data_pipeline.application.crawl.refresh_pipeline import RefreshSession
 from data_pipeline.application.crawl.requeue import restore_status
 from data_pipeline.domain.crawl.extract.dates import parse_page_date
@@ -55,31 +61,31 @@ def preflight(state_dir: Path, storage: CrawlStorage) -> str | None:
     return None
 
 
-def _homepages(state: CrawlStateStore, recursive_hostnames: Iterable[str]) -> list[str]:
-    status = state.url_status
-    urls: list[str] = []
+def _homepages(urls: UrlRecords, recursive_hostnames: Iterable[str]) -> list[str]:
+    status = urls.url_status
+    pages: list[str] = []
     for hostname in sorted(recursive_hostnames):
         https_url, http_url = f"https://{hostname}/", f"http://{hostname}/"
         http_ok = status(http_url) == "extracted"
         # A host whose HTTPS homepage never worked was crawled over the HTTP
         # fallback; probing HTTPS again would fail on every refresh.
         if status(https_url) == "extracted" or not http_ok:
-            urls.append(https_url)
+            pages.append(https_url)
         if http_ok:
-            urls.append(http_url)
-    return urls
+            pages.append(http_url)
+    return pages
 
 
-def _sitemaps(state: CrawlStateStore) -> list[str]:
-    rows = state.parsed_probes()
+def _sitemaps(urls: UrlRecords) -> list[str]:
+    rows = urls.parsed_probes()
     sitemap_hosts = {_hostname(url) for url, purpose in rows if purpose == "sitemap"}
     return [
         str(url) for url, purpose in rows if purpose == "sitemap" or _hostname(url) in sitemap_hosts
     ]
 
 
-def _pagination_heads(state: CrawlStateStore) -> list[str]:
-    rows = state.pagination_members()
+def _pagination_heads(urls: UrlRecords) -> list[str]:
+    rows = urls.pagination_members()
     heads: list[str] = []
     seen: set[str] = set()
     for family_key, url, parent in rows:
@@ -87,14 +93,14 @@ def _pagination_heads(state: CrawlStateStore) -> list[str]:
             continue
         seen.add(family_key)
         head = str(url)
-        if parent and state.url_status(parent) == "extracted":
+        if parent and urls.url_status(parent) == "extracted":
             head = parent
         heads.append(head)
     return heads
 
 
 def select_recent(
-    state: CrawlStateStore,
+    articles: Articles,
     settings: RefreshSettings,
     recent_run_ids: Iterable[str],
     now: float,
@@ -102,7 +108,7 @@ def select_recent(
     cutoff = now - settings.recent_days * 86400
     runs = set(recent_run_ids)
     scored: list[tuple[float, str]] = []
-    for url, published_at, modified_at, first_seen_run in state.recent_content_candidates():
+    for url, published_at, modified_at, first_seen_run in articles.recent_content_candidates():
         dated = [
             stamp
             for stamp in (_timestamp(modified_at), _timestamp(published_at))
@@ -117,29 +123,29 @@ def select_recent(
 
 
 def select_targets(
-    state: CrawlStateStore,
+    urls: UrlRecords,
+    articles: Articles,
     recursive_hostnames: Iterable[str],
     settings: RefreshSettings,
     recent_run_ids: Iterable[str],
     now: float,
 ) -> list[tuple[str, RefreshReason]]:
     groups: tuple[tuple[RefreshReason, list[str]], ...] = (
-        ("homepage", _homepages(state, recursive_hostnames)),
-        ("sitemap", _sitemaps(state)),
-        ("navigation", state.navigation_pages()),
-        ("pagination_head", _pagination_heads(state)),
-        ("recent", select_recent(state, settings, recent_run_ids, now)),
+        ("homepage", _homepages(urls, recursive_hostnames)),
+        ("sitemap", _sitemaps(urls)),
+        ("navigation", articles.navigation_pages()),
+        ("pagination_head", _pagination_heads(urls)),
+        ("recent", select_recent(articles, settings, recent_run_ids, now)),
     )
     selected: dict[str, RefreshReason] = {}
-    for reason, urls in groups:
-        for url in urls:
+    for reason, group in groups:
+        for url in group:
             selected.setdefault(url, reason)
     return sorted(selected.items())
 
 
 def prepare_refresh_run(
-    state: CrawlStateStore,
-    store: RefreshStorePort,
+    uow: CrawlUnitOfWork,
     output: Path,
     recursive_hostnames: Iterable[str],
     settings: RefreshSettings,
@@ -147,9 +153,10 @@ def prepare_refresh_run(
     *,
     now: float,
 ) -> tuple[str, list[tuple[str, str]]]:
+    store = uow.refresh
     if continue_run_id is not None:
         store.resume_run(continue_run_id)
-        state.refresh_run_id = continue_run_id
+        uow.run.refresh_run_id = continue_run_id
         return continue_run_id, store.pending_targets(continue_run_id)
 
     run_id = new_run_id(now)
@@ -158,9 +165,10 @@ def prepare_refresh_run(
         now += 1
         run_id = new_run_id(now)
     try:
-        state.backup_to(output / "archive" / f"pre-refresh-{run_id}" / "index.sqlite3")
+        uow.run.backup_to(output / "archive" / f"pre-refresh-{run_id}" / "index.sqlite3")
         targets = select_targets(
-            state,
+            uow.urls,
+            uow.articles,
             recursive_hostnames,
             settings,
             store.completed_run_ids(settings.recent_runs),
@@ -169,14 +177,14 @@ def prepare_refresh_run(
         store.start_run(run_id)
         store.add_targets(run_id, targets)
     except Exception:
-        restore_status(state)
+        restore_status(uow.run)
         raise
-    state.refresh_run_id = run_id
+    uow.run.refresh_run_id = run_id
     return run_id, store.pending_targets(run_id)
 
 
 def _export_changes(
-    state: CrawlStateStore,
+    articles: Articles,
     changes: list[dict[str, object]],
     destination: Path,
     summary: dict[str, object],
@@ -189,7 +197,7 @@ def _export_changes(
         for change in changes:
             file.write(json.dumps(change, ensure_ascii=False) + "\n")
     with (temporary / "articles.jsonl").open("w", encoding="utf-8") as file:
-        for _, payload in state.iter_final_articles(str(change["url"]) for change in changes):
+        for _, payload in articles.iter_final_articles(str(change["url"]) for change in changes):
             file.write(f"{payload}\n")
     (temporary / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -199,13 +207,13 @@ def _export_changes(
 
 
 def complete_refresh_run(
-    state: CrawlStateStore, session: RefreshSession, output: Path, status: str
+    run: CrawlRun, articles: Articles, session: RefreshSession, output: Path, status: str
 ) -> dict[str, object]:
     store = session.store
     changes = list(store.iter_changes(session.run_id))
     summary: dict[str, object] = {
         "run_id": session.run_id,
-        "crawl_id": state.crawl_id,
+        "crawl_id": run.crawl_id,
         "status": status,
         "started_at": store.run_started_at(session.run_id),
         "finished_at": time.time(),
@@ -216,6 +224,6 @@ def complete_refresh_run(
     }
     store.finish_run(session.run_id, status, summary)
     if status not in {"interrupted", "failed"}:
-        state.manifest["last_refresh_run_id"] = session.run_id
-        _export_changes(state, changes, output / "changes" / session.run_id, summary)
+        run.manifest["last_refresh_run_id"] = session.run_id
+        _export_changes(articles, changes, output / "changes" / session.run_id, summary)
     return summary

@@ -6,7 +6,7 @@ from typing import Any, cast
 from data_pipeline.application.crawl.refresh_pipeline import RefreshSession
 from data_pipeline.domain.crawl.extract.article import analyze_article
 from data_pipeline.domain.crawl.refresh_rules import RefreshSettings
-from tests.fakes.crawl import FakeRefreshStore
+from tests.fakes.crawl import FakeRefreshRuns
 from tests.unit.application.crawl.test_page_pipeline import page, pipeline
 
 COUNTED_V1 = (
@@ -16,8 +16,8 @@ COUNTED_V1 = (
 URL = "https://a.test/thong-bao"
 
 
-def refreshing() -> tuple[Any, FakeRefreshStore, Any, str]:
-    store = FakeRefreshStore()
+def refreshing() -> tuple[Any, FakeRefreshRuns, Any, str]:
+    store = FakeRefreshRuns()
     session = RefreshSession(cast(Any, store), "R1", RefreshSettings())
     pipe, writer = pipeline(refresh=session)
     first = {
@@ -57,15 +57,15 @@ def test_gone_page_is_reported_removed() -> None:
 
     assert store.outcomes[URL] == "removed"
     assert [change["change"] for change in store.changes] == ["removed"]
-    assert writer.state.url_records[URL]["status"] == "absent"
+    assert writer.memory.url_records[URL]["status"] == "absent"
 
 
 def test_not_modified_closes_the_target_without_storing() -> None:
     pipe, store, writer, _ = refreshing()
-    stored = len(writer.state.articles)
+    stored = len(writer.memory.articles)
     unchanged = replace(page(URL, "", refresh_reason="recent"), status=304)
 
     list(pipe.handle(unchanged))
 
     assert store.outcomes[URL] == "not_modified"
-    assert len(writer.state.articles) == stored
+    assert len(writer.memory.articles) == stored

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from data_pipeline.application.crawl.ports import CrawlStateStore
+from data_pipeline.application.crawl.ports import CrawlRun, UrlRecords
 
 _RETRYABLE_REQUEST_FAILURE_MARKERS = (
     # A browser render that ran out of time under load; it usually works on a retry.
@@ -36,30 +36,30 @@ def _scheduled(record: dict[str, object]) -> dict[str, object]:
     return record
 
 
-def requeue_retryable_failures(state: CrawlStateStore) -> int:
+def requeue_retryable_failures(urls: UrlRecords) -> int:
     retryable: list[tuple[str, dict[str, object]]] = []
-    for url, record, error in state.failed_records():
+    for url, record, error in urls.failed_records():
         message = str(error.get("message", "")).lower()
         if error.get("error") == "request_failed" and any(
             marker in message for marker in _RETRYABLE_REQUEST_FAILURE_MARKERS
         ):
             retryable.append((url, _scheduled(record)))
-    return state.requeue(retryable)
+    return urls.requeue(retryable)
 
 
-def requeue_access_gates(state: CrawlStateStore) -> int:
+def requeue_access_gates(urls: UrlRecords) -> int:
     """Retry pages skipped behind a CAPTCHA or login gate."""
     recoverable = [
         (url, _scheduled(record))
-        for url, record in state.skipped_records()
+        for url, record in urls.skipped_records()
         if record.get("reason") in _ACCESS_GATE_REASONS
     ]
-    return state.requeue(recoverable)
+    return urls.requeue(recoverable)
 
 
-def restore_status(state: CrawlStateStore) -> None:
+def restore_status(run: CrawlRun) -> None:
     """Undo the 'running' mark of a resumed open when the run never started."""
-    previous = state.manifest.get("resumed_from_status")
+    previous = run.manifest.get("resumed_from_status")
     if previous:
-        state.manifest["status"] = previous
-        state.write_manifest(state.manifest)
+        run.manifest["status"] = previous
+        run.write_manifest(run.manifest)

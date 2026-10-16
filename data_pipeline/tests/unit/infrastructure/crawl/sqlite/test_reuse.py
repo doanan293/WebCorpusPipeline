@@ -11,14 +11,14 @@ from data_pipeline.infrastructure.crawl.sqlite.reuse import (
     prepare_reused_asset_targets,
     reused_asset_targets,
 )
-from data_pipeline.infrastructure.crawl.sqlite.state_store import SqliteCrawlState
+from data_pipeline.infrastructure.crawl.sqlite.unit_of_work import SqliteCrawlUnitOfWork
 
 
 def open_source(tmp_path: Path) -> tuple[Path, Path]:
     input_path = tmp_path / "seeds.txt"
     input_path.write_text("a.test\n", encoding="utf-8")
     output = tmp_path / "crawl"
-    state = SqliteCrawlState.open(
+    state = SqliteCrawlUnitOfWork.open(
         output / "state",
         phase="crawl",
         input_path=input_path,
@@ -29,7 +29,7 @@ def open_source(tmp_path: Path) -> tuple[Path, Path]:
         },
         runtime_config={},
     )
-    state.complete_url(
+    state.urls.complete_url(
         {"url": "https://a.test/one", "status": "extracted"},
         article={
             "url": "https://a.test/one",
@@ -40,7 +40,7 @@ def open_source(tmp_path: Path) -> tuple[Path, Path]:
             ],
         },
     )
-    state.complete_url(
+    state.urls.complete_url(
         {"url": "https://a.test/two", "status": "extracted"},
         article={
             "url": "https://a.test/two",
@@ -50,7 +50,7 @@ def open_source(tmp_path: Path) -> tuple[Path, Path]:
             ],
         },
     )
-    state.finish("complete", 0, state.counts(), {})
+    state.run.finish("complete", 0, state.run.counts(), {})
     state.close()
     return output, input_path
 
@@ -64,7 +64,7 @@ def test_import_reused_content_copies_articles_without_mutating_source(tmp_path:
         if path.is_file()
     }
 
-    destination = SqliteCrawlState.open(
+    destination = SqliteCrawlUnitOfWork.open(
         tmp_path / "crawl-all" / "state",
         phase="crawl",
         input_path=input_path,
@@ -73,8 +73,8 @@ def test_import_reused_content_copies_articles_without_mutating_source(tmp_path:
     )
     import_reused_content(source, destination, input_path)
 
-    assert destination.counts()["articles"] == 2
-    assert destination.is_complete("https://a.test/one")
+    assert destination.run.counts()["articles"] == 2
+    assert destination.urls.is_complete("https://a.test/one")
     after = {
         path.name: hashlib.sha256(path.read_bytes()).hexdigest()
         for path in source_state_dir.iterdir()
@@ -86,7 +86,7 @@ def test_import_reused_content_copies_articles_without_mutating_source(tmp_path:
 
 def test_reused_asset_targets_deduplicate_urls_and_keep_referrers(tmp_path: Path) -> None:
     source, input_path = open_source(tmp_path)
-    destination = SqliteCrawlState.open(
+    destination = SqliteCrawlUnitOfWork.open(
         tmp_path / "crawl-all" / "state",
         phase="crawl",
         input_path=input_path,
@@ -112,7 +112,7 @@ def test_reused_asset_targets_deduplicate_urls_and_keep_referrers(tmp_path: Path
 def test_reused_asset_targets_are_read_from_materialized_sqlite_rows(tmp_path: Path) -> None:
     input_path = tmp_path / "seeds.txt"
     input_path.write_text("a.test\n", encoding="utf-8")
-    state = SqliteCrawlState.open(
+    state = SqliteCrawlUnitOfWork.open(
         tmp_path / "crawl-all" / "state",
         phase="crawl",
         input_path=input_path,
@@ -120,7 +120,7 @@ def test_reused_asset_targets_are_read_from_materialized_sqlite_rows(tmp_path: P
         runtime_config={},
     )
 
-    state.complete_url(
+    state.urls.complete_url(
         {"url": "https://a.test/article", "status": "extracted"},
         article={
             "url": "https://a.test/article",
@@ -139,7 +139,7 @@ def test_reused_asset_targets_are_read_from_materialized_sqlite_rows(tmp_path: P
 def test_import_reused_content_rejects_a_running_source(tmp_path: Path) -> None:
     source, input_path = open_source(tmp_path)
     (source / "state" / "run.lock").write_text(f"{os.getpid()}\n", encoding="utf-8")
-    destination = SqliteCrawlState.open(
+    destination = SqliteCrawlUnitOfWork.open(
         tmp_path / "crawl-all" / "state",
         phase="crawl",
         input_path=input_path,
@@ -154,7 +154,7 @@ def test_import_reused_content_rejects_a_running_source(tmp_path: Path) -> None:
 def test_import_reused_content_ignores_a_stale_source_lock(tmp_path: Path) -> None:
     source, input_path = open_source(tmp_path)
     (source / "state" / "run.lock").write_text("999999999\n", encoding="utf-8")
-    destination = SqliteCrawlState.open(
+    destination = SqliteCrawlUnitOfWork.open(
         tmp_path / "crawl-all" / "state",
         phase="crawl",
         input_path=input_path,
@@ -164,7 +164,7 @@ def test_import_reused_content_ignores_a_stale_source_lock(tmp_path: Path) -> No
 
     import_reused_content(source, destination, input_path)
 
-    assert destination.counts()["articles"] == 2
+    assert destination.run.counts()["articles"] == 2
     destination.close()
 
 
@@ -172,7 +172,7 @@ def test_import_reused_content_rejects_different_input(tmp_path: Path) -> None:
     source, _ = open_source(tmp_path)
     other_input = tmp_path / "other-seeds.txt"
     other_input.write_text("b.test\n", encoding="utf-8")
-    destination = SqliteCrawlState.open(
+    destination = SqliteCrawlUnitOfWork.open(
         tmp_path / "crawl-all" / "state",
         phase="crawl",
         input_path=other_input,

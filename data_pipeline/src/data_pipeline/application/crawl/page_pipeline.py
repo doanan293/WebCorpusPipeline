@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
 
 from data_pipeline.application.crawl.asset_responses import AssetResponses
-from data_pipeline.application.crawl.ports import CrawlStateStore
+from data_pipeline.application.crawl.ports import UrlRecords
 from data_pipeline.application.crawl.writer import CrawlWriter
 from data_pipeline.domain.crawl.access import classify_page_gate
 from data_pipeline.domain.crawl.extract.article import analyze_article
@@ -121,8 +121,8 @@ class PagePipeline:
         }
 
     @property
-    def state(self) -> CrawlStateStore:
-        return self.writer.state
+    def urls(self) -> UrlRecords:
+        return self.writer.urls
 
     @property
     def refreshing(self) -> bool:
@@ -138,7 +138,7 @@ class PagePipeline:
             raise ValueError(msg)
 
         # Skip completed URLs on resume
-        if self.writer.state.is_finished(canonical):
+        if self.writer.urls.is_finished(canonical):
             return None
 
         # Persist scheduled decision
@@ -579,7 +579,7 @@ class PagePipeline:
     def store_validators(self, url: str, page: FetchedPage, **extra: object) -> None:
         fields: dict[str, object] = {**page.validators, **extra}
         if fields:
-            self.writer.state.update_url_fields(url, fields)
+            self.writer.urls.update_url_fields(url, fields)
 
     def expand(
         self,
@@ -606,7 +606,7 @@ class PagePipeline:
         self, page: FetchedPage, analysis: Any, seed_mode: SeedMode
     ) -> Iterator[FollowUp]:
         for asset in analysis.assets:
-            self.writer.state.add_asset_referrer(asset.url, page.url, asset.role)
+            self.writer.assets.add_asset_referrer(asset.url, page.url, asset.role)
             candidate = Candidate(
                 url=asset.url,
                 source_mode=seed_mode,
@@ -708,7 +708,7 @@ class PagePipeline:
             ).hexdigest(),
             content_targets=content_targets,
         )
-        self.writer.state.put_route_family(self.frontier.observe_family(observation))
+        self.writer.families.put_route_family(self.frontier.observe_family(observation))
 
     def _may_follow_pagination(self, family_key: str, new_content_count: int) -> bool:
         if self.refresh is not None:
@@ -742,7 +742,7 @@ class PagePipeline:
         canonical, _, _ = canonicalize_url(url)
         if not canonical:
             return None
-        record = self.writer.state.url_record(canonical)
+        record = self.writer.urls.url_record(canonical)
         if record is None or record.get("status") != "extracted":
             return None
         if not self.refresh.add_pagination_target(canonical):

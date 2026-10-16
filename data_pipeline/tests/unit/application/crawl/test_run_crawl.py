@@ -17,8 +17,8 @@ from data_pipeline.infrastructure.crawl.scrapy import runner
 from data_pipeline.infrastructure.crawl.scrapy.reuse_spider import ReusedAssetSpider
 from data_pipeline.infrastructure.crawl.scrapy.unified_spider import UnifiedSpider
 from data_pipeline.infrastructure.crawl.sqlite.discovery_rows import upsert_host_discovery
-from data_pipeline.infrastructure.crawl.sqlite.state_store import SqliteCrawlState
 from data_pipeline.infrastructure.crawl.sqlite.storage import SqliteCrawlStorage
+from data_pipeline.infrastructure.crawl.sqlite.unit_of_work import SqliteCrawlUnitOfWork
 
 
 def run_crawl(*args: Any, **kwargs: Any) -> int:
@@ -43,14 +43,14 @@ def crash(self: Any) -> None:
 
 def capture_runner_dependencies(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     observed: dict[str, Any] = {}
-    original_open = SqliteCrawlState.open
+    original_open = SqliteCrawlUnitOfWork.open
 
-    def fake_open(cls: Any, root: Path, **kwargs: Any) -> SqliteCrawlState:
+    def fake_open(cls: Any, root: Path, **kwargs: Any) -> SqliteCrawlUnitOfWork:
         observed["root"] = root
         observed.update(kwargs)
         return original_open(root, **kwargs)
 
-    monkeypatch.setattr(SqliteCrawlState, "open", classmethod(fake_open))
+    monkeypatch.setattr(SqliteCrawlUnitOfWork, "open", classmethod(fake_open))
 
     original_create = runner.CrawlerProcess.create_crawler
 
@@ -150,7 +150,7 @@ def test_crawl_runner_reuses_articles_and_selects_asset_only_spider(
     config = CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
     lightweight_options = CrawlOptions()
     source = tmp_path / "crawl"
-    source_state = SqliteCrawlState.open(
+    source_state = SqliteCrawlUnitOfWork.open(
         source / "state",
         phase="crawl",
         input_path=input_path,
@@ -160,7 +160,7 @@ def test_crawl_runner_reuses_articles_and_selects_asset_only_spider(
         },
         runtime_config={},
     )
-    source_state.complete_url(
+    source_state.urls.complete_url(
         {"url": "https://a.test/article", "status": "extracted"},
         article={
             "url": "https://a.test/article",
@@ -169,7 +169,7 @@ def test_crawl_runner_reuses_articles_and_selects_asset_only_spider(
             ],
         },
     )
-    source_state.finish("complete", 0, source_state.counts(), {})
+    source_state.run.finish("complete", 0, source_state.run.counts(), {})
     source_state.close()
 
     observed = capture_runner_dependencies(monkeypatch)
@@ -249,7 +249,7 @@ def test_crawl_runner_cleans_destination_after_corrupt_source_database(
     input_path.write_text("a.test\n", encoding="utf-8")
     seeds = SeedSet(frozenset({"a.test"}), (), ())
     source = tmp_path / "crawl"
-    source_state = SqliteCrawlState.open(
+    source_state = SqliteCrawlUnitOfWork.open(
         source / "state",
         phase="crawl",
         input_path=input_path,
@@ -261,7 +261,7 @@ def test_crawl_runner_cleans_destination_after_corrupt_source_database(
         },
         runtime_config={},
     )
-    source_state.finish("complete", 0, source_state.counts(), {})
+    source_state.run.finish("complete", 0, source_state.run.counts(), {})
     source_state.close()
     (source / "state" / "index.sqlite3").write_bytes(b"not a sqlite database")
     output = tmp_path / "crawl-all"
@@ -290,7 +290,7 @@ def test_crawl_runner_cleans_reuse_destination_when_scrapy_setup_fails(
     seeds = SeedSet(frozenset({"a.test"}), (), ())
     config = CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
     source = tmp_path / "crawl"
-    source_state = SqliteCrawlState.open(
+    source_state = SqliteCrawlUnitOfWork.open(
         source / "state",
         phase="crawl",
         input_path=input_path,
@@ -300,7 +300,7 @@ def test_crawl_runner_cleans_reuse_destination_when_scrapy_setup_fails(
         },
         runtime_config={},
     )
-    source_state.finish("complete", 0, source_state.counts(), {})
+    source_state.run.finish("complete", 0, source_state.run.counts(), {})
     source_state.close()
     output = tmp_path / "crawl-all"
 
@@ -333,7 +333,7 @@ def test_crawl_runner_rejects_malformed_reused_article_before_scrapy_starts(
     seeds = SeedSet(frozenset({"a.test"}), (), ())
     config = CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
     source = tmp_path / "crawl"
-    source_state = SqliteCrawlState.open(
+    source_state = SqliteCrawlUnitOfWork.open(
         source / "state",
         phase="crawl",
         input_path=input_path,
@@ -347,7 +347,7 @@ def test_crawl_runner_rejects_malformed_reused_article_before_scrapy_starts(
         "INSERT INTO articles(url, payload) VALUES (?, ?)",
         ("https://a.test/article", "{malformed-json"),
     )
-    source_state.finish("complete", 0, source_state.counts(), {})
+    source_state.run.finish("complete", 0, source_state.run.counts(), {})
     source_state.close()
     output = tmp_path / "crawl-all"
 
@@ -413,7 +413,7 @@ def test_crawl_runner_resume_restores_frontier_and_coordinator(
 
     # Resumed run: populate some state records first
     state_dir = tmp_path / "crawl-output" / "state"
-    state = SqliteCrawlState.open(
+    state = SqliteCrawlUnitOfWork.open(
         state_dir,
         phase="crawl",
         input_path=tmp_path / "seeds.txt",
@@ -421,7 +421,7 @@ def test_crawl_runner_resume_restores_frontier_and_coordinator(
         runtime_config=observed["runtime_config"],
         resume=True,
     )
-    state.merge_url(
+    state.urls.merge_url(
         {
             "url": "https://a.test/page1",
             "status": "scheduled",
@@ -429,7 +429,7 @@ def test_crawl_runner_resume_restores_frontier_and_coordinator(
         }
     )
     upsert_host_discovery(
-        state,
+        state.connection,
         {
             "hostname": "a.test",
             "mode": "sitemap",
@@ -463,7 +463,7 @@ def test_crawl_runner_retry_failed_requeues_transport_errors(
     observed = capture_runner_dependencies(monkeypatch)
     assert run_unified_for_test(tmp_path) == 0
 
-    state = SqliteCrawlState.open(
+    state = SqliteCrawlUnitOfWork.open(
         tmp_path / "crawl-output" / "state",
         phase="crawl",
         input_path=tmp_path / "seeds.txt",
@@ -471,14 +471,14 @@ def test_crawl_runner_retry_failed_requeues_transport_errors(
         runtime_config=observed["runtime_config"],
         resume=True,
     )
-    state.merge_url(
+    state.urls.merge_url(
         {
             "url": "https://a.test/retry",
             "status": "scheduled",
             "frontier_action": "scheduled",
         }
     )
-    state.complete_url(
+    state.urls.complete_url(
         {"url": "https://a.test/retry", "status": "failed"},
         error={
             "url": "https://a.test/retry",
@@ -501,7 +501,7 @@ def test_crawl_runner_retry_access_gates_requeues_captcha_blocked_pages(
     observed = capture_runner_dependencies(monkeypatch)
     assert run_unified_for_test(tmp_path) == 0
 
-    state = SqliteCrawlState.open(
+    state = SqliteCrawlUnitOfWork.open(
         tmp_path / "crawl-output" / "state",
         phase="crawl",
         input_path=tmp_path / "seeds.txt",
@@ -509,7 +509,7 @@ def test_crawl_runner_retry_access_gates_requeues_captcha_blocked_pages(
         runtime_config=observed["runtime_config"],
         resume=True,
     )
-    state.merge_url(
+    state.urls.merge_url(
         {
             "url": "https://a.test/false-captcha",
             "status": "scheduled",
@@ -520,7 +520,7 @@ def test_crawl_runner_retry_access_gates_requeues_captcha_blocked_pages(
             "link_kind": "content",
         }
     )
-    state.complete_url(
+    state.urls.complete_url(
         {
             "url": "https://a.test/false-captcha",
             "status": "skipped",

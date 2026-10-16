@@ -20,37 +20,37 @@ from data_pipeline.domain.crawl.options import CrawlOptions
 from data_pipeline.domain.crawl.refresh_rules import RefreshSettings
 from data_pipeline.domain.crawl.seeds import SeedSet
 from data_pipeline.infrastructure.crawl.scrapy.unified_spider import UnifiedSpider
-from data_pipeline.infrastructure.crawl.sqlite.html_store import HtmlStore
 from data_pipeline.infrastructure.crawl.sqlite.refresh_store import RefreshStore
-from data_pipeline.infrastructure.crawl.sqlite.state_store import SqliteCrawlState
+from data_pipeline.infrastructure.crawl.sqlite.unit_of_work import SqliteCrawlUnitOfWork
+from data_pipeline.infrastructure.crawl.sqlite.url_records import SqliteUrlRecords
 
 SEEDS = SeedSet(frozenset({"a.test"}), (), ())
 
 
 def db(writer: CrawlWriter) -> sqlite3.Connection:
     """The SQLite connection behind a writer's state (tests check rows directly)."""
-    return cast(SqliteCrawlState, writer.state).connection
+    return cast(SqliteUrlRecords, writer.urls).connection
 
 
-def open_writer(tmp_path: Path) -> CrawlWriter:
+def open_writer(tmp_path: Path, *, store_html: bool = False) -> CrawlWriter:
     input_path = tmp_path / "seeds.txt"
     input_path.write_text("a.test\n", encoding="utf-8")
     options = CrawlOptions()
-    state = SqliteCrawlState.open(
+    state = SqliteCrawlUnitOfWork.open(
         tmp_path / "state",
         phase="crawl",
         input_path=input_path,
         semantic_config=options.semantic_snapshot(SEEDS),
         runtime_config={},
     )
-    return CrawlWriter(tmp_path, state, options)
+    return CrawlWriter(tmp_path, state, options, store_html=store_html)
 
 
 def make_spider(
     writer: CrawlWriter, refresh: RefreshSession | None = None, **kwargs: Any
 ) -> UnifiedSpider:
     frontier = FrontierPolicy(SEEDS, writer.options)
-    frontier.restore(writer.state.iter_url_records())
+    frontier.restore(writer.urls.iter_url_records())
     pipeline = PagePipeline(
         options=writer.options,
         frontier=frontier,
@@ -83,7 +83,7 @@ def page(
 def known_page(writer: CrawlWriter, url: str, body: str, **record: object) -> dict[str, Any]:
     """Store url as an extracted page whose text matches what the spider extracts from body."""
     text = str(analyze_article(body.encode("utf-8"), url, "utf-8").article.get("text") or "")
-    writer.state.merge_url(
+    writer.urls.merge_url(
         {
             "url": url,
             "status": "scheduled",
@@ -114,7 +114,7 @@ def test_html_response_stores_http_validators(tmp_path: Path) -> None:
         )
     )
 
-    record = writer.state.url_record("https://a.test/")
+    record = writer.urls.url_record("https://a.test/")
     assert record is not None
     assert record["status"] == "extracted"
     assert record["etag"] == '"v1"'
@@ -138,7 +138,7 @@ def refresh_spider(
     store = RefreshStore(db(writer))
     store.start_run(RUN_ID)
     store.add_targets(RUN_ID, targets)
-    writer.state.refresh_run_id = RUN_ID
+    writer.run.refresh_run_id = RUN_ID
     session = RefreshSession(store, RUN_ID, settings or RefreshSettings())
     return make_spider(
         writer, refresh=session, refresh_targets=store.pending_targets(RUN_ID)
@@ -198,7 +198,7 @@ def test_unchanged_page_records_no_change_and_fetches_nothing(tmp_path: Path) ->
     assert list(spider.parse_response(page(request, LIST_V1))) == []
     assert outcome(store, "https://a.test/tin-tuc") == "unchanged"
     assert changes(store) == {}
-    assert (writer.state.url_record("https://a.test/tin-tuc") or {})["last_checked_run"] == RUN_ID
+    assert (writer.urls.url_record("https://a.test/tin-tuc") or {})["last_checked_run"] == RUN_ID
     writer.close()
 
 
@@ -212,7 +212,7 @@ def test_changed_hub_is_stored_and_only_new_link_is_fetched(tmp_path: Path) -> N
     follow_ups = list(spider.parse_response(page(request, LIST_V2)))
 
     assert [r.url for r in follow_ups] == ["https://a.test/bai/2"]
-    assert (writer.state.url_record("https://a.test/bai/2") or {})["first_seen_run"] == RUN_ID
+    assert (writer.urls.url_record("https://a.test/bai/2") or {})["first_seen_run"] == RUN_ID
     assert "cập nhật bài hai" in article_text(writer, "https://a.test/tin-tuc")
     list(spider.parse_response(page(follow_ups[0], ARTICLE_2)))
     assert changes(store) == {"https://a.test/bai/2": "new"}
@@ -229,7 +229,7 @@ def test_failed_refetch_keeps_existing_article(tmp_path: Path) -> None:
     assert list(spider.parse_response(page(request, "<h1>Server error</h1>", status=500))) == []
 
     assert outcome(store, "https://a.test/tin-tuc") == "http_500"
-    assert (writer.state.url_record("https://a.test/tin-tuc") or {})["status"] == "extracted"
+    assert (writer.urls.url_record("https://a.test/tin-tuc") or {})["status"] == "extracted"
     assert article_text(writer, "https://a.test/tin-tuc") == before
     assert db(writer).execute("SELECT count(*) FROM errors").fetchone()[0] == 0
     writer.close()
@@ -264,7 +264,7 @@ def test_request_error_on_refresh_target_is_not_a_crawl_error(tmp_path: Path) ->
     )
 
     assert outcome(store, "https://a.test/tin-tuc") == "request_failed"
-    assert (writer.state.url_record("https://a.test/tin-tuc") or {})["status"] == "extracted"
+    assert (writer.urls.url_record("https://a.test/tin-tuc") or {})["status"] == "extracted"
     assert db(writer).execute("SELECT count(*) FROM errors").fetchone()[0] == 0
     writer.close()
 
@@ -309,7 +309,7 @@ def sitemap_response(request: Request, body: str) -> TextResponse:
 
 
 def known_sitemap(writer: CrawlWriter) -> None:
-    writer.state.merge_url(
+    writer.urls.merge_url(
         {
             "url": "https://a.test/sitemap.xml",
             "status": "scheduled",
@@ -331,7 +331,7 @@ def test_unparsable_sitemap_refetch_is_not_a_crawl_error(tmp_path: Path) -> None
     assert list(spider.parse_response(sitemap_response(request, "<urlset><url>"))) == []
 
     assert outcome(store, "https://a.test/sitemap.xml") == "sitemap_parse_error"
-    assert (writer.state.url_record("https://a.test/sitemap.xml") or {})["status"] == "scheduled"
+    assert (writer.urls.url_record("https://a.test/sitemap.xml") or {})["status"] == "scheduled"
     assert db(writer).execute("SELECT count(*) FROM errors").fetchone()[0] == 0
     writer.close()
 
@@ -419,15 +419,15 @@ def test_404_on_refetch_is_removed_and_dropped_from_final(tmp_path: Path) -> Non
 
     assert outcome(store, url) == "removed"
     assert changes(store) == {url: "removed"}
-    assert (writer.state.url_record(url) or {})["status"] == "absent"
-    assert [u for u, _ in writer.state.iter_final_articles()] == []
+    assert (writer.urls.url_record(url) or {})["status"] == "absent"
+    assert [u for u, _ in writer.articles.iter_final_articles()] == []
     writer.close()
 
 
 def test_refresh_refetch_replaces_stored_body(tmp_path: Path) -> None:
-    plain = open_writer(tmp_path)
-    store = HtmlStore(tmp_path / "html", db(plain))
-    writer = CrawlWriter(tmp_path, plain.state, plain.options, html_store=store)
+    writer = open_writer(tmp_path, store_html=True)
+    store = writer.html_store
+    assert store is not None
     url = "https://a.test/thong-bao"
     known_page(writer, url, COUNTED_V1)
     store.put(

@@ -28,7 +28,7 @@ class FakeDiscoveryWriter:
         self.probes: list[dict[str, object]] = []
         self.errors: list[dict[str, object]] = []
         self.checkpoints: list[str] = []
-        self.state = FakeState()
+        self.urls = FakeState()
 
     def record_target(self, record: dict[str, object]) -> None:
         self.targets.add(str(record["url"]))
@@ -42,7 +42,7 @@ class FakeDiscoveryWriter:
 
     def checkpoint(self, url: str) -> None:
         self.checkpoints.append(url)
-        self.state.completed.add(url)
+        self.urls.completed.add(url)
 
 
 def make_discovery_spider(

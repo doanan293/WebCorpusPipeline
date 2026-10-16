@@ -8,11 +8,8 @@ from data_pipeline.application.enrich import ports
 from data_pipeline.application.hosts import ports as hosts_ports
 from tests.fakes.corpus import FakeCorpusDatabase, FakePublisher
 from tests.fakes.crawl import (
-    FakeCrawlState,
     FakeCrawlUnitOfWork,
     FakeEngine,
-    FakeHtmlStore,
-    FakeRefreshStore,
 )
 from tests.fakes.enrich import (
     FakeArticleSource,
@@ -65,13 +62,7 @@ def test_hosts_fakes_satisfy_their_ports() -> None:
 
 
 def test_crawl_fakes_satisfy_their_ports() -> None:
-    state: crawl_ports.CrawlStateStore = FakeCrawlState()
-    refresh: crawl_ports.RefreshStorePort = FakeRefreshStore()
-    html: crawl_ports.RawHtmlStore = FakeHtmlStore()
     engine: crawl_ports.CrawlEngine = FakeEngine()
-    _check(state, crawl_ports.CrawlStateStore)
-    _check(refresh, crawl_ports.RefreshStorePort)
-    _check(html, crawl_ports.RawHtmlStore)
     _check(engine, crawl_ports.CrawlEngine)
 
 

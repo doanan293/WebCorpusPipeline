@@ -14,16 +14,16 @@ from tests.unit.infrastructure.crawl.sqlite.test_store import open_state
 
 def test_url_upsert_keeps_one_authoritative_disposition(tmp_path: Path) -> None:
     state = open_state(tmp_path)
-    state.upsert_url({"url": "https://a.test/x", "status": "discovered_not_downloaded"})
-    state.upsert_url({"url": "https://a.test/x", "status": "extracted"})
-    state.checkpoint("https://a.test/x")
-    export_crawl(state, tmp_path / "output")
+    state.urls.upsert_url({"url": "https://a.test/x", "status": "discovered_not_downloaded"})
+    state.urls.upsert_url({"url": "https://a.test/x", "status": "extracted"})
+    state.urls.checkpoint("https://a.test/x")
+    export_crawl(state.connection, tmp_path / "output")
     rows = [
         json.loads(line)
         for line in (tmp_path / "output/url_records.jsonl").read_text().splitlines()
     ]
     assert rows == [{"status": "extracted", "url": "https://a.test/x"}]
-    assert state.is_complete("https://a.test/x")
+    assert state.urls.is_complete("https://a.test/x")
     state.close()
 
 
@@ -38,9 +38,9 @@ def test_crawl_export_lists_only_successful_urls_in_text_file(tmp_path: Path) ->
         {"url": "https://a.test/pending", "status": "scheduled"},
     )
     for record in records:
-        state.upsert_url(record)
+        state.urls.upsert_url(record)
 
-    export_crawl(state, tmp_path / "output")
+    export_crawl(state.connection, tmp_path / "output")
 
     assert (tmp_path / "output/urls.txt").read_text(encoding="utf-8") == (
         "https://a.test/a-article\nhttps://a.test/z-file.pdf\n"
@@ -50,7 +50,7 @@ def test_crawl_export_lists_only_successful_urls_in_text_file(tmp_path: Path) ->
 
 def test_final_disposition_preserves_seed_provenance(tmp_path: Path) -> None:
     state = open_state(tmp_path)
-    state.merge_url(
+    state.urls.merge_url(
         {
             "url": "https://a.test/article",
             "status": "scheduled",
@@ -58,7 +58,7 @@ def test_final_disposition_preserves_seed_provenance(tmp_path: Path) -> None:
             "discovered_from": "https://a.test/",
         }
     )
-    state.complete_url(
+    state.urls.complete_url(
         {
             "url": "https://a.test/article",
             "status": "extracted",
@@ -66,25 +66,25 @@ def test_final_disposition_preserves_seed_provenance(tmp_path: Path) -> None:
         },
         article={"url": "https://a.test/article", "title": "Article", "text": "Body"},
     )
-    export_crawl(state, tmp_path / "output")
+    export_crawl(state.connection, tmp_path / "output")
     record = json.loads((tmp_path / "output/url_records.jsonl").read_text())
     assert record["seed_type"] == "recursive"
     assert record["discovered_from"] == "https://a.test/"
-    assert state.is_complete(record["url"])
+    assert state.urls.is_complete(record["url"])
 
 
 def test_storage_budget_is_a_truncation_reason(tmp_path: Path) -> None:
     state = open_state(tmp_path)
-    state.merge_url(
+    state.urls.merge_url(
         {"url": "https://a.test/large.pdf", "status": "skipped", "reason": "storage_budget"},
         completed=True,
     )
-    assert reason_counts(state, frozenset({"storage_budget"})) == {"storage_budget": 1}
+    assert reason_counts(state.connection, frozenset({"storage_budget"})) == {"storage_budget": 1}
 
 
 def test_manifest_groups_stored_bytes_by_asset_class(tmp_path: Path) -> None:
     state = open_state(tmp_path)
-    state.complete_url(
+    state.urls.complete_url(
         {"url": "https://a.test/photo.jpg", "status": "file_saved"},
         file={
             "url": "https://a.test/photo.jpg",
@@ -95,7 +95,7 @@ def test_manifest_groups_stored_bytes_by_asset_class(tmp_path: Path) -> None:
             "asset_role": "inline_image",
         },
     )
-    state.complete_url(
+    state.urls.complete_url(
         {"url": "https://a.test/report.pdf", "status": "file_saved"},
         file={
             "url": "https://a.test/report.pdf",
@@ -107,7 +107,7 @@ def test_manifest_groups_stored_bytes_by_asset_class(tmp_path: Path) -> None:
         },
     )
     # Another URL sharing the same sha256 blob (aliased file)
-    state.complete_url(
+    state.urls.complete_url(
         {"url": "https://a.test/photo_alias.jpg", "status": "file_saved"},
         file={
             "url": "https://a.test/photo_alias.jpg",
@@ -118,7 +118,7 @@ def test_manifest_groups_stored_bytes_by_asset_class(tmp_path: Path) -> None:
             "asset_role": "inline_image",
         },
     )
-    metrics = asset_metrics(state)
+    metrics = asset_metrics(state.connection)
     assert metrics == {
         "image": {"file_count": 2, "unique_bytes": 5},
         "document": {"file_count": 1, "unique_bytes": 9},
@@ -133,7 +133,9 @@ def test_iter_final_articles_limits_to_requested_urls(tmp_path: Path) -> None:
     for url, text in (("https://a.test/a", "A"), ("https://a.test/b", "B")):
         writer.write_article({"url": url, "final_url": url, "text": text})
 
-    rows = list(iter_final_articles(state, ["https://a.test/b", "https://a.test/missing"]))
+    rows = list(
+        iter_final_articles(state.connection, ["https://a.test/b", "https://a.test/missing"])
+    )
 
     assert [url for url, _ in rows] == ["https://a.test/b"]
     assert json.loads(rows[0][1])["text"] == "B"
@@ -156,7 +158,7 @@ def test_final_export_inlines_owner_text_for_stub(tmp_path: Path) -> None:
         "UPDATE url_records SET status = 'skipped' WHERE url = 'https://a.test/owner';"
     )
 
-    articles = dict(iter_final_articles(state))
+    articles = dict(iter_final_articles(state.connection))
 
     article = json.loads(articles["https://a.test/stub"])
     assert "duplicate_of" not in article
@@ -171,7 +173,7 @@ def test_changes_export_inlines_owner_text(tmp_path: Path) -> None:
     writer.write_article({"url": "https://a.test/owner", **full})
     writer.write_article({"url": "https://a.test/stub", **full})
 
-    articles = dict(iter_final_articles(state, ["https://a.test/stub"]))
+    articles = dict(iter_final_articles(state.connection, ["https://a.test/stub"]))
 
     article = json.loads(articles["https://a.test/stub"])
     assert "duplicate_of" not in article

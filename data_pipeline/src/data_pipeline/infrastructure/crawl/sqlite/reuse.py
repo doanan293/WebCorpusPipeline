@@ -14,7 +14,7 @@ from data_pipeline.domain.crawl.frontier.assets import AssetRole, classify_asset
 from data_pipeline.domain.crawl.models import ReusedAssetTarget
 from data_pipeline.domain.crawl.run_status import FINISHED_STATUSES
 from data_pipeline.infrastructure.crawl.sqlite.resume import STATE_VERSION
-from data_pipeline.infrastructure.crawl.sqlite.state_store import SqliteCrawlState
+from data_pipeline.infrastructure.crawl.sqlite.unit_of_work import SqliteCrawlUnitOfWork
 from data_pipeline.infrastructure.shared.network import validate_public_web_url
 
 _ASSET_ROLES = frozenset({"inline_image", "media_reference", "document_attachment"})
@@ -65,7 +65,7 @@ def validate_reuse_source(source_output: Path, input_path: Path) -> tuple[Path, 
 
 def import_reused_content(
     source_output: Path,
-    destination: SqliteCrawlState,
+    destination: SqliteCrawlUnitOfWork,
     input_path: Path,
 ) -> None:
     database_path, _ = validate_reuse_source(source_output, input_path)
@@ -99,8 +99,8 @@ def import_reused_content(
         raise ValueError(msg)
 
 
-def prepare_reused_asset_targets(state: SqliteCrawlState) -> None:
-    state.connection.execute(
+def prepare_reused_asset_targets(uow: SqliteCrawlUnitOfWork) -> None:
+    uow.connection.execute(
         """
         CREATE TEMP TABLE IF NOT EXISTS reused_asset_targets (
             url TEXT PRIMARY KEY,
@@ -109,9 +109,9 @@ def prepare_reused_asset_targets(state: SqliteCrawlState) -> None:
         )
         """
     )
-    state.connection.execute("DELETE FROM reused_asset_targets")
+    uow.connection.execute("DELETE FROM reused_asset_targets")
     try:
-        rows = state.connection.execute("SELECT payload FROM articles ORDER BY url")
+        rows = uow.connection.execute("SELECT payload FROM articles ORDER BY url")
         for (payload_json,) in rows:
             article = json.loads(payload_json)
             referring_page = str(article.get("final_url") or article.get("url") or "")
@@ -127,7 +127,7 @@ def prepare_reused_asset_targets(state: SqliteCrawlState) -> None:
                 url = decision.canonical_url
                 role = cast(AssetRole, role_value)
                 group = classify_asset(url=url, asset_role=role)
-                state.connection.execute(
+                uow.connection.execute(
                     """
                     INSERT INTO reused_asset_targets(url, role, asset_group)
                     VALUES (?, ?, ?)
@@ -136,15 +136,15 @@ def prepare_reused_asset_targets(state: SqliteCrawlState) -> None:
                     (url, role, group),
                 )
                 if referring_page:
-                    state.add_asset_referrer(url, referring_page, role)
+                    uow.assets.add_asset_referrer(url, referring_page, role)
     except (AttributeError, json.JSONDecodeError, TypeError) as exc:
         msg = f"could not read reused article metadata: {exc}"
         raise ValueError(msg) from exc
 
 
-def reused_asset_targets(state: SqliteCrawlState) -> Iterator[ReusedAssetTarget]:
+def reused_asset_targets(uow: SqliteCrawlUnitOfWork) -> Iterator[ReusedAssetTarget]:
 
-    targets = state.connection.execute(
+    targets = uow.connection.execute(
         "SELECT url, role, asset_group FROM reused_asset_targets ORDER BY url"
     )
     for url, role, group in targets:
@@ -152,5 +152,5 @@ def reused_asset_targets(state: SqliteCrawlState) -> Iterator[ReusedAssetTarget]
             url=url,
             role=role,
             group=group,
-            referring_pages=state.asset_referrers(url),
+            referring_pages=uow.assets.asset_referrers(url),
         )

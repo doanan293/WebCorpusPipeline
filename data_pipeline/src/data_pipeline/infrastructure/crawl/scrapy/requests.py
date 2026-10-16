@@ -8,7 +8,7 @@ import scrapy
 from scrapy.exceptions import IgnoreRequest
 from scrapy.http import Response
 
-from data_pipeline.application.crawl.ports import CrawlStateStore
+from data_pipeline.application.crawl.ports import UrlRecords
 from data_pipeline.domain.crawl.frontier.assets import recognizable_asset
 from data_pipeline.domain.crawl.options import CrawlOptions
 from data_pipeline.domain.crawl.pages import (
@@ -82,12 +82,12 @@ class RequestFactory:
         self,
         *,
         options: CrawlOptions,
-        state: CrawlStateStore,
+        urls: UrlRecords,
         callback: Callable[..., Any],
         errback: Callable[..., Any],
     ) -> None:
         self.options = options
-        self.state = state
+        self.urls = urls
         self.callback = callback
         self.errback = errback
 
@@ -137,7 +137,7 @@ class RequestFactory:
 
     def refresh(self, url: str, reason: str) -> scrapy.Request:
         """A conditional refetch of a known page during a refresh run."""
-        record = self.state.url_record(url) or {}
+        record = self.urls.url_record(url) or {}
         meta: dict[str, Any] = {
             "allowed_hostnames": frozenset({_host(url)}),
             "input_url": url,

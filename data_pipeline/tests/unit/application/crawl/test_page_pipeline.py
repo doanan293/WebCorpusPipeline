@@ -10,13 +10,13 @@ from data_pipeline.domain.crawl.frontier.sitemaps import SitemapDiscoveryCoordin
 from data_pipeline.domain.crawl.options import CrawlOptions
 from data_pipeline.domain.crawl.pages import FailedRequest, FetchedPage, Scheduled
 from data_pipeline.domain.crawl.seeds import SeedSet
-from tests.fakes.crawl import FakeCrawlState, FakeCrawlWriter
+from tests.fakes.crawl import FakeCrawlUnitOfWork, FakeCrawlWriter
 
 
 def pipeline(refresh: RefreshSession | None = None) -> tuple[PagePipeline, FakeCrawlWriter]:
     seeds = SeedSet(frozenset({"a.test"}), (), ())
     options = CrawlOptions()
-    writer = FakeCrawlWriter(FakeCrawlState(), options)
+    writer = FakeCrawlWriter(FakeCrawlUnitOfWork(), options)
     pipe = PagePipeline(
         options=options,
         frontier=FrontierPolicy(seeds, options),
@@ -54,9 +54,9 @@ def test_html_page_is_stored_and_content_links_are_scheduled() -> None:
 
     follow = list(pipe.handle(page("https://a.test/", ARTICLE)))
 
-    assert [a["url"] for a in writer.state.articles] == ["https://a.test/"]
+    assert [a["url"] for a in writer.memory.articles] == ["https://a.test/"]
     assert [f.url for f in follow if isinstance(f, Scheduled)] == ["https://a.test/bai/1"]
-    assert writer.state.url_records["https://a.test/bai/1"]["status"] == "scheduled"
+    assert writer.memory.url_records["https://a.test/bai/1"]["status"] == "scheduled"
     assert "https://a.test/" in writer.checkpoints
 
 
@@ -66,7 +66,7 @@ def test_navigation_link_is_recorded_not_scheduled() -> None:
     follow = list(pipe.handle(page("https://a.test/", ARTICLE)))
 
     assert "https://a.test/login" not in [f.url for f in follow]
-    assert writer.state.url_records["https://a.test/login"]["reason"] == "action_auth"
+    assert writer.memory.url_records["https://a.test/login"]["reason"] == "action_auth"
 
 
 def test_duplicate_page_is_not_expanded() -> None:
@@ -121,4 +121,4 @@ def test_failed_https_homepage_falls_back_to_http() -> None:
     assert [(f.url, getattr(f, "http_fallback", None)) for f in follow] == [
         ("http://a.test/", True)
     ]
-    assert writer.state.url_records["https://a.test/"]["status"] == "failed"
+    assert writer.memory.url_records["https://a.test/"]["status"] == "failed"

@@ -14,15 +14,15 @@ from tests.unit.infrastructure.crawl.sqlite.test_store import open_state
 
 def test_host_completion_reports_extracted_pages_and_terminal_reasons(tmp_path: Path) -> None:
     state = open_state(tmp_path)
-    state.complete_url({"url": "https://a.test/article", "status": "extracted"})
-    state.complete_url(
+    state.urls.complete_url({"url": "https://a.test/article", "status": "extracted"})
+    state.urls.complete_url(
         {"url": "https://b.test/", "status": "skipped", "reason": "host_out_of_scope"}
     )
-    state.complete_url(
+    state.urls.complete_url(
         {"url": "https://b.test/robots.txt", "status": "skipped", "reason": "robots_disallowed"}
     )
 
-    assert host_completion(state, frozenset({"a.test", "b.test"})) == {
+    assert host_completion(state.connection, frozenset({"a.test", "b.test"})) == {
         "a.test": {
             "status": "complete",
             "extracted_pages": 1,
@@ -53,11 +53,11 @@ def test_host_discovery_state_round_trip(tmp_path: Path) -> None:
         "sitemap_targets": 1,
         "mode": "sitemap",
     }
-    upsert_host_discovery(state, record)
+    upsert_host_discovery(state.connection, record)
     state.close()
 
     resumed = open_state(tmp_path, resume=True)
-    rows = list(iter_host_discovery(resumed))
+    rows = list(iter_host_discovery(resumed.connection))
     assert rows == [record]
     resumed.close()
 
@@ -75,5 +75,5 @@ def test_route_family_state_survives_resume(tmp_path: Path) -> None:
         closed=True,
         closure_reason="repeated_target_set",
     )
-    put_route_family(state, family)
-    assert list(iter_route_families(state)) == [family]
+    put_route_family(state.connection, family)
+    assert list(iter_route_families(state.connection)) == [family]

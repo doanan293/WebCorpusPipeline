@@ -5,16 +5,16 @@ from typing import cast
 
 from scrapy.http import Request
 
-from data_pipeline.application.crawl.ports import RawHtmlStore
+from data_pipeline.application.crawl.ports import RawHtml
 from data_pipeline.application.crawl.writer import CrawlWriter
-from data_pipeline.infrastructure.crawl.sqlite.html_store import HtmlStore, RawPage
-from data_pipeline.infrastructure.crawl.sqlite.state_store import SqliteCrawlState
+from data_pipeline.infrastructure.crawl.sqlite.html_store import RawPage
+from data_pipeline.infrastructure.crawl.sqlite.url_records import SqliteUrlRecords
 from tests.unit.infrastructure.crawl.scrapy.test_refresh import make_spider, open_writer, page
 
 
 def db(writer: CrawlWriter) -> sqlite3.Connection:
     """The SQLite connection behind a writer's state (tests check rows directly)."""
-    return cast(SqliteCrawlState, writer.state).connection
+    return cast(SqliteUrlRecords, writer.urls).connection
 
 
 def raw_page_urls(writer: CrawlWriter) -> list[str]:
@@ -23,12 +23,10 @@ def raw_page_urls(writer: CrawlWriter) -> list[str]:
 
 
 def storing_writer(tmp_path: Path) -> CrawlWriter:
-    plain = open_writer(tmp_path)
-    store = HtmlStore(tmp_path / "html", db(plain))
-    return CrawlWriter(tmp_path, plain.state, plain.options, html_store=store)
+    return open_writer(tmp_path, store_html=True)
 
 
-def put(store: RawHtmlStore, url: str, body: bytes) -> str:
+def put(store: RawHtml, url: str, body: bytes) -> str:
     return store.put(
         url,
         body,

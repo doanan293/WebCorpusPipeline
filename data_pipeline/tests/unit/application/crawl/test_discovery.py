@@ -9,20 +9,20 @@ from data_pipeline.domain.crawl.seeds import SeedSet
 from data_pipeline.domain.crawl.tuning import resolve_runtime_tuning
 from data_pipeline.infrastructure.crawl.scrapy import runner as discovery_runner
 from data_pipeline.infrastructure.crawl.scrapy.discovery_spider import DiscoverySpider
-from data_pipeline.infrastructure.crawl.sqlite.state_store import SqliteCrawlState
 from data_pipeline.infrastructure.crawl.sqlite.storage import SqliteCrawlStorage
+from data_pipeline.infrastructure.crawl.sqlite.unit_of_work import SqliteCrawlUnitOfWork
 
 
 def capture_state_open(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     observed: dict[str, object] = {}
-    original_open = SqliteCrawlState.open
+    original_open = SqliteCrawlUnitOfWork.open
 
-    def fake_open(cls: Any, root: Path, **kwargs: Any) -> SqliteCrawlState:
+    def fake_open(cls: Any, root: Path, **kwargs: Any) -> SqliteCrawlUnitOfWork:
         observed["root"] = root
         observed.update(kwargs)
         return original_open(root, **kwargs)
 
-    monkeypatch.setattr(SqliteCrawlState, "open", classmethod(fake_open))
+    monkeypatch.setattr(SqliteCrawlUnitOfWork, "open", classmethod(fake_open))
     return observed
 
 

@@ -6,11 +6,11 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from data_pipeline.application.crawl.ports import CrawlStateStore
+from data_pipeline.application.crawl.ports import CrawlUnitOfWork
 from data_pipeline.domain.crawl.models import ReusedAssetTarget
 from data_pipeline.infrastructure.crawl.sqlite import reuse
 from data_pipeline.infrastructure.crawl.sqlite.refresh_store import latest_refresh_run
-from data_pipeline.infrastructure.crawl.sqlite.state_store import SqliteCrawlState
+from data_pipeline.infrastructure.crawl.sqlite.unit_of_work import SqliteCrawlUnitOfWork
 
 
 class SqliteCrawlStorage:
@@ -25,18 +25,20 @@ class SqliteCrawlStorage:
         semantic_config: Mapping[str, object],
         runtime_config: Mapping[str, object],
         resume: bool = False,
-    ) -> SqliteCrawlState:
-        return SqliteCrawlState.open(
+        html_dir: Path | None = None,
+    ) -> SqliteCrawlUnitOfWork:
+        return SqliteCrawlUnitOfWork.open(
             root,
             phase=phase,
             input_path=input_path,
             semantic_config=semantic_config,
             runtime_config=runtime_config,
             resume=resume,
+            html_dir=html_dir,
         )
 
-    def open_existing(self, root: Path) -> SqliteCrawlState:
-        return SqliteCrawlState.open_existing(root)
+    def open_existing(self, root: Path, *, html_dir: Path | None = None) -> SqliteCrawlUnitOfWork:
+        return SqliteCrawlUnitOfWork.open_existing(root, html_dir=html_dir)
 
     def manifest(self, state_dir: Path) -> dict[str, Any] | None:
         path = state_dir / "manifest.json"
@@ -58,12 +60,12 @@ class SqliteCrawlStorage:
         reuse.validate_reuse_source(source_output, input_path)
 
     def import_reused_content(
-        self, source_output: Path, state: CrawlStateStore, input_path: Path
+        self, source_output: Path, uow: CrawlUnitOfWork, input_path: Path
     ) -> None:
-        """Copy a finished crawl's state into ``state`` and list its assets to fetch again."""
-        destination = cast(SqliteCrawlState, state)
+        """Copy a finished crawl's state into ``uow`` and list its assets to fetch again."""
+        destination = cast(SqliteCrawlUnitOfWork, uow)
         reuse.import_reused_content(source_output, destination, input_path)
         reuse.prepare_reused_asset_targets(destination)
 
-    def reused_asset_targets(self, state: CrawlStateStore) -> Iterator[ReusedAssetTarget]:
-        return reuse.reused_asset_targets(cast(SqliteCrawlState, state))
+    def reused_asset_targets(self, uow: CrawlUnitOfWork) -> Iterator[ReusedAssetTarget]:
+        return reuse.reused_asset_targets(cast(SqliteCrawlUnitOfWork, uow))

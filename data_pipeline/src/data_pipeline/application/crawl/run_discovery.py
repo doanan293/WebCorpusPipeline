@@ -30,23 +30,24 @@ def run_discovery(
     semantic_cfg = dict(semantic_config_snapshot(config))
     runtime_cfg = asdict(tuning)
 
-    state = storage.open(
+    uow = storage.open(
         state_dir,
         phase="discover",
         input_path=input_path,
         semantic_config=semantic_cfg,
         runtime_config=runtime_cfg,
         resume=resume,
+        html_dir=output / "html",
     )
-    writer = DiscoveryWriter(output, state)
+    writer = DiscoveryWriter(output, uow)
 
     coordinator = SitemapDiscoveryCoordinator(
-        exact_hostnames=exact_only_hosts(seeds), on_change=state.upsert_host_discovery
+        exact_hostnames=exact_only_hosts(seeds), on_change=uow.hosts.upsert_host_discovery
     )
     if resume:
-        coordinator.restore(state.host_discovery())
+        coordinator.restore(uow.hosts.host_discovery())
 
-    record_invalid_seeds(seeds, state)
+    record_invalid_seeds(seeds, uow.urls)
 
     start_time = time.time()
     setup = SpiderSetup(
@@ -66,7 +67,7 @@ def run_discovery(
         dequeued = int(stats.get("scheduler/dequeued", 0))
         queued = max(0, enqueued - dequeued)
 
-        counts = state.counts()
+        counts = uow.run.counts()
         failed = counts.get("errors", 0)
 
         status, exit_code = finish_reason_to_exit(
@@ -78,7 +79,7 @@ def run_discovery(
             "elapsed_seconds": elapsed_seconds,
             "stats": stats,
         }
-        state.finish(
+        uow.run.finish(
             status=status,
             exit_code=exit_code,
             counts=counts,
@@ -88,8 +89,8 @@ def run_discovery(
         )
     except KeyboardInterrupt:
         writer.publish()
-        counts = state.counts()
-        state.finish(
+        counts = uow.run.counts()
+        uow.run.finish(
             "interrupted",
             exit_code=130,
             counts=counts,
@@ -100,8 +101,8 @@ def run_discovery(
         exit_code = 130
     except Exception as exc:  # noqa: BLE001 -- any crash is recorded as a failed run before exiting
         writer.publish()
-        counts = state.counts()
-        state.finish(
+        counts = uow.run.counts()
+        uow.run.finish(
             "failed",
             exit_code=1,
             counts=counts,

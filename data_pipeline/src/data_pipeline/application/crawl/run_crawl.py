@@ -11,10 +11,11 @@ from data_pipeline.application.crawl.common import exact_only_hosts, record_inva
 from data_pipeline.application.crawl.page_pipeline import PagePipeline
 from data_pipeline.application.crawl.ports import (
     CrawlEngine,
-    CrawlStateStore,
     CrawlStorage,
+    CrawlUnitOfWork,
     EngineResult,
     SpiderSetup,
+    UrlRecords,
 )
 from data_pipeline.application.crawl.refresh import (
     RefreshSession,
@@ -140,7 +141,7 @@ def _check_resumable(ctx: _CrawlContext, storage: CrawlStorage) -> str | None:
     return preflight(ctx.state_dir, storage) if ctx.refresh else None
 
 
-def _open_state(ctx: _CrawlContext, storage: CrawlStorage) -> CrawlStateStore:
+def _open_state(ctx: _CrawlContext, storage: CrawlStorage) -> CrawlUnitOfWork:
     return storage.open(
         ctx.state_dir,
         phase="crawl",
@@ -151,62 +152,54 @@ def _open_state(ctx: _CrawlContext, storage: CrawlStorage) -> CrawlStateStore:
         },
         runtime_config=runtime_config_snapshot(ctx.config, ctx.tuning),
         resume=ctx.resuming,
+        html_dir=ctx.output / "html",
     )
 
 
 def _start_refresh(
-    ctx: _CrawlContext, state: CrawlStateStore, continue_run_id: str | None
+    ctx: _CrawlContext, uow: CrawlUnitOfWork, continue_run_id: str | None
 ) -> tuple[RefreshSession, list[tuple[str, str]]]:
     refresh_settings = RefreshSettings.from_config(ctx.config)
-    refresh_store = state.refresh_store()
     run_id, targets = prepare_refresh_run(
-        state,
-        refresh_store,
+        uow,
         ctx.output,
         ctx.seeds.recursive_hostnames,
         refresh_settings,
         continue_run_id,
         now=time.time(),
     )
-    return RefreshSession(refresh_store, run_id, refresh_settings), targets
+    return RefreshSession(uow.refresh, run_id, refresh_settings), targets
 
 
 def _prepare(
-    ctx: _CrawlContext, state: CrawlStateStore, continue_run_id: str | None, storage: CrawlStorage
+    ctx: _CrawlContext, uow: CrawlUnitOfWork, continue_run_id: str | None, storage: CrawlStorage
 ) -> _Prepared:
     try:
         if ctx.reuse_content_from is not None:
-            storage.import_reused_content(ctx.reuse_content_from, state, ctx.input_path)
+            storage.import_reused_content(ctx.reuse_content_from, uow, ctx.input_path)
         prepared = _Prepared(
-            writer=CrawlWriter(
-                ctx.output,
-                state,
-                ctx.options,
-                html_store=(
-                    state.raw_html_store(ctx.output / "html") if ctx.config.store_html else None
-                ),
-            ),
+            writer=CrawlWriter(ctx.output, uow, ctx.options, store_html=ctx.config.store_html),
             policy=AssetPolicy(ctx.options),
-            reused_targets=storage.reused_asset_targets(state) if ctx.reuse_content_from else (),
+            reused_targets=storage.reused_asset_targets(uow) if ctx.reuse_content_from else (),
             refresh_session=None,
             refresh_targets=[],
         )
         if ctx.refresh:
             prepared.refresh_session, prepared.refresh_targets = _start_refresh(
-                ctx, state, continue_run_id
+                ctx, uow, continue_run_id
             )
     except Exception:
-        state.close()
+        uow.close()
         ctx.discard_failed_reuse_output()
         raise
     return prepared
 
 
-def _requeue_for_resume(ctx: _CrawlContext, state: CrawlStateStore) -> None:
+def _requeue_for_resume(ctx: _CrawlContext, urls: UrlRecords) -> None:
     if ctx.retry_failed:
-        requeue_retryable_failures(state)
+        requeue_retryable_failures(urls)
     if ctx.retry_access_gates:
-        requeue_access_gates(state)
+        requeue_access_gates(urls)
 
 
 class _CrawlRun:
@@ -215,28 +208,30 @@ class _CrawlRun:
     def __init__(
         self,
         ctx: _CrawlContext,
-        state: CrawlStateStore,
+        uow: CrawlUnitOfWork,
         prepared: _Prepared,
         engine: CrawlEngine,
     ) -> None:
         self.ctx = ctx
-        self.state = state
+        self.uow = uow
         self.prepared = prepared
         self.coordinator = SitemapDiscoveryCoordinator(
             exact_hostnames=exact_only_hosts(ctx.seeds),
-            on_change=state.upsert_host_discovery,
+            on_change=uow.hosts.upsert_host_discovery,
             strategy="hybrid-unified",
         )
         self.frontier = FrontierPolicy(
-            ctx.seeds, ctx.options, route_families=() if ctx.refresh else state.route_families()
+            ctx.seeds,
+            ctx.options,
+            route_families=() if ctx.refresh else uow.families.route_families(),
         )
         self.resume_records: tuple[dict[str, object], ...] = ()
         if ctx.resuming:
-            _requeue_for_resume(ctx, state)
-            self.frontier.restore(state.iter_url_records())
-            self.coordinator.restore(state.host_discovery())
-            self.resume_records = tuple(state.iter_pending_scheduled_records())
-        record_invalid_seeds(ctx.seeds, state)
+            _requeue_for_resume(ctx, uow.urls)
+            self.frontier.restore(uow.urls.iter_url_records())
+            self.coordinator.restore(uow.hosts.host_discovery())
+            self.resume_records = tuple(uow.urls.iter_pending_scheduled_records())
+        record_invalid_seeds(ctx.seeds, uow.urls)
         self.start_time = time.time()
         self.prepared_crawl = engine.prepare(ctx.config, ctx.tuning, self._setup())
 
@@ -285,22 +280,22 @@ class _CrawlRun:
 
     def _run_and_finish(self) -> int:
         result: EngineResult = self.prepared_crawl.start()
-        ctx, state, session = self.ctx, self.state, self.prepared.refresh_session
+        ctx, uow, session = self.ctx, self.uow, self.prepared.refresh_session
         stats = result.stats
         finish_reason = str(stats.get("finish_reason", "finished"))
         queued = max(
             0, int(stats.get("scheduler/enqueued", 0)) - int(stats.get("scheduler/dequeued", 0))
         )
 
-        counts = state.counts()
+        counts = uow.run.counts()
         failed = counts.get("url_status_failed", 0)
-        host_completion = state.host_completion(ctx.seeds.recursive_hostnames)
+        host_completion = uow.hosts.host_completion(ctx.seeds.recursive_hostnames)
         zero_content_hosts = sorted(
             hostname
             for hostname, summary in host_completion.items()
             if summary["status"] == "zero_content"
         )
-        truncation_counts = state.reason_counts(TRUNCATION_REASONS)
+        truncation_counts = uow.run.reason_counts(TRUNCATION_REASONS)
         truncated = sum(truncation_counts.values())
         if session is not None:
             failed, truncated = session.store.failure_counts(session.run_id, TRUNCATION_REASONS)
@@ -314,11 +309,11 @@ class _CrawlRun:
         )
         self.prepared.writer.publish()
         refresh_summary = (
-            complete_refresh_run(state, session, ctx.output, status)
+            complete_refresh_run(uow.run, uow.articles, session, ctx.output, status)
             if session is not None
             else None
         )
-        state.finish(
+        uow.run.finish(
             status=status,
             exit_code=exit_code,
             counts=counts,
@@ -345,11 +340,11 @@ class _CrawlRun:
         self.prepared.writer.publish()
         session = self.prepared.refresh_session
         if session is not None:
-            complete_refresh_run(self.state, session, self.ctx.output, status)
-        self.state.finish(
+            complete_refresh_run(self.uow.run, self.uow.articles, session, self.ctx.output, status)
+        self.uow.run.finish(
             status,
             exit_code=exit_code,
-            counts=self.state.counts(),
+            counts=self.uow.run.counts(),
             metrics={
                 "elapsed_seconds": time.time() - self.start_time,
                 **extra_metrics,
@@ -394,10 +389,10 @@ def run_crawl(  # noqa: PLR0913 -- one keyword per documented crawl mode
     )
     _validate_modes(ctx, storage)
     continue_run_id = _check_resumable(ctx, storage)
-    state = _open_state(ctx, storage)
-    prepared = _prepare(ctx, state, continue_run_id, storage)
+    uow = _open_state(ctx, storage)
+    prepared = _prepare(ctx, uow, continue_run_id, storage)
     try:
-        crawl = _CrawlRun(ctx, state, prepared, engine)
+        crawl = _CrawlRun(ctx, uow, prepared, engine)
     except Exception:
         prepared.writer.close()
         ctx.discard_failed_reuse_output()

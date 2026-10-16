@@ -77,7 +77,7 @@ class DiscoveryPipeline:
         if target_url in self._scheduled_urls:
             return None
         self._scheduled_urls.add(target_url)
-        if self.writer.state.is_complete(target_url):
+        if self.writer.urls.is_complete(target_url):
             return None
         return Probe(target_url, purpose, logical_url or target_url, discovered_from)
 

@@ -6,7 +6,7 @@ from data_pipeline.application.crawl.discovery_pipeline import DiscoveryPipeline
 from data_pipeline.domain.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
 from data_pipeline.domain.crawl.pages import FetchedPage
 from data_pipeline.domain.crawl.seeds import SeedSet
-from tests.fakes.crawl import FakeCrawlState, FakeDiscoveryWriter
+from tests.fakes.crawl import FakeCrawlUnitOfWork, FakeDiscoveryWriter
 
 SEEDS = SeedSet(frozenset({"a.test"}), (), ())
 
@@ -27,7 +27,7 @@ def probe(url: str, body: str, purpose: Any, content_type: str = "text/plain") -
 
 
 def make(coordinator: SitemapDiscoveryCoordinator) -> tuple[DiscoveryPipeline, FakeDiscoveryWriter]:
-    writer = FakeDiscoveryWriter(FakeCrawlState())
+    writer = FakeDiscoveryWriter(FakeCrawlUnitOfWork())
     return DiscoveryPipeline(seeds=SEEDS, coordinator=coordinator, writer=cast(Any, writer)), writer
 
 

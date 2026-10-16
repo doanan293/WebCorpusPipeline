@@ -1,32 +1,38 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-from data_pipeline.application.crawl.ports import CrawlStateStore
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from data_pipeline.application.crawl.ports import CrawlUnitOfWork
 
 
 class DiscoveryWriter:
-    def __init__(self, root: Path, state: CrawlStateStore) -> None:
+    def __init__(self, root: Path, uow: CrawlUnitOfWork) -> None:
         self.root = root
-        self.state = state
+        self._uow = uow
+        self.urls = uow.urls
+        self.hosts = uow.hosts
+        self.run = uow.run
 
     def record_target(self, record: dict[str, object]) -> None:
-        self.state.put_target(record)
+        self.hosts.put_target(record)
 
     def record_probe(self, record: dict[str, object]) -> None:
-        self.state.upsert_url(record)
+        self.urls.upsert_url(record)
 
     def write_error(self, record: dict[str, object]) -> None:
-        self.state.complete_url(
+        self.urls.complete_url(
             {"url": record["url"], "status": "failed", "reason": record["error"]},
             error=record,
         )
 
     def checkpoint(self, url: str) -> None:
-        self.state.checkpoint(url)
+        self.urls.checkpoint(url)
 
     def publish(self) -> None:
-        self.state.export_discovery(self.root)
+        self.run.export_discovery(self.root)
 
     def close(self) -> None:
-        self.state.close()
+        self._uow.close()

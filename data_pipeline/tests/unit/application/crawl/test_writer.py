@@ -9,7 +9,7 @@ from data_pipeline.application.crawl.writer import (
     content_id_for,
 )
 from data_pipeline.domain.crawl.options import CrawlOptions
-from data_pipeline.infrastructure.crawl.sqlite.state_store import SqliteCrawlState
+from data_pipeline.infrastructure.crawl.sqlite.unit_of_work import SqliteCrawlUnitOfWork
 
 
 def stored_bytes(tmp_path: Path) -> int:
@@ -24,7 +24,7 @@ def make_writer(
 ) -> CrawlWriter:
     source = tmp_path / "seeds.txt"
     source.write_text("https://a.test/a\n", encoding="utf-8")
-    state = SqliteCrawlState.open(
+    state = SqliteCrawlUnitOfWork.open(
         tmp_path / "output" / "state",
         phase="crawl",
         input_path=source,
@@ -107,14 +107,14 @@ def test_write_article_completes_url(tmp_path: Path) -> None:
             "text": "Body",
         }
     )
-    assert writer.state.is_complete("https://a.test/article")
+    assert writer.urls.is_complete("https://a.test/article")
     writer.close()
 
 
 def test_write_article_records_the_article_http_status(tmp_path: Path) -> None:
     writer = make_writer(tmp_path)
     writer.write_article({"url": "https://a.test/article", "text": "Body", "status": 203})
-    record = writer.state.url_record("https://a.test/article")
+    record = writer.urls.url_record("https://a.test/article")
     writer.close()
 
     assert record is not None

@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, cast
 
-from data_pipeline.application.crawl.ports import RefreshStorePort
+from data_pipeline.application.crawl.ports import RefreshRuns
 from data_pipeline.application.crawl.writer import content_id_for
 from data_pipeline.domain.crawl.access import classify_page_gate
 from data_pipeline.domain.crawl.extract.article import analyze_article
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 
 class RefreshSession:
-    def __init__(self, store: RefreshStorePort, run_id: str, settings: RefreshSettings) -> None:
+    def __init__(self, store: RefreshRuns, run_id: str, settings: RefreshSettings) -> None:
         self.store = store
         self.run_id = run_id
         self.settings = settings
@@ -130,7 +130,6 @@ class RefreshPipeline:
     ) -> tuple[dict[str, Any], str]:
         """Store a refetched page and return it with its outcome; record real changes only."""
         writer = self.pages.writer
-        state = writer.state
         previous = page.meta.get("previous_content_id")
         if previous is not None and previous == content_id_for(text):
             unchanged: dict[str, Any] = {
@@ -140,9 +139,9 @@ class RefreshPipeline:
                 "duplicate_of": page.meta.get("previous_duplicate_of"),
             }
             return unchanged, "unchanged"
-        previous_article = state.article(url) if previous is not None else None
+        previous_article = writer.articles.article(url) if previous is not None else None
         if previous is not None:
-            state.release_content_owner(url, str(previous))
+            writer.owners.release_content_owner(url, str(previous))
         article_data = self.pages.article_record(page, analysis, url, content_type)
         stored = writer.write_article(article_data)
         is_hub = (
@@ -166,10 +165,10 @@ class RefreshPipeline:
 
     def _removed(self, url: str, previous_content_id: str) -> None:
         """A once-extracted page answers 404/410: report it removed and drop it from final/."""
-        state = self.pages.writer.state
-        previous = state.article(url) or {}
-        state.release_content_owner(url, previous_content_id)
-        state.mark_absent(url)
+        writer = self.pages.writer
+        previous = writer.articles.article(url) or {}
+        writer.owners.release_content_owner(url, previous_content_id)
+        writer.urls.mark_absent(url)
         self.session.record_change(
             url,
             "removed",
