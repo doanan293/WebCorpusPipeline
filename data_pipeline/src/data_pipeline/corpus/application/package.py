@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from data_pipeline.corpus.graph import build_graph
+from data_pipeline.corpus.application.graph import build_graph
 from data_pipeline.enrich.application.export import export_enrichment
 from data_pipeline.enrich.application.ports import WorkState
 from data_pipeline.enrich.infrastructure.files.articles import source_key

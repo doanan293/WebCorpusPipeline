@@ -8,12 +8,12 @@ from typing import Any
 import pytest
 from pymongo.results import DeleteResult
 
-from data_pipeline.corpus import mongo
-from data_pipeline.corpus.mongo import _page_value, _record_id, prune_snapshots
-from data_pipeline.corpus.query import query_links
+from data_pipeline.corpus.application import mongo
+from data_pipeline.corpus.application.mongo import _page_value, _record_id, prune_snapshots
+from data_pipeline.corpus.application.query import query_links
 from data_pipeline.shared.domain.config import ProjectPaths
 from data_pipeline.shared.infrastructure.settings import load_settings
-from tests.unit.corpus.test_kaggle import make_corpus
+from tests.unit.corpus.application.test_kaggle import make_corpus
 
 
 def _matches(doc: dict[str, Any], query: dict[str, Any]) -> bool:

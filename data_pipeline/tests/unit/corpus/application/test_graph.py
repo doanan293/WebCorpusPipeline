@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from data_pipeline.cli.main import main
-from data_pipeline.corpus.graph import build_graph
+from data_pipeline.corpus.application.graph import build_graph
 
 
 def source(tmp_path: Path) -> Path:

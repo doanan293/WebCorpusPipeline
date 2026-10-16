@@ -31,7 +31,7 @@ def build_graph(
     source: SourceOption = None,
 ) -> int:
     """Build the page/link graph from the crawl output alone."""
-    from data_pipeline.corpus import graph
+    from data_pipeline.corpus.application import graph
 
     graph.build_graph(context.build_settings(source, None).source_path, output)
     return 0
@@ -45,7 +45,7 @@ def package(
     rebind_source: RebindOption = False,
 ) -> int:
     """Package articles, documents, images and links into a versioned corpus."""
-    from data_pipeline.corpus import package as corpus_package
+    from data_pipeline.corpus.application import package as corpus_package
     from data_pipeline.enrich.application import session
     from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
 
@@ -63,7 +63,7 @@ def package(
 @app.command()
 def verify(corpus: CorpusOption) -> int:
     """Verify the files and checksums of a packaged corpus."""
-    from data_pipeline.corpus import package as corpus_package
+    from data_pipeline.corpus.application import package as corpus_package
 
     report = corpus_package.verify_corpus(corpus)
     print(json.dumps(report, ensure_ascii=False, indent=2))
@@ -72,7 +72,7 @@ def verify(corpus: CorpusOption) -> int:
 
 @contextmanager
 def _mongo_database() -> Iterator[Any]:
-    from data_pipeline.corpus import mongo
+    from data_pipeline.corpus.application import mongo
 
     settings = context.build_settings(None, None)
     client = mongo.connect(settings)
@@ -90,7 +90,7 @@ def import_mongo(
     ] = False,
 ) -> int:
     """Import a packaged corpus into MongoDB."""
-    from data_pipeline.corpus import mongo
+    from data_pipeline.corpus.application import mongo
 
     with _mongo_database() as db:
         print(json.dumps(mongo.import_corpus(corpus, db, force=force), indent=2))
@@ -107,7 +107,7 @@ def query(
     limit: Annotated[int, typer.Option(min=1, help="Most links to print.")] = 100,
 ) -> int:
     """Query the link graph of a ready snapshot in MongoDB."""
-    from data_pipeline.corpus import query as corpus_query
+    from data_pipeline.corpus.application import query as corpus_query
 
     with _mongo_database() as db:
         result = corpus_query.query_links(
@@ -126,7 +126,7 @@ def prune_mongo(
     keep: Annotated[str, typer.Option(help="Snapshot id to keep; every other one is deleted.")],
 ) -> int:
     """Delete every MongoDB snapshot except the one to keep."""
-    from data_pipeline.corpus import mongo
+    from data_pipeline.corpus.application import mongo
 
     with _mongo_database() as db:
         print(json.dumps(mongo.prune_snapshots(db, keep), indent=2))
@@ -146,7 +146,7 @@ def publish(
     message: Annotated[str | None, typer.Option(help="Version notes.")] = None,
 ) -> int:
     """Publish the corpus to Kaggle."""
-    from data_pipeline.corpus import kaggle
+    from data_pipeline.corpus.application import kaggle
 
     config_path = context.pick(config, context.current_paths().kaggle_config)
     print(
@@ -167,7 +167,7 @@ def pull(
     ] = None,
 ) -> int:
     """Download the locked corpus snapshot from Kaggle."""
-    from data_pipeline.corpus import kaggle
+    from data_pipeline.corpus.application import kaggle
 
     paths = context.current_paths()
     print(

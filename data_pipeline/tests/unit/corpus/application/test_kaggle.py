@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from data_pipeline.corpus import kaggle
-from data_pipeline.corpus.package import verify_corpus
+from data_pipeline.corpus.application import kaggle
+from data_pipeline.corpus.application.package import verify_corpus
 
 CONFIG = {
     "owner": "me",

@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from data_pipeline.corpus.package import verify_corpus
+from data_pipeline.corpus.application.package import verify_corpus
 from data_pipeline.shared.domain.errors import ExternalFailure
 from data_pipeline.shared.infrastructure.files import swap_into_place
 

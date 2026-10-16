@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from data_pipeline.cli.main import main
-from data_pipeline.corpus import graph, kaggle, mongo, package, query
+from data_pipeline.corpus.application import graph, kaggle, mongo, package, query
 from data_pipeline.enrich.application import session as enrich_session
 from data_pipeline.shared.domain.config import ProjectPaths, Settings
 from data_pipeline.shared.infrastructure.settings import project_paths

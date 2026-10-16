@@ -10,7 +10,7 @@ import pytest
 from pymongo.errors import ServerSelectionTimeoutError
 
 from data_pipeline.cli.main import main
-from data_pipeline.corpus import mongo, package
+from data_pipeline.corpus.application import mongo, package
 from data_pipeline.crawl import run as run_package
 from data_pipeline.enrich.application import download as downloader
 from data_pipeline.enrich.application import session as enrich_session

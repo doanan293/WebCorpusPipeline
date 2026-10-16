@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from data_pipeline.corpus import package as corpus_package
-from data_pipeline.corpus.package import package_corpus, verify_corpus
+from data_pipeline.corpus.application import package as corpus_package
+from data_pipeline.corpus.application.package import package_corpus, verify_corpus
 from data_pipeline.enrich.application.inventory import index_inventory
 from data_pipeline.enrich.domain.models import DownloadedFile, ParseResult
 from data_pipeline.enrich.infrastructure.files.articles import JsonlArticleSource
