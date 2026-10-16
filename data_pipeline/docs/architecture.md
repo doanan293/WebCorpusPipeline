@@ -51,9 +51,11 @@ src/data_pipeline/
     hosts/           audit, ports
   infrastructure/
     shared/          settings, env, network, files
-    crawl/           sqlite/ (state_store, storage, export, html_store, refresh_store, reuse, ...),
+    crawl/           sqlite/ (unit_of_work, url_records, articles, content_owners, assets, route_families,
+                     host_discovery, run, storage, export, html_store, refresh_store, reuse, ...),
                      scrapy/ (runner, spiders, requests, middlewares, settings, ...), config_file, seeds_file
-    enrich/          sqlite/work_state, http/aiohttp_transport, parsers/, llamaparse, files/
+    enrich/          sqlite/ (unit_of_work, inventory, downloads, parses, failures), http/aiohttp_transport,
+                     parsers/, llamaparse, files/
     corpus/          files/corpus_files, graph_index, mongo, kaggle_cli
     hosts/           http_probe, browser_probe, report_files
   cli/               main, crawl, enrich, corpus, domains, eval, context, errors
@@ -67,8 +69,12 @@ src/data_pipeline/
 | `corpus` | `CorpusFiles`, `EdgeIndex`, `CorpusDatabase`, `DatasetPublisher`, `EnrichmentStatus`, `ExportDocuments` | `LocalCorpusFiles`, `SqliteEdgeIndex`, `MongoCorpusDatabase`, `KaggleCli` |
 | `hosts` | `HostProber`, `BrowserProber`, `AuditReports` | `HttpHostProber`, `PlaywrightBrowserProber`, `FileAuditReports` |
 
-Test có cùng cấu trúc (`tests/unit/<lớp>/<nghiệp vụ>/`) và dùng bản giả trong `tests/fakes/` (`FakeCrawlState`,
-`FakeWorkState`, `FakeCorpusDatabase`, ...); `tests/fakes/test_fakes_satisfy_ports.py` kiểm tra mỗi bản giả vẫn khớp
+Mỗi use case nhận đúng port nó dùng; `SqliteCrawlUnitOfWork`/`SqliteEnrichUnitOfWork` giữ một kết nối và các
+repository dùng chung kết nối đó, nên `transaction()` (crawl) bao trọn mọi repository và một khoá ghi (enrich) che
+mọi lần ghi từ các luồng LlamaParse.
+
+Test có cùng cấu trúc (`tests/unit/<lớp>/<nghiệp vụ>/`) và dùng bản giả trong `tests/fakes/` (`FakeCrawlUnitOfWork`,
+`FakeEnrichUnitOfWork`, `FakeCorpusDatabase`, ...); `tests/fakes/test_fakes_satisfy_ports.py` kiểm tra mỗi bản giả vẫn khớp
 port của nó.
 
 Các sơ đồ:

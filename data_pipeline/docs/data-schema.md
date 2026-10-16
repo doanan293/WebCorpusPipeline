@@ -501,7 +501,7 @@ Có cạnh tự trỏ (trang liên kết tới chính nó).
 | `cloud_failed` | tài liệu có job LlamaParse lỗi |
 | `transferred_bytes` | tổng byte đã tải |
 
-Luôn được tạo lại từ trạng thái của thư mục làm việc lúc đóng gói (`WorkState.summary()`), không sao chép từ file cũ.
+Luôn được tạo lại từ trạng thái của thư mục làm việc lúc đóng gói (`EnrichUnitOfWork.summary()`), không sao chép từ file cũ.
 
 ## MongoDB
 
