@@ -1,8 +1,8 @@
 from pathlib import Path
 from typing import Any
 
+from data_pipeline.crawl.domain.models import RouteFamilyState
 from data_pipeline.crawl.infrastructure.sqlite.discovery_rows import (
-    RouteFamilyState,
     host_completion,
     iter_host_discovery,
     iter_route_families,

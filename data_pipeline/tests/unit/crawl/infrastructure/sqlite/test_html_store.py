@@ -1,25 +1,34 @@
 import gzip
+import sqlite3
 from pathlib import Path
+from typing import cast
 
 from scrapy.http import Request
 
+from data_pipeline.crawl.application.ports import RawHtmlStore
 from data_pipeline.crawl.application.writer import CrawlWriter
 from data_pipeline.crawl.infrastructure.sqlite.html_store import HtmlStore, RawPage
+from data_pipeline.crawl.infrastructure.sqlite.state_store import SqliteCrawlState
 from tests.unit.crawl.infrastructure.scrapy.test_refresh import make_spider, open_writer, page
 
 
+def db(writer: CrawlWriter) -> sqlite3.Connection:
+    """The SQLite connection behind a writer's state (tests check rows directly)."""
+    return cast(SqliteCrawlState, writer.state).connection
+
+
 def raw_page_urls(writer: CrawlWriter) -> list[str]:
-    rows = writer.state.connection.execute("SELECT url FROM raw_pages ORDER BY url;")
+    rows = db(writer).execute("SELECT url FROM raw_pages ORDER BY url;")
     return [str(row[0]) for row in rows]
 
 
 def storing_writer(tmp_path: Path) -> CrawlWriter:
     plain = open_writer(tmp_path)
-    store = HtmlStore(tmp_path / "html", plain.state.connection)
+    store = HtmlStore(tmp_path / "html", db(plain))
     return CrawlWriter(tmp_path, plain.state, plain.options, html_store=store)
 
 
-def put(store: HtmlStore, url: str, body: bytes) -> str:
+def put(store: RawHtmlStore, url: str, body: bytes) -> str:
     return store.put(
         url,
         body,

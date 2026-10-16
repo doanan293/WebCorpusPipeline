@@ -19,7 +19,7 @@ from data_pipeline.crawl.domain.options import CrawlOptions
 from data_pipeline.crawl.domain.seeds import SeedSet
 from data_pipeline.crawl.infrastructure.scrapy.unified_spider import UnifiedSpider
 from data_pipeline.crawl.infrastructure.sqlite.discovery_rows import upsert_host_discovery
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
+from data_pipeline.crawl.infrastructure.sqlite.state_store import SqliteCrawlState
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,7 +115,7 @@ def run_generated_site(
     config = CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
     frontier = FrontierPolicy(seeds, options)
 
-    state = CrawlState.open(
+    state = SqliteCrawlState.open(
         tmp_path / "state",
         phase="crawl",
         input_path=seeds_file,

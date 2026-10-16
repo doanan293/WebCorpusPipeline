@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import mimetypes
 import os
 from datetime import UTC, datetime
@@ -9,11 +8,10 @@ from pathlib import Path, PurePosixPath
 from typing import Literal
 from urllib.parse import urlsplit
 
+from data_pipeline.crawl.application.ports import CrawlStateStore, RawHtmlStore
 from data_pipeline.crawl.domain.frontier.assets import AssetGroup, AssetRole
+from data_pipeline.crawl.domain.models import DUPLICATE_DROPPED_FIELDS
 from data_pipeline.crawl.domain.options import CrawlOptions
-from data_pipeline.crawl.infrastructure.sqlite.export import DUPLICATE_DROPPED_FIELDS, export_crawl
-from data_pipeline.crawl.infrastructure.sqlite.html_store import HtmlStore
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
 
 _MAX_EXTENSION_LENGTH = 5
 
@@ -72,10 +70,10 @@ class CrawlWriter:
     def __init__(
         self,
         root: Path,
-        state: CrawlState,
+        state: CrawlStateStore,
         options: CrawlOptions,
         *,
-        html_store: HtmlStore | None = None,
+        html_store: RawHtmlStore | None = None,
     ) -> None:
         self.root = root
         self.state = state
@@ -185,10 +183,8 @@ class CrawlWriter:
 
         referring_pages = list(self.state.asset_referrers(url))
 
-        cursor = self.state.connection.execute("SELECT payload FROM files WHERE url = ?;", (url,))
-        existing_row = cursor.fetchone()
-        if existing_row:
-            existing_payload = json.loads(existing_row[0])
+        existing_payload = self.state.file_record(url)
+        if existing_payload:
             first_role = existing_payload.get("asset_role", asset_role)
             first_group = existing_payload.get("asset_group", asset_group)
         else:
@@ -243,7 +239,7 @@ class CrawlWriter:
         self.state.checkpoint(url)
 
     def publish(self) -> None:
-        export_crawl(self.state, self.root)
+        self.state.export_crawl(self.root)
 
     def close(self) -> None:
         self.state.close()

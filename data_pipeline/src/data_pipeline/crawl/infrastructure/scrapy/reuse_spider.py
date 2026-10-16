@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterable, Iterator
-from dataclasses import dataclass
 from typing import Any, override
 from urllib.parse import urlsplit
 
@@ -10,18 +9,11 @@ from scrapy.http import Response
 
 from data_pipeline.crawl.application.writer import CrawlWriter
 from data_pipeline.crawl.domain.config import CrawlerConfig
-from data_pipeline.crawl.domain.frontier.assets import AssetGroup, AssetPolicy, AssetRole
+from data_pipeline.crawl.domain.frontier.assets import AssetPolicy
+from data_pipeline.crawl.domain.models import ReusedAssetTarget
 from data_pipeline.crawl.domain.options import CrawlOptions
 from data_pipeline.crawl.infrastructure.scrapy.assets import AssetResponseHandler
 from data_pipeline.crawl.infrastructure.scrapy.unified_spider import UnifiedSpider
-
-
-@dataclass(frozen=True, slots=True)
-class ReusedAssetTarget:
-    url: str
-    role: AssetRole
-    group: AssetGroup
-    referring_pages: tuple[str, ...]
 
 
 class ReusedAssetSpider(UnifiedSpider):

@@ -9,7 +9,7 @@ from data_pipeline.crawl.application.writer import (
     content_id_for,
 )
 from data_pipeline.crawl.domain.options import CrawlOptions
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
+from data_pipeline.crawl.infrastructure.sqlite.state_store import SqliteCrawlState
 
 
 def stored_bytes(tmp_path: Path) -> int:
@@ -24,7 +24,7 @@ def make_writer(
 ) -> CrawlWriter:
     source = tmp_path / "seeds.txt"
     source.write_text("https://a.test/a\n", encoding="utf-8")
-    state = CrawlState.open(
+    state = SqliteCrawlState.open(
         tmp_path / "output" / "state",
         phase="crawl",
         input_path=source,

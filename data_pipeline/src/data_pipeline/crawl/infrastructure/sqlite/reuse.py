@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import cast
 
 from data_pipeline.crawl.domain.frontier.assets import AssetRole, classify_asset
-from data_pipeline.crawl.infrastructure.scrapy.reuse_spider import ReusedAssetTarget
-from data_pipeline.crawl.infrastructure.sqlite.refresh_store import FINISHED_STATUSES
+from data_pipeline.crawl.domain.models import ReusedAssetTarget
+from data_pipeline.crawl.domain.run_status import FINISHED_STATUSES
 from data_pipeline.crawl.infrastructure.sqlite.resume import STATE_VERSION
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
+from data_pipeline.crawl.infrastructure.sqlite.state_store import SqliteCrawlState
 from data_pipeline.shared.infrastructure.network import validate_public_web_url
 
 _ASSET_ROLES = frozenset({"inline_image", "media_reference", "document_attachment"})
@@ -65,7 +65,7 @@ def validate_reuse_source(source_output: Path, input_path: Path) -> tuple[Path, 
 
 def import_reused_content(
     source_output: Path,
-    destination: CrawlState,
+    destination: SqliteCrawlState,
     input_path: Path,
 ) -> None:
     database_path, _ = validate_reuse_source(source_output, input_path)
@@ -99,7 +99,7 @@ def import_reused_content(
         raise ValueError(msg)
 
 
-def prepare_reused_asset_targets(state: CrawlState) -> None:
+def prepare_reused_asset_targets(state: SqliteCrawlState) -> None:
     state.connection.execute(
         """
         CREATE TEMP TABLE IF NOT EXISTS reused_asset_targets (
@@ -142,7 +142,7 @@ def prepare_reused_asset_targets(state: CrawlState) -> None:
         raise ValueError(msg) from exc
 
 
-def reused_asset_targets(state: CrawlState) -> Iterator[ReusedAssetTarget]:
+def reused_asset_targets(state: SqliteCrawlState) -> Iterator[ReusedAssetTarget]:
 
     targets = state.connection.execute(
         "SELECT url, role, asset_group FROM reused_asset_targets ORDER BY url"

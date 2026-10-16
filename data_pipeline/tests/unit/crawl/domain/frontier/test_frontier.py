@@ -9,9 +9,9 @@ from data_pipeline.crawl.domain.frontier.frontier import (
     FrontierPolicy,
 )
 from data_pipeline.crawl.domain.frontier.link_policy import LinkKind
+from data_pipeline.crawl.domain.models import FamilyObservation
 from data_pipeline.crawl.domain.options import CrawlOptions
 from data_pipeline.crawl.domain.seeds import SeedSet
-from data_pipeline.crawl.infrastructure.sqlite.discovery_rows import FamilyObservation
 
 
 def candidate(

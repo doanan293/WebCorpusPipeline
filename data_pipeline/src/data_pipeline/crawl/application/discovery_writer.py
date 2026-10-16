@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from data_pipeline.crawl.infrastructure.sqlite.export import export_discovery
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
+from data_pipeline.crawl.application.ports import CrawlStateStore
 
 
 class DiscoveryWriter:
-    def __init__(self, root: Path, state: CrawlState) -> None:
+    def __init__(self, root: Path, state: CrawlStateStore) -> None:
         self.root = root
         self.state = state
 
@@ -27,7 +26,7 @@ class DiscoveryWriter:
         self.state.checkpoint(url)
 
     def publish(self) -> None:
-        export_discovery(self.state, self.root)
+        self.state.export_discovery(self.root)
 
     def close(self) -> None:
         self.state.close()

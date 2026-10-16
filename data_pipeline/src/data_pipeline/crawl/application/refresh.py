@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import sqlite3
 import time
 from collections.abc import Iterable
 from datetime import UTC, datetime
@@ -10,20 +9,14 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
+from data_pipeline.crawl.application.ports import CrawlStateStore, CrawlStorage, RefreshStorePort
 from data_pipeline.crawl.application.requeue import restore_status
 from data_pipeline.crawl.domain.extract.dates import parse_page_date
+from data_pipeline.crawl.domain.run_status import CONTINUABLE_RUN_STATUSES, FINISHED_STATUSES
 from data_pipeline.crawl.infrastructure.scrapy.refresh_handler import (
     RefreshSession,
     RefreshSettings,
 )
-from data_pipeline.crawl.infrastructure.sqlite.export import iter_final_articles
-from data_pipeline.crawl.infrastructure.sqlite.refresh_store import (
-    CONTINUABLE_RUN_STATUSES,
-    FINISHED_STATUSES,
-    RefreshStore,
-    latest_refresh_run,
-)
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
 
 RefreshReason = Literal[
     "homepage", "sitemap", "navigation", "pagination_head", "recent", "pagination_next"
@@ -48,37 +41,24 @@ def _hostname(url: str) -> str:
     return (urlsplit(url).hostname or "").lower().rstrip(".")
 
 
-def _latest_run(db_path: Path) -> dict[str, object] | None:
-    if not db_path.exists():
-        return None
-    connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    try:
-        return latest_refresh_run(connection)
-    finally:
-        connection.close()
-
-
-def preflight(state_dir: Path) -> str | None:
+def preflight(state_dir: Path, storage: CrawlStorage) -> str | None:
     """Return the refresh run to continue, or None to start a new one."""
-    manifest_path = state_dir / "manifest.json"
-    if not manifest_path.exists():
+    manifest = storage.manifest(state_dir)
+    if manifest is None:
         msg = f"--refresh requires an existing crawl: {state_dir.parent}"
         raise ValueError(msg)
-    latest = _latest_run(state_dir / "index.sqlite3")
+    latest = storage.latest_refresh_run(state_dir)
     if latest is not None and latest["status"] in CONTINUABLE_RUN_STATUSES:
         return str(latest["run_id"])
-    status = json.loads(manifest_path.read_text(encoding="utf-8")).get("status")
+    status = manifest.get("status")
     if status not in FINISHED_STATUSES:
         msg = f"--refresh requires a finished crawl; current status is {status}"
         raise ValueError(msg)
     return None
 
 
-def _homepages(connection: sqlite3.Connection, recursive_hostnames: Iterable[str]) -> list[str]:
-    def status(url: str) -> str | None:
-        row = connection.execute("SELECT status FROM url_records WHERE url = ?;", (url,)).fetchone()
-        return str(row[0]) if row else None
-
+def _homepages(state: CrawlStateStore, recursive_hostnames: Iterable[str]) -> list[str]:
+    status = state.url_status
     urls: list[str] = []
     for hostname in sorted(recursive_hostnames):
         https_url, http_url = f"https://{hostname}/", f"http://{hostname}/"
@@ -92,48 +72,16 @@ def _homepages(connection: sqlite3.Connection, recursive_hostnames: Iterable[str
     return urls
 
 
-def _sitemaps(connection: sqlite3.Connection) -> list[str]:
-    # A robots/sitemap response that parsed successfully keeps status 'scheduled'
-    # and is only checkpointed; absent or failed ones get another status.
-    rows = connection.execute(
-        """
-        SELECT url, json_extract(payload, '$.response_purpose')
-        FROM url_records
-        WHERE completed = 1 AND status = 'scheduled'
-          AND json_extract(payload, '$.response_purpose') IN ('robots', 'sitemap')
-        ORDER BY url;
-        """
-    ).fetchall()
+def _sitemaps(state: CrawlStateStore) -> list[str]:
+    rows = state.parsed_probes()
     sitemap_hosts = {_hostname(url) for url, purpose in rows if purpose == "sitemap"}
     return [
         str(url) for url, purpose in rows if purpose == "sitemap" or _hostname(url) in sitemap_hosts
     ]
 
 
-def _navigation_pages(connection: sqlite3.Connection) -> list[str]:
-    rows = connection.execute(
-        """
-        SELECT a.url FROM articles AS a JOIN url_records AS r ON r.url = a.url
-        WHERE r.status = 'extracted' AND json_extract(a.payload, '$.page_role') = 'navigation'
-        ORDER BY a.url;
-        """
-    )
-    return [str(row[0]) for row in rows]
-
-
-def _pagination_heads(connection: sqlite3.Connection) -> list[str]:
-    rows = connection.execute(
-        """
-        SELECT json_extract(payload, '$.family_key'), url,
-               json_extract(payload, '$.discovered_from')
-        FROM url_records
-        WHERE status = 'extracted' AND json_extract(payload, '$.family_key') IS NOT NULL
-        ORDER BY json_extract(payload, '$.family_key'),
-                 json_extract(payload, '$.ordinal') IS NULL,
-                 json_extract(payload, '$.ordinal'),
-                 url;
-        """
-    ).fetchall()
+def _pagination_heads(state: CrawlStateStore) -> list[str]:
+    rows = state.pagination_members()
     heads: list[str] = []
     seen: set[str] = set()
     for family_key, url, parent in rows:
@@ -141,18 +89,14 @@ def _pagination_heads(connection: sqlite3.Connection) -> list[str]:
             continue
         seen.add(family_key)
         head = str(url)
-        if parent:
-            parent_row = connection.execute(
-                "SELECT status FROM url_records WHERE url = ?;", (parent,)
-            ).fetchone()
-            if parent_row is not None and parent_row[0] == "extracted":
-                head = str(parent)
+        if parent and state.url_status(parent) == "extracted":
+            head = parent
         heads.append(head)
     return heads
 
 
 def select_recent(
-    connection: sqlite3.Connection,
+    state: CrawlStateStore,
     settings: RefreshSettings,
     recent_run_ids: Iterable[str],
     now: float,
@@ -160,17 +104,7 @@ def select_recent(
     cutoff = now - settings.recent_days * 86400
     runs = set(recent_run_ids)
     scored: list[tuple[float, str]] = []
-    rows = connection.execute(
-        """
-        SELECT a.url,
-               json_extract(a.payload, '$.published_at'),
-               json_extract(a.payload, '$.modified_at'),
-               json_extract(r.payload, '$.first_seen_run')
-        FROM articles AS a JOIN url_records AS r ON r.url = a.url
-        WHERE r.status = 'extracted' AND json_extract(a.payload, '$.page_role') = 'content';
-        """
-    )
-    for url, published_at, modified_at, first_seen_run in rows:
+    for url, published_at, modified_at, first_seen_run in state.recent_content_candidates():
         dated = [
             stamp
             for stamp in (_timestamp(modified_at), _timestamp(published_at))
@@ -185,18 +119,18 @@ def select_recent(
 
 
 def select_targets(
-    connection: sqlite3.Connection,
+    state: CrawlStateStore,
     recursive_hostnames: Iterable[str],
     settings: RefreshSettings,
     recent_run_ids: Iterable[str],
     now: float,
 ) -> list[tuple[str, RefreshReason]]:
     groups: tuple[tuple[RefreshReason, list[str]], ...] = (
-        ("homepage", _homepages(connection, recursive_hostnames)),
-        ("sitemap", _sitemaps(connection)),
-        ("navigation", _navigation_pages(connection)),
-        ("pagination_head", _pagination_heads(connection)),
-        ("recent", select_recent(connection, settings, recent_run_ids, now)),
+        ("homepage", _homepages(state, recursive_hostnames)),
+        ("sitemap", _sitemaps(state)),
+        ("navigation", state.navigation_pages()),
+        ("pagination_head", _pagination_heads(state)),
+        ("recent", select_recent(state, settings, recent_run_ids, now)),
     )
     selected: dict[str, RefreshReason] = {}
     for reason, urls in groups:
@@ -206,8 +140,8 @@ def select_targets(
 
 
 def prepare_refresh_run(
-    state: CrawlState,
-    store: RefreshStore,
+    state: CrawlStateStore,
+    store: RefreshStorePort,
     output: Path,
     recursive_hostnames: Iterable[str],
     settings: RefreshSettings,
@@ -228,7 +162,7 @@ def prepare_refresh_run(
     try:
         state.backup_to(output / "archive" / f"pre-refresh-{run_id}" / "index.sqlite3")
         targets = select_targets(
-            state.connection,
+            state,
             recursive_hostnames,
             settings,
             store.completed_run_ids(settings.recent_runs),
@@ -244,7 +178,7 @@ def prepare_refresh_run(
 
 
 def _export_changes(
-    state: CrawlState,
+    state: CrawlStateStore,
     changes: list[dict[str, object]],
     destination: Path,
     summary: dict[str, object],
@@ -257,7 +191,7 @@ def _export_changes(
         for change in changes:
             file.write(json.dumps(change, ensure_ascii=False) + "\n")
     with (temporary / "articles.jsonl").open("w", encoding="utf-8") as file:
-        for _, payload in iter_final_articles(state, (str(change["url"]) for change in changes)):
+        for _, payload in state.iter_final_articles(str(change["url"]) for change in changes):
             file.write(f"{payload}\n")
     (temporary / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -267,7 +201,7 @@ def _export_changes(
 
 
 def complete_refresh_run(
-    state: CrawlState, session: RefreshSession, output: Path, status: str
+    state: CrawlStateStore, session: RefreshSession, output: Path, status: str
 ) -> dict[str, object]:
     store = session.store
     changes = list(store.iter_changes(session.run_id))

@@ -310,7 +310,7 @@ def test_reextract_command_prints_summary(
 ) -> None:
     seen: list[Path] = []
 
-    def fake_reextract(output: Path) -> ReextractSummary:
+    def fake_reextract(output: Path, storage: object) -> ReextractSummary:
         seen.append(output)
         return ReextractSummary(pages=3, changed=2, duplicates=1)
 

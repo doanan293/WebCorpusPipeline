@@ -17,7 +17,7 @@ from scrapy import signals
 
 import data_pipeline.crawl.infrastructure.scrapy.settings as crawl_settings
 from data_pipeline.cli.main import main as cli_main
-from data_pipeline.crawl.application import run_crawl as runner
+from data_pipeline.crawl.infrastructure.scrapy import runner
 from data_pipeline.crawl.infrastructure.scrapy.adaptive import AdaptiveConcurrencyMiddleware
 
 

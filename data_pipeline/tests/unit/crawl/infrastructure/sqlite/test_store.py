@@ -10,7 +10,7 @@ from data_pipeline.crawl.application.writer import CrawlWriter
 from data_pipeline.crawl.domain.options import CrawlOptions
 from data_pipeline.crawl.infrastructure.sqlite.export import reason_counts
 from data_pipeline.crawl.infrastructure.sqlite.state_store import (
-    CrawlState,
+    SqliteCrawlState,
 )
 
 
@@ -26,7 +26,7 @@ def open_state(
     resume: bool = False,
     semantic_config: Mapping[str, object] | None = None,
     runtime_config: Mapping[str, object] | None = None,
-) -> CrawlState:
+) -> SqliteCrawlState:
     state_dir = (
         root
         if root.name == "state" or (root / "manifest.json").exists()
@@ -36,7 +36,7 @@ def open_state(
     if not input_path.exists():
         input_path.parent.mkdir(parents=True, exist_ok=True)
         input_path.write_text("a.test\n", encoding="utf-8")
-    return CrawlState.open(
+    return SqliteCrawlState.open(
         state_dir,
         phase=phase,
         input_path=input_path,
@@ -139,7 +139,7 @@ def test_resume_rejects_semantic_change_but_accepts_runtime_change(tmp_path: Pat
     state.close()
     source = tmp_path / "output" / "input.txt"
     with pytest.raises(ValueError, match="semantic configuration"):
-        CrawlState.open(
+        SqliteCrawlState.open(
             tmp_path / "output/state",
             phase="crawl",
             input_path=source,
@@ -148,7 +148,7 @@ def test_resume_rejects_semantic_change_but_accepts_runtime_change(tmp_path: Pat
             resume=True,
         )
 
-    resumed = CrawlState.open(
+    resumed = SqliteCrawlState.open(
         tmp_path / "output/state",
         phase="crawl",
         input_path=source,
@@ -177,7 +177,7 @@ def test_interruption_safe_reopen(tmp_path: Path) -> None:
     state1.close()
 
     source = tmp_path / "output" / "input.txt"
-    state2 = CrawlState.open(
+    state2 = SqliteCrawlState.open(
         tmp_path / "output/state",
         phase="crawl",
         input_path=source,
@@ -224,7 +224,7 @@ def test_counts_and_finish_manifest(tmp_path: Path) -> None:
 def test_iter_pending_scheduled_records_excludes_completed_urls(tmp_path: Path) -> None:
     input_path = tmp_path / "seeds.txt"
     input_path.write_text("a.test\n", encoding="utf-8")
-    state = CrawlState.open(
+    state = SqliteCrawlState.open(
         tmp_path / "state",
         phase="crawl",
         input_path=input_path,
@@ -435,7 +435,7 @@ def test_backup_to_copies_the_index(tmp_path: Path) -> None:
     state.close()
 
 
-def _url_record(state: CrawlState, url: str) -> dict[str, object]:
+def _url_record(state: SqliteCrawlState, url: str) -> dict[str, object]:
     row = state.connection.execute(
         "SELECT payload FROM url_records WHERE url = ?;", (url,)
     ).fetchone()

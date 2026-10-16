@@ -7,12 +7,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from data_pipeline.crawl.domain.frontier.assets import classify_asset
+from data_pipeline.crawl.domain.models import DUPLICATE_DROPPED_FIELDS
 
 if TYPE_CHECKING:
-    from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
+    from data_pipeline.crawl.infrastructure.sqlite.state_store import SqliteCrawlState
 
 
-def export_discovery(state: CrawlState, output: Path) -> None:
+def export_discovery(state: SqliteCrawlState, output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
 
     urls_txt = output / "urls.txt"
@@ -32,7 +33,7 @@ def export_discovery(state: CrawlState, output: Path) -> None:
     tmp_errors.replace(errors_jsonl)
 
 
-def export_crawl(state: CrawlState, output: Path) -> None:
+def export_crawl(state: SqliteCrawlState, output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
 
     urls_txt = output / "urls.txt"
@@ -66,12 +67,8 @@ def export_crawl(state: CrawlState, output: Path) -> None:
     _export_table("errors", output / "errors.jsonl")
 
 
-# Fields a duplicate article does not store; its owner holds the same content.
-DUPLICATE_DROPPED_FIELDS = ("content_html", "content_blocks", "headings", "observed_refs")
-
-
 def iter_final_articles(
-    state: CrawlState, urls: Iterable[str] | None = None
+    state: SqliteCrawlState, urls: Iterable[str] | None = None
 ) -> Iterator[tuple[str, str]]:
     """Yield (url, payload) for extracted articles, inlining the content of owners not yielded."""
     query = """
@@ -99,7 +96,7 @@ def iter_final_articles(
 
 
 def _inline_owner_text(
-    state: CrawlState,
+    state: SqliteCrawlState,
     payload: str,
     owner_content: dict[str, dict[str, object]],
     selection: frozenset[str] | None,
@@ -136,7 +133,7 @@ def _inline_owner_text(
     return json.dumps(article, ensure_ascii=False)
 
 
-def export_final(state: CrawlState, output: Path) -> None:
+def export_final(state: SqliteCrawlState, output: Path) -> None:
     final = output / "final"
     final.mkdir(parents=True, exist_ok=True)
     articles_path = final / "articles.jsonl"
@@ -180,7 +177,7 @@ def export_final(state: CrawlState, output: Path) -> None:
     tmp_summary.replace(final / "README.json")
 
 
-def asset_metrics(state: CrawlState) -> dict[str, dict[str, int]]:
+def asset_metrics(state: SqliteCrawlState) -> dict[str, dict[str, int]]:
 
     groups: dict[str, dict[str, int]] = {
         "image": {"file_count": 0, "unique_bytes": 0},
@@ -207,7 +204,7 @@ def asset_metrics(state: CrawlState) -> dict[str, dict[str, int]]:
     return groups
 
 
-def reason_counts(state: CrawlState, reasons: frozenset[str] | None = None) -> dict[str, int]:
+def reason_counts(state: SqliteCrawlState, reasons: frozenset[str] | None = None) -> dict[str, int]:
     counts: dict[str, int] = {}
     cursor = state.connection.execute("SELECT payload FROM url_records WHERE status = 'skipped';")
     for row in cursor:
@@ -220,7 +217,7 @@ def reason_counts(state: CrawlState, reasons: frozenset[str] | None = None) -> d
     return counts
 
 
-def skipped_reasons(state: CrawlState) -> dict[str, int]:
+def skipped_reasons(state: SqliteCrawlState) -> dict[str, int]:
     counts: dict[str, int] = {}
     cursor = state.connection.execute("SELECT payload FROM url_records;")
     for row in cursor:

@@ -3,25 +3,26 @@ from typing import Any
 
 import pytest
 
-from data_pipeline.crawl.application import run_discovery as discovery_runner
 from data_pipeline.crawl.application.run_discovery import run_discovery
 from data_pipeline.crawl.domain.config import CrawlerConfig
 from data_pipeline.crawl.domain.seeds import SeedSet
 from data_pipeline.crawl.domain.tuning import resolve_runtime_tuning
+from data_pipeline.crawl.infrastructure.scrapy import runner as discovery_runner
 from data_pipeline.crawl.infrastructure.scrapy.discovery_spider import DiscoverySpider
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
+from data_pipeline.crawl.infrastructure.sqlite.state_store import SqliteCrawlState
+from data_pipeline.crawl.infrastructure.sqlite.storage import SqliteCrawlStorage
 
 
 def capture_state_open(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     observed: dict[str, object] = {}
-    original_open = CrawlState.open
+    original_open = SqliteCrawlState.open
 
-    def fake_open(cls: Any, root: Path, **kwargs: Any) -> CrawlState:
+    def fake_open(cls: Any, root: Path, **kwargs: Any) -> SqliteCrawlState:
         observed["root"] = root
         observed.update(kwargs)
         return original_open(root, **kwargs)
 
-    monkeypatch.setattr(CrawlState, "open", classmethod(fake_open))
+    monkeypatch.setattr(SqliteCrawlState, "open", classmethod(fake_open))
     return observed
 
 
@@ -46,6 +47,8 @@ def run_discovery_for_test(tmp_path: Path) -> int:
         seeds=seeds,
         tuning=tuning,
         resume=False,
+        engine=discovery_runner.ScrapyEngine(),
+        storage=SqliteCrawlStorage(),
     )
 
 

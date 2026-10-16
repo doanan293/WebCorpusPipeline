@@ -4,10 +4,7 @@ from typing import Any
 
 import pytest
 
-from data_pipeline.crawl.application import run_crawl as runner
-from data_pipeline.crawl.application.run_crawl import (
-    run_crawl,
-)
+from data_pipeline.crawl.application.run_crawl import run_crawl as run_crawl_with
 from data_pipeline.crawl.domain.config import CrawlerConfig, semantic_config_snapshot
 from data_pipeline.crawl.domain.frontier.assets import AssetPolicy
 from data_pipeline.crawl.domain.frontier.frontier import FrontierPolicy
@@ -15,10 +12,19 @@ from data_pipeline.crawl.domain.frontier.sitemaps import SitemapDiscoveryCoordin
 from data_pipeline.crawl.domain.options import CrawlOptions
 from data_pipeline.crawl.domain.seeds import SeedSet
 from data_pipeline.crawl.domain.tuning import resolve_runtime_tuning
+from data_pipeline.crawl.infrastructure.scrapy import runner
 from data_pipeline.crawl.infrastructure.scrapy.reuse_spider import ReusedAssetSpider
 from data_pipeline.crawl.infrastructure.scrapy.unified_spider import UnifiedSpider
 from data_pipeline.crawl.infrastructure.sqlite.discovery_rows import upsert_host_discovery
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
+from data_pipeline.crawl.infrastructure.sqlite.state_store import SqliteCrawlState
+from data_pipeline.crawl.infrastructure.sqlite.storage import SqliteCrawlStorage
+
+
+def run_crawl(*args: Any, **kwargs: Any) -> int:
+    """run_crawl with the real Scrapy engine (its CrawlerProcess patched per test) and SQLite."""
+    return run_crawl_with(
+        *args, engine=runner.ScrapyEngine(), storage=SqliteCrawlStorage(), **kwargs
+    )
 
 
 def do_nothing(self: Any) -> None:
@@ -36,14 +42,14 @@ def crash(self: Any) -> None:
 
 def capture_runner_dependencies(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     observed: dict[str, Any] = {}
-    original_open = CrawlState.open
+    original_open = SqliteCrawlState.open
 
-    def fake_open(cls: Any, root: Path, **kwargs: Any) -> CrawlState:
+    def fake_open(cls: Any, root: Path, **kwargs: Any) -> SqliteCrawlState:
         observed["root"] = root
         observed.update(kwargs)
         return original_open(root, **kwargs)
 
-    monkeypatch.setattr(CrawlState, "open", classmethod(fake_open))
+    monkeypatch.setattr(SqliteCrawlState, "open", classmethod(fake_open))
 
     original_create = runner.CrawlerProcess.create_crawler
 
@@ -141,7 +147,7 @@ def test_crawl_runner_reuses_articles_and_selects_asset_only_spider(
     config = CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
     lightweight_options = CrawlOptions()
     source = tmp_path / "crawl"
-    source_state = CrawlState.open(
+    source_state = SqliteCrawlState.open(
         source / "state",
         phase="crawl",
         input_path=input_path,
@@ -240,7 +246,7 @@ def test_crawl_runner_cleans_destination_after_corrupt_source_database(
     input_path.write_text("a.test\n", encoding="utf-8")
     seeds = SeedSet(frozenset({"a.test"}), (), ())
     source = tmp_path / "crawl"
-    source_state = CrawlState.open(
+    source_state = SqliteCrawlState.open(
         source / "state",
         phase="crawl",
         input_path=input_path,
@@ -281,7 +287,7 @@ def test_crawl_runner_cleans_reuse_destination_when_scrapy_setup_fails(
     seeds = SeedSet(frozenset({"a.test"}), (), ())
     config = CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
     source = tmp_path / "crawl"
-    source_state = CrawlState.open(
+    source_state = SqliteCrawlState.open(
         source / "state",
         phase="crawl",
         input_path=input_path,
@@ -324,7 +330,7 @@ def test_crawl_runner_rejects_malformed_reused_article_before_scrapy_starts(
     seeds = SeedSet(frozenset({"a.test"}), (), ())
     config = CrawlerConfig(hostnames=seeds.allowed_hostnames, contact="ops@example.com")
     source = tmp_path / "crawl"
-    source_state = CrawlState.open(
+    source_state = SqliteCrawlState.open(
         source / "state",
         phase="crawl",
         input_path=input_path,
@@ -404,7 +410,7 @@ def test_crawl_runner_resume_restores_frontier_and_coordinator(
 
     # Resumed run: populate some state records first
     state_dir = tmp_path / "crawl-output" / "state"
-    state = CrawlState.open(
+    state = SqliteCrawlState.open(
         state_dir,
         phase="crawl",
         input_path=tmp_path / "seeds.txt",
@@ -454,7 +460,7 @@ def test_crawl_runner_retry_failed_requeues_transport_errors(
     observed = capture_runner_dependencies(monkeypatch)
     assert run_unified_for_test(tmp_path) == 0
 
-    state = CrawlState.open(
+    state = SqliteCrawlState.open(
         tmp_path / "crawl-output" / "state",
         phase="crawl",
         input_path=tmp_path / "seeds.txt",
@@ -492,7 +498,7 @@ def test_crawl_runner_retry_access_gates_requeues_captcha_blocked_pages(
     observed = capture_runner_dependencies(monkeypatch)
     assert run_unified_for_test(tmp_path) == 0
 
-    state = CrawlState.open(
+    state = SqliteCrawlState.open(
         tmp_path / "crawl-output" / "state",
         phase="crawl",
         input_path=tmp_path / "seeds.txt",

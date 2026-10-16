@@ -8,19 +8,17 @@ from scrapy.http import Request, Response
 from data_pipeline.crawl.application.writer import CrawlWriter
 from data_pipeline.crawl.domain.config import CrawlerConfig
 from data_pipeline.crawl.domain.frontier.assets import AssetPolicy
+from data_pipeline.crawl.domain.models import ReusedAssetTarget
 from data_pipeline.crawl.domain.options import CrawlOptions
-from data_pipeline.crawl.infrastructure.scrapy.reuse_spider import (
-    ReusedAssetSpider,
-    ReusedAssetTarget,
-)
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
+from data_pipeline.crawl.infrastructure.scrapy.reuse_spider import ReusedAssetSpider
+from data_pipeline.crawl.infrastructure.sqlite.state_store import SqliteCrawlState
 
 
-def make_spider(tmp_path: Path) -> tuple[ReusedAssetSpider, CrawlState]:
+def make_spider(tmp_path: Path) -> tuple[ReusedAssetSpider, SqliteCrawlState]:
     input_path = tmp_path / "seeds.txt"
     input_path.write_text("a.test\n", encoding="utf-8")
     options = CrawlOptions(assets="all")
-    state = CrawlState.open(
+    state = SqliteCrawlState.open(
         tmp_path / "crawl-all" / "state",
         phase="crawl",
         input_path=input_path,

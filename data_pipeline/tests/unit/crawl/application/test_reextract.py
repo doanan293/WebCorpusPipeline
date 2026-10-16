@@ -11,7 +11,8 @@ from data_pipeline.crawl.application.writer import CrawlWriter
 from data_pipeline.crawl.domain.extract.article import ArticleAnalysis, analyze_article
 from data_pipeline.crawl.domain.options import CrawlOptions
 from data_pipeline.crawl.infrastructure.sqlite.html_store import HtmlStore
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
+from data_pipeline.crawl.infrastructure.sqlite.state_store import SqliteCrawlState
+from data_pipeline.crawl.infrastructure.sqlite.storage import SqliteCrawlStorage
 
 PAGES = {
     "https://a.test/a": "<main><h1>A</h1><p>Bài A có nội dung riêng, đủ dài để trích xuất.</p></main>",
@@ -24,7 +25,7 @@ def finished_crawl(tmp_path: Path) -> Path:
     output = tmp_path / "crawl"
     seeds = tmp_path / "seeds.txt"
     seeds.write_text("a.test\n", encoding="utf-8")
-    state = CrawlState.open(
+    state = SqliteCrawlState.open(
         output / "state",
         phase="crawl",
         input_path=seeds,
@@ -45,7 +46,7 @@ def finished_crawl(tmp_path: Path) -> Path:
 
 
 def articles(output: Path) -> dict[str, dict[str, Any]]:
-    state = CrawlState.open_existing(output / "state")
+    state = SqliteCrawlState.open_existing(output / "state")
     try:
         rows = state.connection.execute("SELECT url, payload FROM articles ORDER BY url;")
         return {str(url): json.loads(payload) for url, payload in rows}
@@ -65,7 +66,7 @@ def test_reextract_applies_new_extractor_without_network(
 
     monkeypatch.setattr(reextract_module, "analyze_article", marked)
 
-    summary = reextract(output)
+    summary = reextract(output, SqliteCrawlStorage())
 
     assert summary == ReextractSummary(pages=3, changed=3, duplicates=1)
     stored = articles(output)
@@ -80,9 +81,9 @@ def test_reextract_applies_new_extractor_without_network(
 def test_reextract_ownership_is_deterministic(tmp_path: Path) -> None:
     output = finished_crawl(tmp_path)
 
-    reextract(output)
+    reextract(output, SqliteCrawlStorage())
     first = articles(output)
-    reextract(output)
+    reextract(output, SqliteCrawlStorage())
 
     assert articles(output) == first
     assert first["https://a.test/c"]["duplicate_of"] == "https://a.test/b"
@@ -93,4 +94,4 @@ def test_reextract_refuses_while_locked(tmp_path: Path) -> None:
     (output / "state" / "run.lock").write_text(f"{os.getpid()}\n", encoding="utf-8")
 
     with pytest.raises(RuntimeError, match="already running"):
-        reextract(output)
+        reextract(output, SqliteCrawlStorage())

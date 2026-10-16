@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 import scrapy
 from scrapy.http import Response
 
+from data_pipeline.crawl.application.ports import RefreshStorePort
 from data_pipeline.crawl.application.writer import CrawlWriter, content_id_for
 from data_pipeline.crawl.domain.access import classify_page_gate
 from data_pipeline.crawl.domain.config import CrawlerConfig
@@ -18,7 +19,6 @@ from data_pipeline.crawl.domain.extract.fingerprint import change_fingerprint
 from data_pipeline.crawl.domain.frontier.sitemaps import SitemapParseError, parse_sitemap
 from data_pipeline.crawl.domain.options import CrawlOptions
 from data_pipeline.crawl.domain.seeds import SeedMode
-from data_pipeline.crawl.infrastructure.sqlite.refresh_store import RefreshStore
 from data_pipeline.shared.domain.url import canonicalize_url
 
 if TYPE_CHECKING:
@@ -77,7 +77,7 @@ def classify_refetch(previous_text: str | None, text: str, gate_reason: str | No
 
 
 class RefreshSession:
-    def __init__(self, store: RefreshStore, run_id: str, settings: RefreshSettings) -> None:
+    def __init__(self, store: RefreshStorePort, run_id: str, settings: RefreshSettings) -> None:
         self.store = store
         self.run_id = run_id
         self.settings = settings

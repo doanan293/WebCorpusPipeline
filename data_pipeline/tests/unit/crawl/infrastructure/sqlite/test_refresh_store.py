@@ -3,15 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from data_pipeline.crawl.infrastructure.sqlite.refresh_store import RefreshStore
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
+from data_pipeline.crawl.infrastructure.sqlite.state_store import SqliteCrawlState
 
 RUN = "20261006T000000Z"
 
 
-def open_state(tmp_path: Path) -> CrawlState:
+def open_state(tmp_path: Path) -> SqliteCrawlState:
     input_path = tmp_path / "seeds.txt"
     input_path.write_text("a.test\n", encoding="utf-8")
-    return CrawlState.open(
+    return SqliteCrawlState.open(
         tmp_path / "state",
         phase="crawl",
         input_path=input_path,

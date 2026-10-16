@@ -23,18 +23,21 @@ from data_pipeline.crawl.infrastructure.scrapy.refresh_handler import (
     response_validators,
 )
 from data_pipeline.crawl.infrastructure.sqlite.refresh_store import RefreshStore
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
+from data_pipeline.crawl.infrastructure.sqlite.state_store import SqliteCrawlState
+from data_pipeline.crawl.infrastructure.sqlite.storage import SqliteCrawlStorage
+
+STORAGE = SqliteCrawlStorage()
 
 NOW = 1_790_000_000.0  # 2026-09-21
 RECENT = time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(NOW - 3 * 86400))
 OLD = "2020-01-01T08:00:00+07:00"
 
 
-def open_state(tmp_path: Path, *, resume: bool = False) -> CrawlState:
+def open_state(tmp_path: Path, *, resume: bool = False) -> SqliteCrawlState:
     input_path = tmp_path / "seeds.txt"
     if not input_path.exists():
         input_path.write_text("a.test\n", encoding="utf-8")
-    return CrawlState.open(
+    return SqliteCrawlState.open(
         tmp_path / "out" / "state",
         phase="crawl",
         input_path=input_path,
@@ -45,7 +48,7 @@ def open_state(tmp_path: Path, *, resume: bool = False) -> CrawlState:
 
 
 def put_page(
-    state: CrawlState,
+    state: SqliteCrawlState,
     url: str,
     *,
     role: str = "content",
@@ -69,18 +72,18 @@ def put_page(
 
 def test_preflight_rejects_missing_and_unfinished_crawls(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="existing crawl"):
-        preflight(tmp_path / "out" / "state")
+        preflight(tmp_path / "out" / "state", STORAGE)
     state = open_state(tmp_path)
     state.close()
     with pytest.raises(ValueError, match="finished crawl"):
-        preflight(tmp_path / "out" / "state")
+        preflight(tmp_path / "out" / "state", STORAGE)
 
 
 def test_preflight_starts_new_or_continues_interrupted_run(tmp_path: Path) -> None:
     state = open_state(tmp_path)
     state.finish("complete", exit_code=0, counts={}, metrics={})
     state.close()
-    assert preflight(tmp_path / "out" / "state") is None
+    assert preflight(tmp_path / "out" / "state", STORAGE) is None
 
     state = open_state(tmp_path, resume=True)
     store = RefreshStore(state.connection)
@@ -88,7 +91,7 @@ def test_preflight_starts_new_or_continues_interrupted_run(tmp_path: Path) -> No
     store.finish_run("20261006T000000Z", "interrupted", {})
     state.finish("interrupted", exit_code=130, counts={}, metrics={})
     state.close()
-    assert preflight(tmp_path / "out" / "state") == "20261006T000000Z"
+    assert preflight(tmp_path / "out" / "state", STORAGE) == "20261006T000000Z"
 
 
 def test_select_targets_collects_each_hub_kind(tmp_path: Path) -> None:
@@ -126,7 +129,7 @@ def test_select_targets_collects_each_hub_kind(tmp_path: Path) -> None:
     )
 
     targets = select_targets(
-        state.connection, frozenset({"a.test"}), RefreshSettings(), ["20260920T000000Z"], NOW
+        state, frozenset({"a.test"}), RefreshSettings(), ["20260920T000000Z"], NOW
     )
 
     assert targets == [
@@ -161,7 +164,7 @@ def test_select_recent_orders_newest_first_and_ignores_bad_dates(tmp_path: Path)
     )
     put_page(state, "https://a.test/bad", article={"published_at": "08/09/2026", "modified_at": ""})
 
-    recent = select_recent(state.connection, RefreshSettings(recheck_limit=2), [], NOW)
+    recent = select_recent(state, RefreshSettings(recheck_limit=2), [], NOW)
 
     assert recent == ["https://a.test/b", "https://a.test/c"]
     state.close()
@@ -333,7 +336,7 @@ def test_failed_prepare_restores_finished_crawl_status(
         )
     state.close()
 
-    assert preflight(tmp_path / "out" / "state") is None
+    assert preflight(tmp_path / "out" / "state", STORAGE) is None
 
 
 def test_homepage_target_skips_https_when_only_http_homepage_works(tmp_path: Path) -> None:
@@ -341,7 +344,7 @@ def test_homepage_target_skips_https_when_only_http_homepage_works(tmp_path: Pat
     state.upsert_url({"url": "https://a.test/", "status": "failed"}, completed=True)
     put_page(state, "http://a.test/")
 
-    targets = select_targets(state.connection, frozenset({"a.test"}), RefreshSettings(), [], NOW)
+    targets = select_targets(state, frozenset({"a.test"}), RefreshSettings(), [], NOW)
 
     assert ("http://a.test/", "homepage") in targets
     assert ("https://a.test/", "homepage") not in targets
@@ -353,5 +356,5 @@ def test_refresh_recent_uses_parsed_nukeviet_date(tmp_path: Path) -> None:
     day = time.strftime("%Y-%m-%d", time.gmtime(NOW - 2 * 86400))
     put_page(state, "https://a.test/nv", article={"published_at": f"{day}+0710:00:00"})
 
-    assert select_recent(state.connection, RefreshSettings(), [], NOW) == ["https://a.test/nv"]
+    assert select_recent(state, RefreshSettings(), [], NOW) == ["https://a.test/nv"]
     state.close()

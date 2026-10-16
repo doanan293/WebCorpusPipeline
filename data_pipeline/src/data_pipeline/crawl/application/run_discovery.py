@@ -2,26 +2,16 @@ from __future__ import annotations
 
 import time
 from dataclasses import asdict
-from functools import partial
 from pathlib import Path
-
-from scrapy.crawler import CrawlerProcess
-from scrapy.settings import Settings
 
 from data_pipeline.crawl.application.common import exact_only_hosts, record_invalid_seeds
 from data_pipeline.crawl.application.discovery_writer import DiscoveryWriter
+from data_pipeline.crawl.application.ports import CrawlEngine, CrawlStorage, SpiderSetup
 from data_pipeline.crawl.domain.config import CrawlerConfig, semantic_config_snapshot
 from data_pipeline.crawl.domain.exit_codes import finish_reason_to_exit
 from data_pipeline.crawl.domain.frontier.sitemaps import SitemapDiscoveryCoordinator
 from data_pipeline.crawl.domain.seeds import SeedSet
 from data_pipeline.crawl.domain.tuning import RuntimeTuning
-from data_pipeline.crawl.infrastructure.scrapy.discovery_spider import DiscoverySpider
-from data_pipeline.crawl.infrastructure.scrapy.settings import build_settings
-from data_pipeline.crawl.infrastructure.sqlite.discovery_rows import (
-    iter_host_discovery,
-    upsert_host_discovery,
-)
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
 
 
 def run_discovery(
@@ -32,12 +22,14 @@ def run_discovery(
     tuning: RuntimeTuning,
     *,
     resume: bool = False,
+    engine: CrawlEngine,
+    storage: CrawlStorage,
 ) -> int:
     state_dir = output / "state"
     semantic_cfg = dict(semantic_config_snapshot(config))
     runtime_cfg = asdict(tuning)
 
-    state = CrawlState.open(
+    state = storage.open(
         state_dir,
         phase="discover",
         input_path=input_path,
@@ -48,37 +40,23 @@ def run_discovery(
     writer = DiscoveryWriter(output, state)
 
     coordinator = SitemapDiscoveryCoordinator(
-        exact_hostnames=exact_only_hosts(seeds), on_change=partial(upsert_host_discovery, state)
+        exact_hostnames=exact_only_hosts(seeds), on_change=state.upsert_host_discovery
     )
     if resume:
-        coordinator.restore(iter_host_discovery(state))
+        coordinator.restore(state.host_discovery())
 
     record_invalid_seeds(seeds, state)
 
     start_time = time.time()
-    extensions: dict[object, int] = {}
-
-    settings_map = build_settings(config, tuning=tuning, extensions=extensions)
-    settings = Settings()
-
-    for k, v in settings_map.items():
-        settings.set(k, v, priority="cmdline")
-
-    process = CrawlerProcess(settings=settings)
-    crawler = process.create_crawler(DiscoverySpider)
+    setup = SpiderSetup(
+        "discovery",
+        {"seeds": seeds, "config": config, "coordinator": coordinator, "writer": writer},
+    )
+    prepared = engine.prepare(config, tuning, setup)
 
     exit_code = 1
     try:
-        process.crawl(
-            crawler,
-            seeds=seeds,
-            config=config,
-            coordinator=coordinator,
-            writer=writer,
-        )
-        process.start()
-
-        stats = crawler.stats.get_stats() if crawler.stats else {}
+        stats = prepared.start().stats
         finish_reason = str(stats.get("finish_reason", "finished"))
         enqueued = int(stats.get("scheduler/enqueued", 0))
         dequeued = int(stats.get("scheduler/dequeued", 0))

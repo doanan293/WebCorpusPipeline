@@ -4,20 +4,11 @@ import gzip
 import hashlib
 import os
 import sqlite3
-from dataclasses import dataclass
 from pathlib import Path
 
+from data_pipeline.crawl.domain.models import RawPage
+
 _GZIP_LEVEL = 6
-
-
-@dataclass(frozen=True, slots=True)
-class RawPage:
-    url: str
-    final_url: str
-    status: int
-    content_type: str
-    fetched_at: str
-    body: bytes
 
 
 class HtmlStore:

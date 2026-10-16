@@ -5,16 +5,16 @@ import json
 import os
 import sqlite3
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from data_pipeline.crawl.infrastructure.sqlite.export import (
-    DUPLICATE_DROPPED_FIELDS,
-    asset_metrics,
-    export_final,
-    skipped_reasons,
-)
+from data_pipeline.crawl.domain.models import DUPLICATE_DROPPED_FIELDS, RouteFamilyState
+from data_pipeline.crawl.infrastructure.sqlite import discovery_rows, export
+from data_pipeline.crawl.infrastructure.sqlite.export import asset_metrics, skipped_reasons
+from data_pipeline.crawl.infrastructure.sqlite.html_store import HtmlStore
+from data_pipeline.crawl.infrastructure.sqlite.refresh_store import RefreshStore
 from data_pipeline.crawl.infrastructure.sqlite.resume import manifest_for_open
 
 if TYPE_CHECKING:
@@ -46,7 +46,7 @@ def _acquire_lock(root: Path) -> Path:
     return lock_path
 
 
-class CrawlState:
+class SqliteCrawlState:
     def __init__(
         self,
         root: Path,
@@ -60,6 +60,7 @@ class CrawlState:
         self.connection = connection
         self._lock_acquired = True
         self.refresh_run_id: str | None = None
+        self._refresh_store: RefreshStore | None = None
 
     @classmethod
     def open(
@@ -71,7 +72,7 @@ class CrawlState:
         semantic_config: Mapping[str, object],
         runtime_config: Mapping[str, object],
         resume: bool = False,
-    ) -> CrawlState:
+    ) -> SqliteCrawlState:
         root.mkdir(parents=True, exist_ok=True)
         input_sha256 = hashlib.sha256(input_path.read_bytes()).hexdigest()
         lock_path = _acquire_lock(root)
@@ -97,7 +98,7 @@ class CrawlState:
             return instance
 
     @classmethod
-    def open_existing(cls, root: Path) -> CrawlState:
+    def open_existing(cls, root: Path) -> SqliteCrawlState:
         """Open a finished crawl's state as it is, holding its lock, without a new manifest."""
         lock_path = _acquire_lock(root)
         try:
@@ -581,7 +582,183 @@ class CrawlState:
             )
             tmp.replace(pub_manifest)
             if self.manifest.get("phase") == "crawl":
-                export_final(self, public_output)
+                export.export_final(self, public_output)
+
+    # Views and writes the application layer names instead of running SQL ----------------
+
+    def url_status(self, url: str) -> str | None:
+        row = self.connection.execute(
+            "SELECT status FROM url_records WHERE url = ?;", (url,)
+        ).fetchone()
+        return str(row[0]) if row else None
+
+    def parsed_probes(self) -> list[tuple[str, str]]:
+        """(url, purpose) of robots and sitemap responses that parsed and were checkpointed."""
+        # A robots/sitemap response that parsed successfully keeps status 'scheduled'
+        # and is only checkpointed; absent or failed ones get another status.
+        rows = self.connection.execute(
+            """
+            SELECT url, json_extract(payload, '$.response_purpose')
+            FROM url_records
+            WHERE completed = 1 AND status = 'scheduled'
+              AND json_extract(payload, '$.response_purpose') IN ('robots', 'sitemap')
+            ORDER BY url;
+            """
+        ).fetchall()
+        return [(str(url), str(purpose)) for url, purpose in rows]
+
+    def navigation_pages(self) -> list[str]:
+        rows = self.connection.execute(
+            """
+            SELECT a.url FROM articles AS a JOIN url_records AS r ON r.url = a.url
+            WHERE r.status = 'extracted' AND json_extract(a.payload, '$.page_role') = 'navigation'
+            ORDER BY a.url;
+            """
+        )
+        return [str(row[0]) for row in rows]
+
+    def pagination_members(self) -> list[tuple[str, str, str | None]]:
+        """(family_key, url, discovered_from) of extracted paginated pages, in page order."""
+        rows = self.connection.execute(
+            """
+            SELECT json_extract(payload, '$.family_key'), url,
+                   json_extract(payload, '$.discovered_from')
+            FROM url_records
+            WHERE status = 'extracted' AND json_extract(payload, '$.family_key') IS NOT NULL
+            ORDER BY json_extract(payload, '$.family_key'),
+                     json_extract(payload, '$.ordinal') IS NULL,
+                     json_extract(payload, '$.ordinal'),
+                     url;
+            """
+        ).fetchall()
+        return [(str(key), str(url), str(parent) if parent else None) for key, url, parent in rows]
+
+    def recent_content_candidates(self) -> list[tuple[str, object, object, object]]:
+        """(url, published_at, modified_at, first_seen_run) of extracted content pages."""
+        rows = self.connection.execute(
+            """
+            SELECT a.url,
+                   json_extract(a.payload, '$.published_at'),
+                   json_extract(a.payload, '$.modified_at'),
+                   json_extract(r.payload, '$.first_seen_run')
+            FROM articles AS a JOIN url_records AS r ON r.url = a.url
+            WHERE r.status = 'extracted' AND json_extract(a.payload, '$.page_role') = 'content';
+            """
+        )
+        return [(str(url), published, modified, first) for url, published, modified, first in rows]
+
+    def failed_records(self) -> list[tuple[str, dict[str, object], dict[str, object]]]:
+        """(url, record, error) of every completed URL that failed with a recorded error."""
+        rows = self.connection.execute(
+            """
+            SELECT url_records.url, url_records.payload, errors.payload
+            FROM url_records
+            JOIN errors ON errors.url = url_records.url
+            WHERE url_records.completed = 1 AND url_records.status = 'failed';
+            """
+        ).fetchall()
+        return [(str(url), json.loads(record), json.loads(error)) for url, record, error in rows]
+
+    def skipped_records(self) -> list[tuple[str, dict[str, object]]]:
+        rows = self.connection.execute(
+            "SELECT url, payload FROM url_records WHERE completed = 1 AND status = 'skipped';"
+        ).fetchall()
+        return [(str(url), json.loads(payload)) for url, payload in rows]
+
+    def requeue(self, records: list[tuple[str, dict[str, object]]]) -> int:
+        """Put completed records back in the queue and forget their last error."""
+        with self.transaction():
+            for url, record in records:
+                self.connection.execute(
+                    "UPDATE url_records SET payload = ?, status = 'scheduled', completed = 0 "
+                    "WHERE url = ?;",
+                    (json.dumps(record, ensure_ascii=False), url),
+                )
+                self.connection.execute("DELETE FROM errors WHERE url = ?;", (url,))
+        return len(records)
+
+    def file_record(self, url: str) -> dict[str, object] | None:
+        row = self.connection.execute("SELECT payload FROM files WHERE url = ?;", (url,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def reextract_candidates(self) -> list[tuple[str, object]]:
+        """(url, content_id) of extracted pages whose raw HTML is stored."""
+        rows = self.connection.execute(
+            """
+            SELECT r.url, json_extract(r.payload, '$.content_id')
+            FROM url_records AS r JOIN raw_pages AS p ON p.url = r.url
+            WHERE r.status = 'extracted' ORDER BY r.url;
+            """
+        ).fetchall()
+        return [(str(url), content_id) for url, content_id in rows]
+
+    def set_article_payload(self, url: str, article: Mapping[str, object]) -> None:
+        self.connection.execute(
+            "UPDATE articles SET payload = ? WHERE url = ?;",
+            (json.dumps(dict(article), ensure_ascii=False), url),
+        )
+
+    def content_owners(self) -> dict[str, str]:
+        rows = self.connection.execute("SELECT content_id, url FROM content_owner;")
+        return {str(content_id): str(url) for content_id, url in rows}
+
+    def replace_content_owners(self, urls: Iterable[str], owners: Mapping[str, str]) -> None:
+        """Drop the ownership rows of ``urls``, then store ``owners`` (content_id -> url)."""
+        self.connection.executemany(
+            "DELETE FROM content_owner WHERE url = ?;", ((url,) for url in urls)
+        )
+        self.connection.executemany(
+            "INSERT OR REPLACE INTO content_owner (content_id, url) VALUES (?, ?);",
+            owners.items(),
+        )
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        self.connection.execute("BEGIN IMMEDIATE;")
+        try:
+            yield
+            self.connection.execute("COMMIT;")
+        except BaseException:
+            self.connection.execute("ROLLBACK;")
+            raise
+
+    def raw_html_store(self, directory: Path) -> HtmlStore:
+        return HtmlStore(directory, self.connection)
+
+    def refresh_store(self) -> RefreshStore:
+        if self._refresh_store is None:
+            self._refresh_store = RefreshStore(self.connection)
+        return self._refresh_store
+
+    def export_crawl(self, output: Path) -> None:
+        export.export_crawl(self, output)
+
+    def export_discovery(self, output: Path) -> None:
+        export.export_discovery(self, output)
+
+    def export_final(self, output: Path) -> None:
+        export.export_final(self, output)
+
+    def iter_final_articles(self, urls: Iterable[str] | None = None) -> Iterator[tuple[str, str]]:
+        return export.iter_final_articles(self, urls)
+
+    def reason_counts(self, reasons: frozenset[str] | None = None) -> dict[str, int]:
+        return export.reason_counts(self, reasons)
+
+    def route_families(self) -> Iterator[RouteFamilyState]:
+        return discovery_rows.iter_route_families(self)
+
+    def put_route_family(self, family: RouteFamilyState) -> None:
+        discovery_rows.put_route_family(self, family)
+
+    def host_discovery(self) -> Iterator[dict[str, object]]:
+        return discovery_rows.iter_host_discovery(self)
+
+    def upsert_host_discovery(self, record: Mapping[str, object]) -> None:
+        discovery_rows.upsert_host_discovery(self, record)
+
+    def host_completion(self, hostnames: frozenset[str]) -> dict[str, dict[str, object]]:
+        return discovery_rows.host_completion(self, hostnames)
 
     def close(self) -> None:
         try:

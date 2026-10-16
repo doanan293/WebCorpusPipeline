@@ -87,7 +87,9 @@ def run(
     from data_pipeline.crawl.domain.options import crawl_options_from_config
     from data_pipeline.crawl.domain.tuning import resolve_runtime_tuning
     from data_pipeline.crawl.infrastructure.config_file import load_crawler_config
+    from data_pipeline.crawl.infrastructure.scrapy.runner import ScrapyEngine
     from data_pipeline.crawl.infrastructure.seeds_file import parse_seed_file
+    from data_pipeline.crawl.infrastructure.sqlite.storage import SqliteCrawlStorage
 
     run_full.validate_mode_flags(
         resume=resume,
@@ -143,6 +145,8 @@ def run(
         retry_access_gates=retry_access_gates,
         reuse_content_from=reuse_content_from,
         refresh=refresh,
+        engine=ScrapyEngine(),
+        storage=SqliteCrawlStorage(),
     )
 
 
@@ -162,7 +166,9 @@ def discover(
     from data_pipeline.crawl.application import run_discovery
     from data_pipeline.crawl.domain.tuning import resolve_runtime_tuning
     from data_pipeline.crawl.infrastructure.config_file import load_crawler_config
+    from data_pipeline.crawl.infrastructure.scrapy.runner import ScrapyEngine
     from data_pipeline.crawl.infrastructure.seeds_file import parse_seed_file
+    from data_pipeline.crawl.infrastructure.sqlite.storage import SqliteCrawlStorage
 
     if not input_path.is_file():
         return errors.fail(f"input file not found: {input_path}")
@@ -190,6 +196,8 @@ def discover(
         seeds=seeds,
         tuning=tuning,
         resume=resume,
+        engine=ScrapyEngine(),
+        storage=SqliteCrawlStorage(),
     )
 
 
@@ -201,8 +209,9 @@ def reextract(
 ) -> int:
     """Re-run extraction on the stored raw HTML of a finished crawl and rebuild final/ (offline)."""
     from data_pipeline.crawl.application import reextract as run_reextract
+    from data_pipeline.crawl.infrastructure.sqlite.storage import SqliteCrawlStorage
 
-    summary = run_reextract.reextract(output)
+    summary = run_reextract.reextract(output, SqliteCrawlStorage())
     print(
         f"reextract: pages={summary.pages} changed={summary.changed} "
         f"duplicates={summary.duplicates}"

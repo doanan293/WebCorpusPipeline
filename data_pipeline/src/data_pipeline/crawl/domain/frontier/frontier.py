@@ -13,12 +13,9 @@ from data_pipeline.crawl.domain.frontier.link_policy import (
     is_navigation_path,
     query_key_kind,
 )
+from data_pipeline.crawl.domain.models import FamilyObservation, RouteFamilyState
 from data_pipeline.crawl.domain.options import CrawlOptions
 from data_pipeline.crawl.domain.seeds import SeedMode, SeedSet
-from data_pipeline.crawl.infrastructure.sqlite.discovery_rows import (
-    FamilyObservation,
-    RouteFamilyState,
-)
 from data_pipeline.shared.domain.url import canonicalize_url, classify_frontier_trap
 
 _MIN_PAGINATION_SEGMENTS = 2

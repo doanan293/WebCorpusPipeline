@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-import json
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
+from data_pipeline.crawl.application.ports import CrawlStateStore
 
 _RETRYABLE_REQUEST_FAILURE_MARKERS = (
     # A browser render that ran out of time under load; it usually works on a retry.
@@ -40,58 +36,28 @@ def _scheduled(record: dict[str, object]) -> dict[str, object]:
     return record
 
 
-def _requeue(state: CrawlState, records: list[tuple[str, dict[str, object]]]) -> int:
-    """Put completed records back in the queue and forget their last error."""
-    state.connection.execute("BEGIN IMMEDIATE;")
-    try:
-        for url, record in records:
-            state.connection.execute(
-                "UPDATE url_records SET payload = ?, status = 'scheduled', completed = 0 "
-                "WHERE url = ?;",
-                (json.dumps(record, ensure_ascii=False), url),
-            )
-            state.connection.execute("DELETE FROM errors WHERE url = ?;", (url,))
-        state.connection.execute("COMMIT;")
-    except Exception:
-        state.connection.execute("ROLLBACK;")
-        raise
-    return len(records)
-
-
-def requeue_retryable_failures(state: CrawlState) -> int:
-    rows = state.connection.execute(
-        """
-        SELECT url_records.url, url_records.payload, errors.payload
-        FROM url_records
-        JOIN errors ON errors.url = url_records.url
-        WHERE url_records.completed = 1 AND url_records.status = 'failed';
-        """
-    ).fetchall()
+def requeue_retryable_failures(state: CrawlStateStore) -> int:
     retryable: list[tuple[str, dict[str, object]]] = []
-    for url, record_payload, error_payload in rows:
-        error = json.loads(error_payload)
+    for url, record, error in state.failed_records():
         message = str(error.get("message", "")).lower()
         if error.get("error") == "request_failed" and any(
             marker in message for marker in _RETRYABLE_REQUEST_FAILURE_MARKERS
         ):
-            retryable.append((str(url), _scheduled(json.loads(record_payload))))
-    return _requeue(state, retryable)
+            retryable.append((url, _scheduled(record)))
+    return state.requeue(retryable)
 
 
-def requeue_access_gates(state: CrawlState) -> int:
+def requeue_access_gates(state: CrawlStateStore) -> int:
     """Retry pages skipped behind a CAPTCHA or login gate."""
-    rows = state.connection.execute(
-        "SELECT url, payload FROM url_records WHERE completed = 1 AND status = 'skipped';"
-    ).fetchall()
     recoverable = [
-        (str(url), _scheduled(record))
-        for url, payload in rows
-        if (record := json.loads(payload)).get("reason") in _ACCESS_GATE_REASONS
+        (url, _scheduled(record))
+        for url, record in state.skipped_records()
+        if record.get("reason") in _ACCESS_GATE_REASONS
     ]
-    return _requeue(state, recoverable)
+    return state.requeue(recoverable)
 
 
-def restore_status(state: CrawlState) -> None:
+def restore_status(state: CrawlStateStore) -> None:
     """Undo the 'running' mark of a resumed open when the run never started."""
     previous = state.manifest.get("resumed_from_status")
     if previous:

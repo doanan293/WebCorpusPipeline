@@ -6,19 +6,19 @@ from pathlib import Path
 
 import pytest
 
-from data_pipeline.crawl.application.reuse import (
+from data_pipeline.crawl.infrastructure.sqlite.reuse import (
     import_reused_content,
     prepare_reused_asset_targets,
     reused_asset_targets,
 )
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
+from data_pipeline.crawl.infrastructure.sqlite.state_store import SqliteCrawlState
 
 
 def open_source(tmp_path: Path) -> tuple[Path, Path]:
     input_path = tmp_path / "seeds.txt"
     input_path.write_text("a.test\n", encoding="utf-8")
     output = tmp_path / "crawl"
-    state = CrawlState.open(
+    state = SqliteCrawlState.open(
         output / "state",
         phase="crawl",
         input_path=input_path,
@@ -64,7 +64,7 @@ def test_import_reused_content_copies_articles_without_mutating_source(tmp_path:
         if path.is_file()
     }
 
-    destination = CrawlState.open(
+    destination = SqliteCrawlState.open(
         tmp_path / "crawl-all" / "state",
         phase="crawl",
         input_path=input_path,
@@ -86,7 +86,7 @@ def test_import_reused_content_copies_articles_without_mutating_source(tmp_path:
 
 def test_reused_asset_targets_deduplicate_urls_and_keep_referrers(tmp_path: Path) -> None:
     source, input_path = open_source(tmp_path)
-    destination = CrawlState.open(
+    destination = SqliteCrawlState.open(
         tmp_path / "crawl-all" / "state",
         phase="crawl",
         input_path=input_path,
@@ -112,7 +112,7 @@ def test_reused_asset_targets_deduplicate_urls_and_keep_referrers(tmp_path: Path
 def test_reused_asset_targets_are_read_from_materialized_sqlite_rows(tmp_path: Path) -> None:
     input_path = tmp_path / "seeds.txt"
     input_path.write_text("a.test\n", encoding="utf-8")
-    state = CrawlState.open(
+    state = SqliteCrawlState.open(
         tmp_path / "crawl-all" / "state",
         phase="crawl",
         input_path=input_path,
@@ -139,7 +139,7 @@ def test_reused_asset_targets_are_read_from_materialized_sqlite_rows(tmp_path: P
 def test_import_reused_content_rejects_a_running_source(tmp_path: Path) -> None:
     source, input_path = open_source(tmp_path)
     (source / "state" / "run.lock").write_text(f"{os.getpid()}\n", encoding="utf-8")
-    destination = CrawlState.open(
+    destination = SqliteCrawlState.open(
         tmp_path / "crawl-all" / "state",
         phase="crawl",
         input_path=input_path,
@@ -154,7 +154,7 @@ def test_import_reused_content_rejects_a_running_source(tmp_path: Path) -> None:
 def test_import_reused_content_ignores_a_stale_source_lock(tmp_path: Path) -> None:
     source, input_path = open_source(tmp_path)
     (source / "state" / "run.lock").write_text("999999999\n", encoding="utf-8")
-    destination = CrawlState.open(
+    destination = SqliteCrawlState.open(
         tmp_path / "crawl-all" / "state",
         phase="crawl",
         input_path=input_path,
@@ -172,7 +172,7 @@ def test_import_reused_content_rejects_different_input(tmp_path: Path) -> None:
     source, _ = open_source(tmp_path)
     other_input = tmp_path / "other-seeds.txt"
     other_input.write_text("b.test\n", encoding="utf-8")
-    destination = CrawlState.open(
+    destination = SqliteCrawlState.open(
         tmp_path / "crawl-all" / "state",
         phase="crawl",
         input_path=other_input,

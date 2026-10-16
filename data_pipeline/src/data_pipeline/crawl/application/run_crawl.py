@@ -4,13 +4,16 @@ import shutil
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
 
-from scrapy.crawler import Crawler, CrawlerProcess
-from scrapy.settings import Settings
-
 from data_pipeline.crawl.application.common import exact_only_hosts, record_invalid_seeds
+from data_pipeline.crawl.application.ports import (
+    CrawlEngine,
+    CrawlStateStore,
+    CrawlStorage,
+    EngineResult,
+    SpiderSetup,
+)
 from data_pipeline.crawl.application.refresh import (
     RefreshSession,
     RefreshSettings,
@@ -22,12 +25,6 @@ from data_pipeline.crawl.application.requeue import (
     requeue_access_gates,
     requeue_retryable_failures,
 )
-from data_pipeline.crawl.application.reuse import (
-    import_reused_content,
-    prepare_reused_asset_targets,
-    reused_asset_targets,
-    validate_reuse_source,
-)
 from data_pipeline.crawl.application.writer import CrawlWriter
 from data_pipeline.crawl.domain.config import (
     CrawlerConfig,
@@ -38,28 +35,10 @@ from data_pipeline.crawl.domain.exit_codes import TRUNCATION_REASONS, finish_rea
 from data_pipeline.crawl.domain.frontier.assets import AssetPolicy
 from data_pipeline.crawl.domain.frontier.frontier import FrontierPolicy
 from data_pipeline.crawl.domain.frontier.sitemaps import SitemapDiscoveryCoordinator
+from data_pipeline.crawl.domain.models import ReusedAssetTarget
 from data_pipeline.crawl.domain.options import CrawlOptions
 from data_pipeline.crawl.domain.seeds import SeedSet
 from data_pipeline.crawl.domain.tuning import RuntimeTuning
-from data_pipeline.crawl.infrastructure.scrapy.progress import CrawlProgressReporter
-from data_pipeline.crawl.infrastructure.scrapy.reuse_spider import (
-    ReusedAssetSpider,
-    ReusedAssetTarget,
-)
-from data_pipeline.crawl.infrastructure.scrapy.settings import build_settings
-from data_pipeline.crawl.infrastructure.scrapy.unified_spider import UnifiedSpider
-from data_pipeline.crawl.infrastructure.sqlite.discovery_rows import (
-    host_completion as completion_by_host,
-)
-from data_pipeline.crawl.infrastructure.sqlite.discovery_rows import (
-    iter_host_discovery,
-    iter_route_families,
-    upsert_host_discovery,
-)
-from data_pipeline.crawl.infrastructure.sqlite.export import reason_counts
-from data_pipeline.crawl.infrastructure.sqlite.html_store import HtmlStore
-from data_pipeline.crawl.infrastructure.sqlite.refresh_store import RefreshStore
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
 
 
 def _clean_failed_reuse_output(output: Path, state_dir: Path, *, output_existed: bool) -> None:
@@ -131,7 +110,7 @@ def validate_mode_flags(
             raise ValueError(msg)
 
 
-def _validate_modes(ctx: _CrawlContext) -> None:
+def _validate_modes(ctx: _CrawlContext, storage: CrawlStorage) -> None:
     validate_mode_flags(
         resume=ctx.resume,
         retry_failed=ctx.retry_failed,
@@ -151,16 +130,16 @@ def _validate_modes(ctx: _CrawlContext) -> None:
     if ctx.output.exists():
         msg = f"reuse output already exists: {ctx.output}"
         raise FileExistsError(msg)
-    validate_reuse_source(source, ctx.input_path)
+    storage.validate_reuse_source(source, ctx.input_path)
 
 
-def _check_resumable(ctx: _CrawlContext) -> str | None:
+def _check_resumable(ctx: _CrawlContext, storage: CrawlStorage) -> str | None:
     """Validate the saved state for --resume/--refresh; return a refresh run to continue."""
-    return preflight(ctx.state_dir) if ctx.refresh else None
+    return preflight(ctx.state_dir, storage) if ctx.refresh else None
 
 
-def _open_state(ctx: _CrawlContext) -> CrawlState:
-    return CrawlState.open(
+def _open_state(ctx: _CrawlContext, storage: CrawlStorage) -> CrawlStateStore:
+    return storage.open(
         ctx.state_dir,
         phase="crawl",
         input_path=ctx.input_path,
@@ -174,10 +153,10 @@ def _open_state(ctx: _CrawlContext) -> CrawlState:
 
 
 def _start_refresh(
-    ctx: _CrawlContext, state: CrawlState, continue_run_id: str | None
+    ctx: _CrawlContext, state: CrawlStateStore, continue_run_id: str | None
 ) -> tuple[RefreshSession, list[tuple[str, str]]]:
     refresh_settings = RefreshSettings.from_config(ctx.config)
-    refresh_store = RefreshStore(state.connection)
+    refresh_store = state.refresh_store()
     run_id, targets = prepare_refresh_run(
         state,
         refresh_store,
@@ -190,24 +169,23 @@ def _start_refresh(
     return RefreshSession(refresh_store, run_id, refresh_settings), targets
 
 
-def _prepare(ctx: _CrawlContext, state: CrawlState, continue_run_id: str | None) -> _Prepared:
+def _prepare(
+    ctx: _CrawlContext, state: CrawlStateStore, continue_run_id: str | None, storage: CrawlStorage
+) -> _Prepared:
     try:
         if ctx.reuse_content_from is not None:
-            import_reused_content(ctx.reuse_content_from, state, ctx.input_path)
-            prepare_reused_asset_targets(state)
+            storage.import_reused_content(ctx.reuse_content_from, state, ctx.input_path)
         prepared = _Prepared(
             writer=CrawlWriter(
                 ctx.output,
                 state,
                 ctx.options,
                 html_store=(
-                    HtmlStore(ctx.output / "html", state.connection)
-                    if ctx.config.store_html
-                    else None
+                    state.raw_html_store(ctx.output / "html") if ctx.config.store_html else None
                 ),
             ),
             policy=AssetPolicy(ctx.options),
-            reused_targets=reused_asset_targets(state) if ctx.reuse_content_from else (),
+            reused_targets=storage.reused_asset_targets(state) if ctx.reuse_content_from else (),
             refresh_session=None,
             refresh_targets=[],
         )
@@ -222,24 +200,11 @@ def _prepare(ctx: _CrawlContext, state: CrawlState, continue_run_id: str | None)
     return prepared
 
 
-def _requeue_for_resume(ctx: _CrawlContext, state: CrawlState) -> None:
+def _requeue_for_resume(ctx: _CrawlContext, state: CrawlStateStore) -> None:
     if ctx.retry_failed:
         requeue_retryable_failures(state)
     if ctx.retry_access_gates:
         requeue_access_gates(state)
-
-
-def _scrapy_crawler(ctx: _CrawlContext) -> tuple[CrawlerProcess, Crawler]:
-    extensions: dict[object, int] = {}
-    if ctx.tuning.progress_interval_seconds > 0:
-        extensions[CrawlProgressReporter] = 500
-    settings_map = build_settings(ctx.config, tuning=ctx.tuning, extensions=extensions)
-    settings = Settings()
-    for key, value in settings_map.items():
-        settings.set(key, value, priority="cmdline")
-    process = CrawlerProcess(settings=settings)
-    spider_cls = ReusedAssetSpider if ctx.reuse_content_from is not None else UnifiedSpider
-    return process, process.create_crawler(spider_cls)
 
 
 class _CrawlRun:
@@ -248,29 +213,30 @@ class _CrawlRun:
     def __init__(
         self,
         ctx: _CrawlContext,
-        state: CrawlState,
+        state: CrawlStateStore,
         prepared: _Prepared,
+        engine: CrawlEngine,
     ) -> None:
         self.ctx = ctx
         self.state = state
         self.prepared = prepared
         self.coordinator = SitemapDiscoveryCoordinator(
             exact_hostnames=exact_only_hosts(ctx.seeds),
-            on_change=partial(upsert_host_discovery, state),
+            on_change=state.upsert_host_discovery,
             strategy="hybrid-unified",
         )
         self.frontier = FrontierPolicy(
-            ctx.seeds, ctx.options, route_families=() if ctx.refresh else iter_route_families(state)
+            ctx.seeds, ctx.options, route_families=() if ctx.refresh else state.route_families()
         )
         self.resume_records: tuple[dict[str, object], ...] = ()
         if ctx.resuming:
             _requeue_for_resume(ctx, state)
             self.frontier.restore(state.iter_url_records())
-            self.coordinator.restore(iter_host_discovery(state))
+            self.coordinator.restore(state.host_discovery())
             self.resume_records = tuple(state.iter_pending_scheduled_records())
         record_invalid_seeds(ctx.seeds, state)
         self.start_time = time.time()
-        self.process, self.crawler = _scrapy_crawler(ctx)
+        self.prepared_crawl = engine.prepare(ctx.config, ctx.tuning, self._setup())
 
     def execute(self) -> int:
         try:
@@ -283,37 +249,39 @@ class _CrawlRun:
             self.prepared.writer.close()
         return exit_code
 
-    def _launch(self) -> None:
+    def _setup(self) -> SpiderSetup:
         ctx, prepared = self.ctx, self.prepared
         if ctx.reuse_content_from is not None:
-            self.process.crawl(
-                self.crawler,
-                config=ctx.config,
-                options=ctx.options,
-                writer=prepared.writer,
-                policy=prepared.policy,
-                targets=prepared.reused_targets,
+            return SpiderSetup(
+                "reuse",
+                {
+                    "config": ctx.config,
+                    "options": ctx.options,
+                    "writer": prepared.writer,
+                    "policy": prepared.policy,
+                    "targets": prepared.reused_targets,
+                },
             )
-        else:
-            self.process.crawl(
-                self.crawler,
-                seeds=ctx.seeds,
-                config=ctx.config,
-                options=ctx.options,
-                frontier=self.frontier,
-                writer=prepared.writer,
-                policy=prepared.policy,
-                coordinator=self.coordinator,
-                resume_records=self.resume_records,
-                refresh=prepared.refresh_session,
-                refresh_targets=prepared.refresh_targets,
-            )
-        self.process.start()
+        return SpiderSetup(
+            "unified",
+            {
+                "seeds": ctx.seeds,
+                "config": ctx.config,
+                "options": ctx.options,
+                "frontier": self.frontier,
+                "writer": prepared.writer,
+                "policy": prepared.policy,
+                "coordinator": self.coordinator,
+                "resume_records": self.resume_records,
+                "refresh": prepared.refresh_session,
+                "refresh_targets": prepared.refresh_targets,
+            },
+        )
 
     def _run_and_finish(self) -> int:
-        self._launch()
+        result: EngineResult = self.prepared_crawl.start()
         ctx, state, session = self.ctx, self.state, self.prepared.refresh_session
-        stats = self.crawler.stats.get_stats() if self.crawler.stats else {}
+        stats = result.stats
         finish_reason = str(stats.get("finish_reason", "finished"))
         queued = max(
             0, int(stats.get("scheduler/enqueued", 0)) - int(stats.get("scheduler/dequeued", 0))
@@ -321,21 +289,20 @@ class _CrawlRun:
 
         counts = state.counts()
         failed = counts.get("url_status_failed", 0)
-        host_completion = completion_by_host(state, ctx.seeds.recursive_hostnames)
+        host_completion = state.host_completion(ctx.seeds.recursive_hostnames)
         zero_content_hosts = sorted(
             hostname
             for hostname, summary in host_completion.items()
             if summary["status"] == "zero_content"
         )
-        truncation_counts = reason_counts(state, TRUNCATION_REASONS)
+        truncation_counts = state.reason_counts(TRUNCATION_REASONS)
         truncated = sum(truncation_counts.values())
         if session is not None:
             failed, truncated = session.store.failure_counts(session.run_id, TRUNCATION_REASONS)
 
         elapsed_seconds = time.time() - self.start_time
         avg_rate = int(stats.get("response_received_count", 0)) / max(0.001, elapsed_seconds)
-        reporter = getattr(self.crawler, "progress_reporter", None)
-        rep_metrics = reporter.metrics() if reporter is not None else {}
+        rep_metrics = result.progress_metrics
 
         status, exit_code = finish_reason_to_exit(
             finish_reason, queued=queued, failed=failed, truncated=truncated
@@ -403,6 +370,8 @@ def run_crawl(  # noqa: PLR0913 -- one keyword per documented crawl mode
     retry_access_gates: bool = False,
     reuse_content_from: Path | None = None,
     refresh: bool = False,
+    engine: CrawlEngine,
+    storage: CrawlStorage,
 ) -> int:
     ctx = _CrawlContext(
         input_path=input_path,
@@ -418,12 +387,12 @@ def run_crawl(  # noqa: PLR0913 -- one keyword per documented crawl mode
         refresh=refresh,
         output_existed=output.exists(),
     )
-    _validate_modes(ctx)
-    continue_run_id = _check_resumable(ctx)
-    state = _open_state(ctx)
-    prepared = _prepare(ctx, state, continue_run_id)
+    _validate_modes(ctx, storage)
+    continue_run_id = _check_resumable(ctx, storage)
+    state = _open_state(ctx, storage)
+    prepared = _prepare(ctx, state, continue_run_id, storage)
     try:
-        crawl = _CrawlRun(ctx, state, prepared)
+        crawl = _CrawlRun(ctx, state, prepared, engine)
     except Exception:
         prepared.writer.close()
         ctx.discard_failed_reuse_output()

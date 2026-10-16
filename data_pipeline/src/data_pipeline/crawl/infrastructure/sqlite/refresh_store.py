@@ -6,9 +6,7 @@ import time
 from collections import Counter
 from collections.abc import Iterable, Iterator
 
-SUCCESS_OUTCOMES = frozenset({"new", "unchanged", "modified", "not_modified", "fetched"})
-CONTINUABLE_RUN_STATUSES = frozenset({"running", "interrupted", "failed"})
-FINISHED_STATUSES = frozenset({"complete", "complete_with_failures", "truncated"})
+from data_pipeline.crawl.domain.run_status import FINISHED_STATUSES, SUCCESS_OUTCOMES
 
 
 def latest_refresh_run(connection: sqlite3.Connection) -> dict[str, object] | None:

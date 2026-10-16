@@ -32,6 +32,7 @@ from data_pipeline.crawl.domain.frontier.sitemaps import (
     declared_sitemap_url,
     parse_sitemap,
 )
+from data_pipeline.crawl.domain.models import FamilyObservation
 from data_pipeline.crawl.domain.options import CrawlOptions
 from data_pipeline.crawl.domain.routing import ResponseRoute, route_response
 from data_pipeline.crawl.domain.seeds import SeedMode
@@ -41,11 +42,8 @@ from data_pipeline.crawl.infrastructure.scrapy.refresh_handler import (
     response_validators,
 )
 from data_pipeline.crawl.infrastructure.scrapy.requests import RequestFactory
-from data_pipeline.crawl.infrastructure.sqlite.discovery_rows import (
-    FamilyObservation,
-    put_route_family,
-)
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
+from data_pipeline.crawl.infrastructure.sqlite.discovery_rows import put_route_family
+from data_pipeline.crawl.infrastructure.sqlite.state_store import SqliteCrawlState
 from data_pipeline.shared.domain.url import canonicalize_url
 
 
@@ -534,7 +532,7 @@ class HtmlHandler:
         )
         family_state = self.frontier.observe_family(observation)
         crawl_state = getattr(self.writer, "state", None)
-        if isinstance(crawl_state, CrawlState):
+        if isinstance(crawl_state, SqliteCrawlState):
             put_route_family(crawl_state, family_state)
 
     def _may_follow_pagination(self, family_key: str, new_content_count: int) -> bool:

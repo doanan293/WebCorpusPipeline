@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 from scrapy.http import HtmlResponse, Request, TextResponse
 
@@ -20,19 +21,23 @@ from data_pipeline.crawl.infrastructure.scrapy.refresh_handler import (
     RefreshSettings,
 )
 from data_pipeline.crawl.infrastructure.scrapy.unified_spider import UnifiedSpider
-from data_pipeline.crawl.infrastructure.sqlite.export import iter_final_articles
 from data_pipeline.crawl.infrastructure.sqlite.html_store import HtmlStore
 from data_pipeline.crawl.infrastructure.sqlite.refresh_store import RefreshStore
-from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
+from data_pipeline.crawl.infrastructure.sqlite.state_store import SqliteCrawlState
 
 SEEDS = SeedSet(frozenset({"a.test"}), (), ())
+
+
+def db(writer: CrawlWriter) -> sqlite3.Connection:
+    """The SQLite connection behind a writer's state (tests check rows directly)."""
+    return cast(SqliteCrawlState, writer.state).connection
 
 
 def open_writer(tmp_path: Path) -> CrawlWriter:
     input_path = tmp_path / "seeds.txt"
     input_path.write_text("a.test\n", encoding="utf-8")
     options = CrawlOptions()
-    state = CrawlState.open(
+    state = SqliteCrawlState.open(
         tmp_path / "state",
         phase="crawl",
         input_path=input_path,
@@ -125,7 +130,7 @@ LIST_V2 = (
 def refresh_spider(
     writer: CrawlWriter, targets: list[tuple[str, str]], settings: RefreshSettings | None = None
 ) -> tuple[UnifiedSpider, RefreshStore]:
-    store = RefreshStore(writer.state.connection)
+    store = RefreshStore(db(writer))
     store.start_run(RUN_ID)
     store.add_targets(RUN_ID, targets)
     writer.state.refresh_run_id = RUN_ID
@@ -146,9 +151,9 @@ def changes(store: RefreshStore) -> dict[str, str]:
 
 
 def article_text(writer: CrawlWriter, url: str) -> str:
-    payload = writer.state.connection.execute(
-        "SELECT payload FROM articles WHERE url = ?;", (url,)
-    ).fetchone()[0]
+    payload = (
+        db(writer).execute("SELECT payload FROM articles WHERE url = ?;", (url,)).fetchone()[0]
+    )
     return str(json.loads(payload).get("text"))
 
 
@@ -221,7 +226,7 @@ def test_failed_refetch_keeps_existing_article(tmp_path: Path) -> None:
     assert outcome(store, "https://a.test/tin-tuc") == "http_500"
     assert (writer.state.url_record("https://a.test/tin-tuc") or {})["status"] == "extracted"
     assert article_text(writer, "https://a.test/tin-tuc") == before
-    assert writer.state.connection.execute("SELECT count(*) FROM errors").fetchone()[0] == 0
+    assert db(writer).execute("SELECT count(*) FROM errors").fetchone()[0] == 0
     writer.close()
 
 
@@ -255,7 +260,7 @@ def test_request_error_on_refresh_target_is_not_a_crawl_error(tmp_path: Path) ->
 
     assert outcome(store, "https://a.test/tin-tuc") == "request_failed"
     assert (writer.state.url_record("https://a.test/tin-tuc") or {})["status"] == "extracted"
-    assert writer.state.connection.execute("SELECT count(*) FROM errors").fetchone()[0] == 0
+    assert db(writer).execute("SELECT count(*) FROM errors").fetchone()[0] == 0
     writer.close()
 
 
@@ -322,7 +327,7 @@ def test_unparsable_sitemap_refetch_is_not_a_crawl_error(tmp_path: Path) -> None
 
     assert outcome(store, "https://a.test/sitemap.xml") == "sitemap_parse_error"
     assert (writer.state.url_record("https://a.test/sitemap.xml") or {})["status"] == "scheduled"
-    assert writer.state.connection.execute("SELECT count(*) FROM errors").fetchone()[0] == 0
+    assert db(writer).execute("SELECT count(*) FROM errors").fetchone()[0] == 0
     writer.close()
 
 
@@ -410,13 +415,13 @@ def test_404_on_refetch_is_removed_and_dropped_from_final(tmp_path: Path) -> Non
     assert outcome(store, url) == "removed"
     assert changes(store) == {url: "removed"}
     assert (writer.state.url_record(url) or {})["status"] == "absent"
-    assert [u for u, _ in iter_final_articles(writer.state)] == []
+    assert [u for u, _ in writer.state.iter_final_articles()] == []
     writer.close()
 
 
 def test_refresh_refetch_replaces_stored_body(tmp_path: Path) -> None:
     plain = open_writer(tmp_path)
-    store = HtmlStore(tmp_path / "html", plain.state.connection)
+    store = HtmlStore(tmp_path / "html", db(plain))
     writer = CrawlWriter(tmp_path, plain.state, plain.options, html_store=store)
     url = "https://a.test/thong-bao"
     known_page(writer, url, COUNTED_V1)
