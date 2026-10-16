@@ -4,6 +4,7 @@ from dataclasses import replace
 from typing import Any, cast
 
 from data_pipeline.crawl.application.refresh_pipeline import RefreshSession
+from data_pipeline.crawl.domain.extract.article import analyze_article
 from data_pipeline.crawl.domain.refresh_rules import RefreshSettings
 from tests.fakes.crawl import FakeRefreshStore
 from tests.unit.crawl.application.test_page_pipeline import page, pipeline
@@ -22,7 +23,7 @@ def refreshing() -> tuple[Any, FakeRefreshStore, Any, str]:
     first = {
         "url": URL,
         "final_url": URL,
-        "text": pipe.text_of(COUNTED_V1.encode(), URL),
+        "text": str(analyze_article(COUNTED_V1.encode(), URL, "utf-8").article.get("text") or ""),
         "page_role": "content",
     }
     previous = str(writer.write_article(first)["content_id"])

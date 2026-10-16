@@ -2,52 +2,71 @@
 
 ## 0. Cấu trúc package
 
-Một package `data_pipeline` (trong `src/`) với một lệnh `data-pipeline`. Cây thư mục phản ánh
-luồng dữ liệu; mỗi package con ứng với một nhóm lệnh:
+Một package `data_pipeline` (trong `src/`) với một lệnh `data-pipeline`, tổ chức theo clean architecture: bốn
+context (`crawl`, `enrich`, `corpus`, `domains`), mỗi context chia ba lớp, cộng với `shared` (phần dùng chung) và
+`cli` (điểm ghép nối).
 
 ```mermaid
-flowchart LR
-    CLI["cli<br/>data-pipeline crawl | enrich | corpus | domains | eval"]
-    CRAWL["crawl<br/>Scrapy: frontier, spider, extract, state"]
-    ENRICH["enrich<br/>inventory, download, parsing (PDF, Office, LlamaParse)"]
-    CORPUS["corpus<br/>package, verify, graph, MongoDB, Kaggle"]
-    DOMAINS["domains<br/>kiểm tra host còn sống"]
-    CORE["core<br/>đường dẫn, .env, settings, chính sách URL/mạng"]
+flowchart TB
+    CLI["cli<br/>lệnh Typer + wiring.py (dựng adapter)"]
+    subgraph CTX["mỗi context: crawl, enrich, corpus, domains"]
+        direction TB
+        INFRA["infrastructure<br/>SQLite, Scrapy, aiohttp, LlamaParse, MongoDB, Kaggle, hệ tệp"]
+        APP["application<br/>use case + ports.py (Protocol)"]
+        DOM["domain<br/>luật thuần, kiểu dữ liệu"]
+    end
+    SHARED["shared<br/>domain: URL, hostname, refs, Settings<br/>infrastructure: nạp settings, .env, mạng, ghi tệp"]
 
-    CLI --> CRAWL
-    CLI --> ENRICH
-    CLI --> CORPUS
-    CLI --> DOMAINS
-    CORPUS --> ENRICH
-    CRAWL --> CORE
-    ENRICH --> CORE
-    CORPUS --> CORE
-    DOMAINS --> CORE
+    CLI --> INFRA
+    CLI --> APP
+    INFRA -->|"cài đặt ports"| APP
+    APP --> DOM
+    INFRA --> DOM
+    DOM --> SHARED
+    APP --> SHARED
+    INFRA --> SHARED
 ```
 
 Quy tắc phụ thuộc (kiểm tra tự động bằng `tests/unit/test_architecture.py`):
 
-- `core` không import package nào khác; `crawl`, `enrich`, `corpus`, `domains` không import `cli`.
-- `crawl`, `enrich`, `domains` độc lập với nhau; `corpus` chỉ được dùng `enrich`.
-- Trong `crawl`: `run` → `spider` → `state`/`extract`/`frontier`/`runtime`/`output`; `spider` không
-  import `run`; `state` và `frontier` không import `run` hay `spider`; `extract` không import `run`, `spider` hay
-  `state` (chỉ dùng `core` và danh sách định dạng tài liệu trong `frontier/assets`).
+1. **Trong một context:** `domain` không import `application`/`infrastructure`; `application` không import
+   `infrastructure`; `infrastructure` chỉ được import `application.ports`, không import use case. `domain` không import
+   module I/O (`sqlite3`, `scrapy`, `twisted`, `aiohttp`, `pymongo`, `playwright`, `llama_cloud`, `subprocess`,
+   `shutil`, `tempfile`, `os`, `yaml`, `dotenv`, `socket`).
+2. **Giữa các context:** `crawl`, `enrich`, `corpus`, `domains` không import lẫn nhau; chỉ `shared` và `cli` nối
+   chúng. `shared` không import context nào; trong context, `application` và `domain` chỉ dùng `shared.domain`.
+3. Mọi module của context nằm trong một lớp; use case nhận adapter qua tham số, không tự dựng. `cli/wiring.py` là nơi
+   duy nhất dựng adapter. Ví dụ `corpus package` cần tài liệu của `enrich`: `wiring.export_documents` đưa use case
+   export của `enrich` vào port `ExportDocuments` của `corpus`.
 
-Chi tiết từng package con:
+```text
+src/data_pipeline/
+  shared/{domain,infrastructure}/
+  crawl/
+    domain/          luật crawl: extract/, frontier/, seeds, routing, access, refresh_rules, host_health, pages, models
+    application/     run_crawl, run_discovery, refresh, reextract, requeue, page_pipeline, refresh_pipeline,
+                     discovery_pipeline, asset_responses, writer, ports
+    infrastructure/  sqlite/ (state_store, storage, export, html_store, refresh_store, reuse, ...),
+                     scrapy/ (runner, spiders, requests, middlewares, settings, ...), config_file, seeds_file
+  enrich/            domain (models, download_rules, inventory_rules, merge, cache_key, ...), application
+                     (inventory, download, extract, export, session), infrastructure (sqlite/work_state,
+                     http/aiohttp_transport, parsers/, llamaparse, files/)
+  corpus/            domain (manifest, records, graph, kaggle_metadata), application (package, graph, mongo,
+                     query, kaggle), infrastructure (files/corpus_files, graph_index, mongo, kaggle_cli)
+  domains/           domain (classify, canonical, models), application (audit), infrastructure (http_probe,
+                     browser_probe, report_files)
+  cli/               main, crawl, enrich, corpus, domains, eval, context, errors, wiring
+```
 
-| Package | Nội dung |
-|---|---|
-| `crawl/run` | các chế độ chạy: `full` (crawl từ đầu, `--resume`), `refresh`, `reuse`, `discovery`, `reextract`; mã thoát |
-| `crawl/spider` | `UnifiedSpider` và các bộ xử lý: `requests`, `html`, `assets`, `refresh`, `routing`; spider riêng cho `discovery` và `reuse` |
-| `crawl/state` | SQLite `CrawlState`: `store`, `requeue`, `discovery`, `export`, `resume`, `refresh_store`, `html_store` (HTML gốc) |
-| `crawl/extract` | bóc tách HTML: `content`, `metadata`, `dates`, `sanitize`, `blocks`, `assets`, `links`, `article`; `fingerprint` (`change_fingerprint` của refresh), `evaluation` (`eval extraction`) |
-| `crawl/frontier` | frontier, chính sách link, sitemap, seed, chính sách tải asset |
-| `crawl/runtime` | cấu hình Scrapy, middleware, điều chỉnh đồng thời thích ứng, giám sát CPU/RAM, tiến độ |
-| `enrich` | `inventory` → `download` → `parsing` (cục bộ và LlamaParse) → `export`; `state` SQLite |
-| `corpus` | `package` (đóng gói, verify), `graph` (`links.jsonl`, `images.jsonl`), `mongo`, `kaggle` (publish, pull), `query` |
-| `domains` | `audit`, `probe`, `browser`: thăm dò host và viết lại danh sách host |
-| `core` | `paths`, `env`, `settings`, `hostnames`, `refs`; `policies`: chuẩn hoá URL, chính sách truy cập và mạng |
-| `cli` | lệnh `data-pipeline` (Typer): `crawl`, `enrich`, `corpus`, `domains`, `eval`; `errors` đổi lỗi thành một dòng `Error:` và mã thoát |
+| Context | Port (trong `application/ports.py`) | Adapter (trong `infrastructure/`) |
+|---|---|---|
+| `crawl` | `CrawlStateStore`, `CrawlStorage`, `RefreshStorePort`, `RawHtmlStore`, `CrawlEngine`, `PagePipelineLike`, `AssetResponsesLike`, `DiscoveryPipelineLike` | `SqliteCrawlState`, `SqliteCrawlStorage`, `RefreshStore`, `HtmlStore`, `ScrapyEngine`; spider Scrapy chỉ chuyển đổi `Response` ↔ `FetchedPage` và `Scheduled` ↔ `Request` |
+| `enrich` | `WorkState`, `ArticleSource`, `HttpTransport`, `DownloadFiles`, `LocalParser`, `CloudParser`, `ParseCache` | `SqliteWorkState`, `JsonlArticleSource`, `PublicTransport`, `LocalDownloadFiles`, `LocalParserAdapter`, `LlamaParseCloud`, `FileParseCache` |
+| `corpus` | `CorpusFiles`, `EdgeIndex`, `CorpusDatabase`, `DatasetPublisher`, `EnrichmentStatus`, `ExportDocuments` | `LocalCorpusFiles`, `SqliteEdgeIndex`, `MongoCorpusDatabase`, `KaggleCli` |
+| `domains` | `HostProber`, `BrowserProber`, `AuditReports` | `HttpHostProber`, `PlaywrightBrowserProber`, `FileAuditReports` |
+
+Test dùng bản giả trong `tests/fakes/` (`FakeCrawlState`, `FakeWorkState`, `FakeCorpusDatabase`, ...);
+`tests/fakes/test_fakes_satisfy_ports.py` kiểm tra mỗi bản giả vẫn khớp port của nó.
 
 Các sơ đồ:
 

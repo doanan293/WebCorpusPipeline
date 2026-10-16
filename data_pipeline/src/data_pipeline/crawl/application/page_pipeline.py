@@ -363,10 +363,6 @@ class PagePipeline:
         if handler is not None:
             yield from handler(page, route)
 
-    def text_of(self, body: bytes, url: str) -> str:
-        """The article text extracted from an HTML body (used to compare refetches)."""
-        return str(analyze_article(body, url, "utf-8").article.get("text") or "")
-
     def _html(self, page: FetchedPage, _route: ResponseRoute) -> Iterator[FollowUp]:
         analysis = analyze_article(page.body, page.url, page.encoding)
         article_data = self.article_record(page, analysis, page.input_url, page.content_type)
