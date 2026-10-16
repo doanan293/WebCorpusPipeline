@@ -2,7 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from data_pipeline.crawl.domain.seeds import parse_seed_file
+from data_pipeline.crawl.domain.seeds import parse_seed_lines
+from data_pipeline.crawl.infrastructure.seeds_file import parse_seed_file
 
 
 def test_mixed_seeds_are_canonical_and_recursive_host_wins(tmp_path: Path) -> None:
@@ -50,3 +51,10 @@ def test_all_invalid_seeds_raises_value_error(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="input contains no valid seeds"):
         parse_seed_file(source)
+
+
+def test_seed_lines_are_parsed_without_a_file() -> None:
+    seeds = parse_seed_lines(["a.test", "https://b.test/x", "not a host", ""])
+    assert seeds.recursive_hostnames == frozenset({"a.test"})
+    assert seeds.exact_urls == ("https://b.test/x",)
+    assert [item.line for item in seeds.invalid] == [3]

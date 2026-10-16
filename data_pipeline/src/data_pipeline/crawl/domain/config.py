@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
-
-import yaml
 
 MIN_HTTP_STATUS = 100
 MAX_HTTP_STATUS = 599
@@ -115,19 +112,14 @@ class CrawlerConfig:
     store_html: bool = True
 
     @classmethod
-    def load(
+    def from_settings(
         cls,
-        config_path: Path,
+        raw: Mapping[str, Any],
         *,
         hostnames: frozenset[str],
-        environ: Mapping[str, str] | None = None,
+        contact: str,
     ) -> CrawlerConfig:
-        raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-        environment = os.environ if environ is None else environ
-        contact = environment.get("CRAWLER_CONTACT", "").strip()
-        if not contact:
-            msg = "CRAWLER_CONTACT is required (set it in .env)"
-            raise ValueError(msg)
+        """Build and validate the config from ``crawler.yaml`` values and the contact address."""
         validate_network_contact(contact)
         unknown = sorted(set(raw) - set(_REQUIRED_SETTINGS))
         if unknown:

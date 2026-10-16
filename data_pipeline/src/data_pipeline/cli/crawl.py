@@ -84,10 +84,10 @@ def run(
 ) -> int:
     """Crawl hostname and exact-URL seeds with the unified hybrid crawler."""
     from data_pipeline.crawl.application import run_crawl as run_full
-    from data_pipeline.crawl.domain.config import CrawlerConfig
     from data_pipeline.crawl.domain.options import crawl_options_from_config
-    from data_pipeline.crawl.domain.seeds import parse_seed_file
     from data_pipeline.crawl.domain.tuning import resolve_runtime_tuning
+    from data_pipeline.crawl.infrastructure.config_file import load_crawler_config
+    from data_pipeline.crawl.infrastructure.seeds_file import parse_seed_file
 
     run_full.validate_mode_flags(
         resume=resume,
@@ -109,7 +109,7 @@ def run(
 
     config_path = context.pick(config, context.current_paths().crawler_config)
     try:
-        crawler_config = CrawlerConfig.load(config_path, hostnames=seeds.allowed_hostnames)
+        crawler_config = load_crawler_config(config_path, hostnames=seeds.allowed_hostnames)
     except Exception as exc:  # noqa: BLE001 -- any unreadable seed file or configuration is a usage error
         return errors.fail(f"loading configuration: {exc}")
 
@@ -160,9 +160,9 @@ def discover(
 ) -> int:
     """Sitemap-only URL discovery for mixed hostname and exact URL seeds."""
     from data_pipeline.crawl.application import run_discovery
-    from data_pipeline.crawl.domain.config import CrawlerConfig
-    from data_pipeline.crawl.domain.seeds import parse_seed_file
     from data_pipeline.crawl.domain.tuning import resolve_runtime_tuning
+    from data_pipeline.crawl.infrastructure.config_file import load_crawler_config
+    from data_pipeline.crawl.infrastructure.seeds_file import parse_seed_file
 
     if not input_path.is_file():
         return errors.fail(f"input file not found: {input_path}")
@@ -173,7 +173,7 @@ def discover(
 
     config_path = context.pick(config, context.current_paths().crawler_config)
     try:
-        crawler_config = CrawlerConfig.load(config_path, hostnames=seeds.allowed_hostnames)
+        crawler_config = load_crawler_config(config_path, hostnames=seeds.allowed_hostnames)
     except Exception as exc:  # noqa: BLE001 -- any unreadable seed file or configuration is a usage error
         return errors.fail(f"loading configuration: {exc}")
 

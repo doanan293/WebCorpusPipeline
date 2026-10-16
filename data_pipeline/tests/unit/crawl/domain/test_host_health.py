@@ -1,4 +1,4 @@
-from data_pipeline.crawl.infrastructure.scrapy.adaptive import HostDecision, HostHealth, Observation
+from data_pipeline.crawl.domain.host_health import HostDecision, HostHealth, Observation
 
 
 def test_healthy_host_grows_one_step_after_full_window() -> None:

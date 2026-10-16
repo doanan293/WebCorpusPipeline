@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -30,13 +30,13 @@ class SeedSet:
         return self.recursive_hostnames | frozenset(host for host in exact_hosts if host)
 
 
-def parse_seed_file(path: Path) -> SeedSet:
+def parse_seed_lines(lines: Iterable[str]) -> SeedSet:
+    """Hostnames seed a recursive crawl, URLs an exact fetch; bad lines are kept as invalid."""
     recursive_hosts: set[str] = set()
     exact_urls: list[str] = []
     invalid_seeds: list[InvalidSeed] = []
 
-    content = path.read_text(encoding="utf-8")
-    for line_number, raw_line in enumerate(content.splitlines(), start=1):
+    for line_number, raw_line in enumerate(lines, start=1):
         value = raw_line.strip()
         if not value or value.startswith("#"):
             continue

@@ -5,10 +5,8 @@ from scrapy import signals
 from scrapy.http import HtmlResponse, Request
 from scrapy.signalmanager import SignalManager
 
-from data_pipeline.crawl.infrastructure.scrapy.adaptive import (
-    AdaptiveConcurrencyMiddleware,
-    Observation,
-)
+from data_pipeline.crawl.domain.host_health import Observation
+from data_pipeline.crawl.infrastructure.scrapy.adaptive import AdaptiveConcurrencyMiddleware
 from data_pipeline.crawl.infrastructure.scrapy.resources import ResourceMonitor, ResourceSampler
 
 
