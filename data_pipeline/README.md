@@ -110,7 +110,8 @@ uv run pre-commit install            # cài hook (chạy ruff, pyrefly khi commi
 ```
 
 Hook `pre-commit` nằm ở thư mục gốc repo và bỏ qua `lucene/` cùng `data_pipeline/data/`; ruff, pyrefly, uv-lock và pytest chỉ chạy cho thay đổi trong `data_pipeline/`. Package tổ chức theo
-clean architecture (mỗi context chia `domain`/`application`/`infrastructure`, adapter được dựng ở `cli/wiring.py`,
+clean architecture (bốn lớp `domain`/`application`/`infrastructure`/`presentation`, mỗi lớp chia theo nghiệp vụ;
+adapter được dựng ở `presentation/cli/wiring.py`,
 xem [docs/architecture.md](docs/architecture.md#0-cấu-trúc-package)); quy tắc phụ thuộc được kiểm tra tự động
 (`tests/unit/test_architecture.py`).
 

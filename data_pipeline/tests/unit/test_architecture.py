@@ -6,11 +6,13 @@ from pathlib import Path
 ROOT = Path(__file__).parents[2]
 SRC = ROOT / "src"
 PACKAGE = SRC / "data_pipeline"
-CONTEXTS = frozenset({"crawl", "enrich", "corpus", "domains"})
+# The package is split by layer first, then by context:
+#   data_pipeline.<layer>.<context>...   and   data_pipeline.presentation.cli...
 LAYERS = ("domain", "application", "infrastructure")
 RANK = {layer: index for index, layer in enumerate(LAYERS)}
-# Contexts whose per-layer rule is not enforced yet; emptied as each context is migrated.
-MIGRATING: set[str] = set()
+CONTEXTS = frozenset({"crawl", "enrich", "corpus", "hosts"})
+SHARED = "shared"
+PRESENTATION = "presentation"
 IO_MODULES = frozenset(
     {
         "sqlite3",
@@ -48,42 +50,47 @@ def imported_modules(path: Path) -> set[str]:
     return imported
 
 
-def placement(module: str) -> tuple[str, str | None]:
-    """('crawl', 'domain'), ('shared', 'infrastructure'), ('cli', None) or ('crawl', None)."""
+def placement(module: str) -> tuple[str | None, str | None]:
+    """(layer, context): ('domain', 'crawl'), ('infrastructure', 'shared'), ('presentation', 'cli')."""
     parts = module.split(".")
-    context = parts[1] if len(parts) > 1 else "data_pipeline"
-    layer = parts[2] if len(parts) > 2 and parts[2] in LAYERS else None
-    return context, layer
+    layer = parts[1] if len(parts) > 1 else None
+    context = parts[2] if len(parts) > 2 else None
+    return layer, context
 
 
-def allowed(importer: str, imported: str, migrating: set[str] | None = None) -> bool:
-    migrating = MIGRATING if migrating is None else migrating
+def allowed(importer: str, imported: str) -> bool:
+    """Whether ``importer`` may import ``imported`` (both dotted module names)."""
     if not imported.startswith("data_pipeline."):
         return True
-    context, layer = placement(importer)
-    target, target_layer = placement(imported)
-    if context == "cli":
+    layer, context = placement(importer)
+    target_layer, target_context = placement(imported)
+    if layer == PRESENTATION:
         return True
-    if context == "shared":
-        return target == "shared" and (layer == "infrastructure" or target_layer == "domain")
-    if context in migrating:
-        # Not split into layers yet: may use all of shared, and its old cross-context imports.
-        return True
-    if target == "shared":
-        return target_layer == "domain" or layer == "infrastructure"
-    if target != context:
+    if target_layer == PRESENTATION or layer not in RANK or target_layer not in RANK:
         return False
-    if layer is None:
-        return True
-    if target_layer is None:
+    # Contexts never import each other; every context may use shared, shared uses only itself.
+    if target_context is not None and target_context not in {context, SHARED}:
         return False
+    if context == SHARED and target_context not in {SHARED, None}:
+        return False
+    # Infrastructure reaches the application layer only through its context's ports.
     if layer == "infrastructure" and target_layer == "application":
-        return imported.startswith(f"data_pipeline.{context}.application.ports")
+        return imported.startswith(f"data_pipeline.application.{context}.ports")
     return RANK[target_layer] <= RANK[layer]
 
 
 def all_modules() -> list[tuple[str, Path]]:
     return [(module_name(path), path) for path in sorted(PACKAGE.rglob("*.py"))]
+
+
+def is_stray(module: str) -> bool:
+    """A module that is not inside ``<layer>.<context>`` (or ``presentation.cli``)."""
+    if module.count(".") < 2:
+        return module.count(".") == 1 and placement(module)[0] not in {*LAYERS, PRESENTATION}
+    layer, context = placement(module)
+    if layer == PRESENTATION:
+        return context != "cli"
+    return layer not in RANK or context not in CONTEXTS | {SHARED}
 
 
 def test_dependency_rule() -> None:
@@ -100,56 +107,67 @@ def test_domain_modules_do_no_io() -> None:
     violations = [
         f"{module} -> {imported}"
         for module, path in all_modules()
-        if placement(module)[1] == "domain" and placement(module)[0] not in MIGRATING
+        if placement(module)[0] == "domain"
         for imported in sorted(imported_modules(path))
         if imported.split(".")[0] in IO_MODULES
     ]
     assert violations == []
 
 
-def is_stray(module: str, migrating: set[str] | None = None) -> bool:
-    """A module of a context (or shared) that is not inside one of the three layers."""
-    migrating = MIGRATING if migrating is None else migrating
-    context, layer = placement(module)
-    return (
-        context in (CONTEXTS | {"shared"}) - migrating and layer is None and module.count(".") >= 2
-    )
-
-
-def test_every_context_module_sits_in_a_layer() -> None:
+def test_every_module_sits_in_a_layer_and_a_context() -> None:
     assert [module for module, _ in all_modules() if is_stray(module)] == []
 
 
-def test_a_module_outside_the_layers_is_a_stray_whatever_its_name() -> None:
+def test_a_module_outside_the_layers_is_a_stray() -> None:
     for module in (
-        "data_pipeline.crawl.helpers",
-        "data_pipeline.crawl.legacy.domain",
-        "data_pipeline.shared.util",
+        "data_pipeline.helpers",
+        "data_pipeline.domain.helpers",
+        "data_pipeline.domain.legacy.models",
+        "data_pipeline.presentation.web",
     ):
-        assert is_stray(module, migrating=set()), module
-    for module in ("data_pipeline.crawl", "data_pipeline.crawl.domain", "data_pipeline.cli.main"):
-        assert not is_stray(module, migrating=set()), module
+        assert is_stray(module), module
+    for module in (
+        "data_pipeline",
+        "data_pipeline.domain",
+        "data_pipeline.domain.crawl",
+        "data_pipeline.infrastructure.shared.files",
+        "data_pipeline.presentation.cli.main",
+    ):
+        assert not is_stray(module), module
+
+
+def test_layers_point_inwards() -> None:
+    assert allowed("data_pipeline.application.crawl.run_crawl", "data_pipeline.domain.crawl.seeds")
+    assert not allowed(
+        "data_pipeline.domain.crawl.seeds", "data_pipeline.application.crawl.run_crawl"
+    )
+    assert not allowed(
+        "data_pipeline.application.enrich.download",
+        "data_pipeline.infrastructure.enrich.files.download_files",
+    )
 
 
 def test_infrastructure_may_import_only_ports_from_application() -> None:
-    infra = "data_pipeline.enrich.infrastructure.x"
-    assert allowed(infra, "data_pipeline.enrich.application.ports", migrating=set())
-    assert not allowed(infra, "data_pipeline.enrich.application.download", migrating=set())
+    infra = "data_pipeline.infrastructure.enrich.files.cache"
+    assert allowed(infra, "data_pipeline.application.enrich.ports")
+    assert not allowed(infra, "data_pipeline.application.enrich.download")
+    assert not allowed(infra, "data_pipeline.application.crawl.ports")
 
 
 def test_contexts_never_import_each_other() -> None:
-    corpus, enrich = (
-        "data_pipeline.corpus.application.package",
-        "data_pipeline.enrich.domain.models",
+    assert not allowed(
+        "data_pipeline.application.corpus.package", "data_pipeline.domain.enrich.models"
     )
-    assert not allowed(corpus, enrich, migrating=set())
-    assert not allowed("data_pipeline.shared.domain.url", "data_pipeline.crawl.domain.access")
+    assert allowed("data_pipeline.application.corpus.package", "data_pipeline.domain.shared.url")
+    assert not allowed("data_pipeline.domain.shared.url", "data_pipeline.domain.crawl.access")
     assert allowed(
-        "data_pipeline.cli.wiring", "data_pipeline.crawl.infrastructure.sqlite.state_store"
+        "data_pipeline.presentation.cli.wiring",
+        "data_pipeline.infrastructure.crawl.sqlite.state_store",
     )
 
 
-def test_migrated_context_may_not_use_shared_infrastructure_outside_its_infrastructure() -> None:
-    files = "data_pipeline.shared.infrastructure.files"
-    assert not allowed("data_pipeline.enrich.domain.models", files, migrating=set())
-    assert allowed("data_pipeline.enrich.infrastructure.files", files, migrating=set())
+def test_only_infrastructure_uses_shared_infrastructure() -> None:
+    files = "data_pipeline.infrastructure.shared.files"
+    assert not allowed("data_pipeline.domain.enrich.models", files)
+    assert not allowed("data_pipeline.application.enrich.download", files)
+    assert allowed("data_pipeline.infrastructure.enrich.files.cache", files)

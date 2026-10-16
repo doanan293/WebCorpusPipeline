@@ -8,7 +8,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from data_pipeline.shared.domain.errors import ExternalFailure
+from data_pipeline.domain.shared.errors import ExternalFailure
 
 
 class FakeCorpusDatabase:

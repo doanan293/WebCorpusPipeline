@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
-from data_pipeline.enrich.domain.models import (
+from data_pipeline.domain.enrich.models import (
     DownloadedFile,
     DownloadJob,
     HttpResponse,
@@ -17,7 +17,7 @@ from data_pipeline.enrich.domain.models import (
     SourceProgress,
     SourceRef,
 )
-from data_pipeline.shared.domain.config import Settings
+from data_pipeline.domain.shared.config import Settings
 
 
 async def noop_close() -> None:

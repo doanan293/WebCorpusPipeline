@@ -84,7 +84,7 @@ trạng thái cuối không còn là `extracted`; bản dùng cho các bước s
   `data-*`; URL tương đối được đổi sang tuyệt đối.
 - **URL trong `links`:** chỉ `http`/`https`, host chữ thường, bỏ cổng mặc định, bỏ fragment và tham số theo dõi
   (`utm_*`, `gclid`, `fbclid`…).
-- **Ngày tháng:** luôn là `YYYY-MM-DDTHH:MM:SS+HH:MM` (`crawl/domain/extract/dates.py` `parse_page_date`). Dạng NukeViet
+- **Ngày tháng:** luôn là `YYYY-MM-DDTHH:MM:SS+HH:MM` (`domain/crawl/extract/dates.py` `parse_page_date`). Dạng NukeViet
   `2020-02-23+0723:09:00` được đọc là `2020-02-23T23:09:00+07:00`; `Z` thành `+00:00`; giá trị không có múi giờ
   (`YYYY-MM-DD HH:MM:SS`, `YYYY-MM-DD`) được gán `+07:00`. Chuỗi không parse được cho `null` kèm cảnh báo
   `unparsed_date:<field>`. Bản ghi không có thời điểm tải; thời điểm crawl duy nhất là

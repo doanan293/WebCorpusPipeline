@@ -1,0 +1,326 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import pytest
+import yaml
+
+from data_pipeline.application.crawl import reextract as run_reextract
+from data_pipeline.application.crawl import run_crawl as run_full
+from data_pipeline.application.crawl import run_discovery
+from data_pipeline.application.crawl.reextract import ReextractSummary
+from data_pipeline.domain.shared.config import ProjectPaths
+from data_pipeline.presentation.cli.main import main
+
+
+def write_complete_config(directory: Path, name: str = "crawler.yaml") -> Path:
+    values = yaml.safe_load(Path("config/crawler.yaml").read_text(encoding="utf-8"))
+    path = directory / name
+    path.write_text(yaml.safe_dump(values), encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def seeds(tmp_path: Path) -> Path:
+    path = tmp_path / "seeds.txt"
+    path.write_text("a.test\n", encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setenv("CRAWLER_CONTACT", "ops@example.org")
+    return write_complete_config(tmp_path)
+
+
+@pytest.fixture
+def observed(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    captured: dict[str, Any] = {}
+
+    def capture_run(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(run_full, "run_crawl", capture_run)
+    return captured
+
+
+def crawl(seeds: Path, tmp_path: Path, config: Path, *extra: str) -> int:
+    return main(
+        [
+            "crawl",
+            "run",
+            "--input",
+            str(seeds),
+            "--output",
+            str(tmp_path / "crawl"),
+            "--config",
+            str(config),
+            *extra,
+        ]
+    )
+
+
+def test_accepts_mixed_seeds_and_frontier_limits(
+    tmp_path: Path, seeds: Path, config: Path, observed: dict[str, Any]
+) -> None:
+    code = crawl(
+        seeds,
+        tmp_path,
+        config,
+        "--assets",
+        "all",
+        "--pagination-empty-pages",
+        "4",
+        "--max-urls-per-host",
+        "50000",
+        "--max-total-urls",
+        "300000",
+    )
+
+    assert code == 0
+    options = observed["options"]
+    assert options.assets == "all"
+    assert options.pagination_empty_pages == 4
+    assert options.max_urls_per_host == 50_000
+    assert options.max_total_urls == 300_000
+
+
+def test_defaults_come_from_the_config_file(
+    tmp_path: Path, seeds: Path, config: Path, observed: dict[str, Any]
+) -> None:
+    assert crawl(seeds, tmp_path, config) == 0
+
+    assert observed["options"].assets == "content-only"
+    assert observed["reuse_content_from"] is None
+    for name in (
+        "resume",
+        "retry_failed",
+        "retry_access_gates",
+        "refresh",
+    ):
+        assert observed[name] is False
+
+
+def test_asset_choices_are_validated(tmp_path: Path, seeds: Path, config: Path) -> None:
+    assert crawl(seeds, tmp_path, config, "--assets", "documents") == 2
+
+
+@pytest.mark.parametrize(
+    "flag",
+    ["--retry-failed", "--retry-access-gates"],
+)
+def test_retry_flag_requires_resume(
+    flag: str, tmp_path: Path, seeds: Path, config: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert crawl(seeds, tmp_path, config, flag) == 2
+    assert f"{flag} requires --resume" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("flag", "name"),
+    [
+        ("--retry-failed", "retry_failed"),
+        ("--retry-access-gates", "retry_access_gates"),
+    ],
+)
+def test_retry_flag_is_passed_to_the_runner_with_resume(
+    flag: str,
+    name: str,
+    tmp_path: Path,
+    seeds: Path,
+    config: Path,
+    observed: dict[str, Any],
+) -> None:
+    assert crawl(seeds, tmp_path, config, "--resume", flag) == 0
+
+    assert observed["resume"] is True
+    assert observed[name] is True
+
+
+def test_passes_seed_set_to_the_unified_runner(
+    tmp_path: Path, seeds: Path, config: Path, observed: dict[str, Any]
+) -> None:
+    seeds.write_text("a.test\nhttps://b.test/page\n", encoding="utf-8")
+
+    assert crawl(seeds, tmp_path, config) == 0
+
+    assert observed["input_path"] == seeds
+    assert observed["output"] == tmp_path / "crawl"
+    assert observed["seeds"].recursive_hostnames == frozenset({"a.test"})
+    assert observed["seeds"].exact_urls == ("https://b.test/page",)
+
+
+def test_passes_lightweight_content_source_to_the_runner(
+    tmp_path: Path, seeds: Path, config: Path, observed: dict[str, Any]
+) -> None:
+    code = crawl(
+        seeds, tmp_path, config, "--assets", "all", "--reuse-content-from", str(tmp_path / "src")
+    )
+
+    assert code == 0
+    assert observed["reuse_content_from"] == tmp_path / "src"
+
+
+def test_rejects_reuse_source_without_all_assets(
+    tmp_path: Path, seeds: Path, config: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = crawl(seeds, tmp_path, config, "--reuse-content-from", str(tmp_path / "src"))
+
+    assert code == 2
+    assert "requires --assets all" in capsys.readouterr().err
+
+
+def test_reports_runner_validation_errors(
+    tmp_path: Path,
+    seeds: Path,
+    config: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def reject_run(**kwargs: object) -> int:
+        msg = "source crawl is still running"
+        raise ValueError(msg)
+
+    monkeypatch.setattr(run_full, "run_crawl", reject_run)
+
+    code = crawl(seeds, tmp_path, config)
+
+    assert code == 2
+    assert "source crawl is still running" in capsys.readouterr().err
+
+
+def test_missing_seed_file_is_an_error(
+    tmp_path: Path, config: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert crawl(tmp_path / "missing.txt", tmp_path, config) == 2
+    assert "input file not found" in capsys.readouterr().err
+
+
+def test_loads_contact_from_the_project_env_file(
+    project: ProjectPaths,
+    tmp_path: Path,
+    seeds: Path,
+    observed: dict[str, Any],
+) -> None:
+    project.env_file.write_text("CRAWLER_CONTACT=ops@example.org\n", encoding="utf-8")
+    config = write_complete_config(tmp_path)
+
+    assert crawl(seeds, tmp_path, config) == 0
+
+    assert observed["config"].contact == "ops@example.org"
+
+
+def test_config_defaults_to_the_project_crawler_yaml(
+    project: ProjectPaths, tmp_path: Path, seeds: Path, observed: dict[str, Any]
+) -> None:
+    (project.root / "config").mkdir()
+    write_complete_config(project.root / "config")
+    project.env_file.write_text("CRAWLER_CONTACT=ops@example.org\n", encoding="utf-8")
+    code = main(["crawl", "run", "-i", str(seeds), "-o", str(tmp_path / "crawl")])
+
+    assert code == 0
+    assert observed["config"].contact == "ops@example.org"
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--resume"],
+        ["--reuse-content-from", "other"],
+        ["--retry-failed"],
+        ["--retry-access-gates"],
+    ],
+)
+def test_refresh_rejects_incompatible_flags(
+    tmp_path: Path,
+    seeds: Path,
+    config: Path,
+    extra: list[str],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert crawl(seeds, tmp_path, config, "--refresh", *extra) == 2
+    assert "--refresh cannot be combined" in capsys.readouterr().err
+
+
+def test_discover_loads_contact_and_runs_discovery(
+    project: ProjectPaths,
+    tmp_path: Path,
+    seeds: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project.env_file.write_text("CRAWLER_CONTACT=ops@example.org\n", encoding="utf-8")
+    config = write_complete_config(tmp_path)
+    captured: dict[str, Any] = {}
+
+    def capture_run(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(run_discovery, "run_discovery", capture_run)
+
+    code = main(
+        [
+            "crawl",
+            "discover",
+            "--input",
+            str(seeds),
+            "--output",
+            str(tmp_path / "discovery"),
+            "--config",
+            str(config),
+        ]
+    )
+
+    assert code == 0
+    assert captured["config"].contact == "ops@example.org"
+    assert captured["resume"] is False
+
+
+def test_crawl_help_mentions_resume_and_refresh(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["crawl", "run", "--help"]) == 0
+    text = capsys.readouterr().out.lower()
+    assert "--resume" in text
+    assert "--refresh" in text
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        ["--retry-policy-skips"],
+        ["--retry-truncated"],
+        ["--profile", "safe-fast"],
+        ["--max-query-variants-per-path", "5"],
+    ],
+)
+def test_removed_flags_are_unknown(
+    tmp_path: Path,
+    seeds: Path,
+    config: Path,
+    flag: list[str],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert crawl(seeds, tmp_path, config, *flag) == 2
+    assert "No such option" in capsys.readouterr().err
+
+
+def test_reextract_command_prints_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seen: list[Path] = []
+
+    def fake_reextract(output: Path, storage: object) -> ReextractSummary:
+        seen.append(output)
+        return ReextractSummary(pages=3, changed=2, duplicates=1)
+
+    monkeypatch.setattr(run_reextract, "reextract", fake_reextract)
+
+    code = main(["crawl", "reextract", "-o", str(tmp_path / "crawl")])
+
+    assert code == 0
+    assert seen == [tmp_path / "crawl"]
+    out = capsys.readouterr().out
+    assert "pages=3" in out
+    assert "changed=2" in out
+    assert "duplicates=1" in out

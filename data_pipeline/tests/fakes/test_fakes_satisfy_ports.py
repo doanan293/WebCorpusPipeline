@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from data_pipeline.corpus.application import ports as corpus_ports
-from data_pipeline.crawl.application import ports as crawl_ports
-from data_pipeline.domains.application import ports as domains_ports
-from data_pipeline.enrich.application import ports
+from data_pipeline.application.corpus import ports as corpus_ports
+from data_pipeline.application.crawl import ports as crawl_ports
+from data_pipeline.application.enrich import ports
+from data_pipeline.application.hosts import ports as hosts_ports
 from tests.fakes.corpus import FakeCorpusDatabase, FakePublisher
 from tests.fakes.crawl import FakeCrawlState, FakeEngine, FakeHtmlStore, FakeRefreshStore
-from tests.fakes.domains import FakeBrowser, FakeProber, MemoryReports
 from tests.fakes.enrich import (
     FakeArticleSource,
     FakeCloudParser,
@@ -16,6 +15,7 @@ from tests.fakes.enrich import (
     FakeTransport,
     FakeWorkState,
 )
+from tests.fakes.hosts import FakeBrowser, FakeProber, MemoryReports
 
 
 def _never(*_: object) -> Any:
@@ -49,13 +49,13 @@ def test_corpus_fakes_satisfy_their_ports() -> None:
     _check(publisher, corpus_ports.DatasetPublisher)
 
 
-def test_domains_fakes_satisfy_their_ports() -> None:
-    prober: domains_ports.HostProber = FakeProber(_never)
-    browser: domains_ports.BrowserProber = FakeBrowser(_never)
-    reports: domains_ports.AuditReports = MemoryReports()
-    _check(prober, domains_ports.HostProber)
-    _check(browser, domains_ports.BrowserProber)
-    _check(reports, domains_ports.AuditReports)
+def test_hosts_fakes_satisfy_their_ports() -> None:
+    prober: hosts_ports.HostProber = FakeProber(_never)
+    browser: hosts_ports.BrowserProber = FakeBrowser(_never)
+    reports: hosts_ports.AuditReports = MemoryReports()
+    _check(prober, hosts_ports.HostProber)
+    _check(browser, hosts_ports.BrowserProber)
+    _check(reports, hosts_ports.AuditReports)
 
 
 def test_crawl_fakes_satisfy_their_ports() -> None:

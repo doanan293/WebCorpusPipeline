@@ -4,8 +4,8 @@ import time
 
 import pytest
 
-from data_pipeline.crawl.domain.frontier.sitemaps import parse_sitemap
-from data_pipeline.shared.domain.url import canonicalize_url
+from data_pipeline.domain.crawl.frontier.sitemaps import parse_sitemap
+from data_pipeline.domain.shared.url import canonicalize_url
 
 
 @pytest.mark.performance

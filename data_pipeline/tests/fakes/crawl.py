@@ -9,12 +9,12 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from data_pipeline.crawl.application.ports import EngineResult, SpiderSetup
-from data_pipeline.crawl.domain.config import CrawlerConfig
-from data_pipeline.crawl.domain.frontier.assets import AssetRole
-from data_pipeline.crawl.domain.models import RawPage, RouteFamilyState
-from data_pipeline.crawl.domain.options import CrawlOptions
-from data_pipeline.crawl.domain.tuning import RuntimeTuning
+from data_pipeline.application.crawl.ports import EngineResult, SpiderSetup
+from data_pipeline.domain.crawl.config import CrawlerConfig
+from data_pipeline.domain.crawl.frontier.assets import AssetRole
+from data_pipeline.domain.crawl.models import RawPage, RouteFamilyState
+from data_pipeline.domain.crawl.options import CrawlOptions
+from data_pipeline.domain.crawl.tuning import RuntimeTuning
 
 
 class FakeCrawlState:

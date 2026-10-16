@@ -10,17 +10,17 @@ from urllib.parse import urlsplit
 
 from scrapy.http import HtmlResponse, Request, Response, TextResponse
 
-from data_pipeline.crawl.application.page_pipeline import PagePipeline
-from data_pipeline.crawl.application.writer import CrawlWriter
-from data_pipeline.crawl.domain.config import CrawlerConfig
-from data_pipeline.crawl.domain.frontier.assets import AssetPolicy
-from data_pipeline.crawl.domain.frontier.frontier import FrontierPolicy
-from data_pipeline.crawl.domain.frontier.sitemaps import SitemapDiscoveryCoordinator
-from data_pipeline.crawl.domain.options import CrawlOptions
-from data_pipeline.crawl.domain.seeds import SeedSet
-from data_pipeline.crawl.infrastructure.scrapy.unified_spider import UnifiedSpider
-from data_pipeline.crawl.infrastructure.sqlite.discovery_rows import upsert_host_discovery
-from data_pipeline.crawl.infrastructure.sqlite.state_store import SqliteCrawlState
+from data_pipeline.application.crawl.page_pipeline import PagePipeline
+from data_pipeline.application.crawl.writer import CrawlWriter
+from data_pipeline.domain.crawl.config import CrawlerConfig
+from data_pipeline.domain.crawl.frontier.assets import AssetPolicy
+from data_pipeline.domain.crawl.frontier.frontier import FrontierPolicy
+from data_pipeline.domain.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
+from data_pipeline.domain.crawl.options import CrawlOptions
+from data_pipeline.domain.crawl.seeds import SeedSet
+from data_pipeline.infrastructure.crawl.scrapy.unified_spider import UnifiedSpider
+from data_pipeline.infrastructure.crawl.sqlite.discovery_rows import upsert_host_discovery
+from data_pipeline.infrastructure.crawl.sqlite.state_store import SqliteCrawlState
 
 
 @dataclass(frozen=True, slots=True)
