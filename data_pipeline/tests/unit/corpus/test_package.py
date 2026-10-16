@@ -8,6 +8,7 @@ from data_pipeline.corpus import package as corpus_package
 from data_pipeline.corpus.package import package_corpus, verify_corpus
 from data_pipeline.enrich.application.inventory import index_inventory
 from data_pipeline.enrich.domain.models import DownloadedFile, ParseResult
+from data_pipeline.enrich.infrastructure.files.articles import JsonlArticleSource
 from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
 
 
@@ -24,7 +25,7 @@ def write_source(folder: Path, urls: list[str]) -> Path:
 
 def package(tmp_path: Path, source: Path, work: str = "work", out: str = "corpus") -> Path:
     with WorkState.open(tmp_path / work, "c1") as state:
-        index_inventory(source, state)
+        index_inventory(JsonlArticleSource(source), state)
         settle(state)
         return package_corpus(source, state, tmp_path / out)
 
@@ -43,7 +44,7 @@ def test_package_refuses_unresolved_enrichment(tmp_path: Path) -> None:
     source = write_source(tmp_path / "source", ["https://example.test/a"])
 
     with WorkState.open(tmp_path / "work", "c1") as state:
-        index_inventory(source, state)
+        index_inventory(JsonlArticleSource(source), state)
         with pytest.raises(ValueError, match="downloads are pending"):
             package_corpus(source, state, tmp_path / "corpus")
 
@@ -78,7 +79,7 @@ def test_package_is_deterministic_across_insert_order(tmp_path: Path) -> None:
     for name, order in (("one", urls), ("two", list(reversed(urls)))):
         source = write_source(tmp_path / f"source-{name}", urls)
         with WorkState.open(tmp_path / f"work-{name}", "c1") as state:
-            index_inventory(source, state)
+            index_inventory(JsonlArticleSource(source), state)
             download_all(state, [f"{url}.pdf" for url in order])
             output = package_corpus(source, state, tmp_path / f"corpus-{name}")
         snapshots.append(json.loads((output / "manifest.json").read_text())["snapshot_id"])
@@ -91,7 +92,7 @@ def test_report_comes_from_state_summary(tmp_path: Path) -> None:
     (tmp_path / "work").mkdir()
     (tmp_path / "work" / "extraction-report.json").write_text('{"stale": true}')
     with WorkState.open(tmp_path / "work", "c1") as state:
-        index_inventory(source, state)
+        index_inventory(JsonlArticleSource(source), state)
         settle(state)
         output = package_corpus(source, state, tmp_path / "corpus")
 
@@ -114,7 +115,7 @@ def test_package_keeps_old_output_when_copy_fails(
 
     monkeypatch.setattr(corpus_package, "build_graph", fail)
     with WorkState.open(tmp_path / "work", "c1") as state:
-        index_inventory(source, state)
+        index_inventory(JsonlArticleSource(source), state)
         settle(state)
         with pytest.raises(OSError, match="disk full"):
             package_corpus(source, state, old)
@@ -126,7 +127,7 @@ def test_package_keeps_old_output_when_copy_fails(
 def test_output_dir_mode_is_0755(tmp_path: Path) -> None:
     source = write_source(tmp_path / "source", ["https://example.test/a"])
     with WorkState.open(tmp_path / "work", "c1") as state:
-        index_inventory(source, state)
+        index_inventory(JsonlArticleSource(source), state)
         settle(state)
         output = package_corpus(source, state, tmp_path / "corpus")
 
@@ -136,7 +137,7 @@ def test_output_dir_mode_is_0755(tmp_path: Path) -> None:
 def test_manifest_counts_lines(tmp_path: Path) -> None:
     source = write_source(tmp_path / "source", ["https://example.test/a", "https://example.test/b"])
     with WorkState.open(tmp_path / "work", "c1") as state:
-        index_inventory(source, state)
+        index_inventory(JsonlArticleSource(source), state)
         settle(state)
         output = package_corpus(source, state, tmp_path / "corpus")
 
@@ -149,7 +150,7 @@ def test_manifest_counts_lines(tmp_path: Path) -> None:
 def test_package_names_cloud_failures(tmp_path: Path) -> None:
     source = write_source(tmp_path / "source", ["https://example.test/a"])
     with WorkState.open(tmp_path / "work", "c1") as state:
-        index_inventory(source, state)
+        index_inventory(JsonlArticleSource(source), state)
         download_all(state, ["https://example.test/a.pdf"])
         failed = ParseResult("sha", [], "cloud_failed", ["transient: boom"], {})
         state.mark_parse("https://example.test/a.pdf", failed, used_cloud=True)

@@ -5,11 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from data_pipeline.enrich.application.inventory import index_inventory, source_key
+from data_pipeline.enrich.application.inventory import index_inventory
 from data_pipeline.enrich.application.session import open_work_state
 from data_pipeline.enrich.domain.models import SourceProgress
-from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState, read_crawl_id
+from data_pipeline.enrich.infrastructure.files.articles import JsonlArticleSource, source_key
+from data_pipeline.enrich.infrastructure.sqlite.work_state import WorkState
 from data_pipeline.shared.domain.config import Settings
+from tests.fakes.enrich import FakeArticleSource
 
 
 def write_source(
@@ -37,9 +39,11 @@ def test_read_crawl_id_from_readme_or_summary(tmp_path: Path) -> None:
     changes = write_source(tmp_path / "changes", [], crawl_id=None)
     (changes / "summary.json").write_text(json.dumps({"crawl_id": "c1"}), encoding="utf-8")
 
-    assert read_crawl_id(final) == "c1"
-    assert read_crawl_id(changes) == "c1"
-    assert read_crawl_id(write_source(tmp_path / "plain", [], crawl_id=None)) is None
+    assert JsonlArticleSource(final).crawl_id() == "c1"
+    assert JsonlArticleSource(changes).crawl_id() == "c1"
+    assert (
+        JsonlArticleSource(write_source(tmp_path / "plain", [], crawl_id=None)).crawl_id() is None
+    )
 
 
 def test_open_rejects_other_crawl_id(tmp_path: Path) -> None:
@@ -71,7 +75,7 @@ def test_source_without_crawl_id_is_rejected(tmp_path: Path) -> None:
 
     with (
         pytest.raises(ValueError, match="crawl_id"),
-        open_work_state(settings, rebind=False),
+        open_work_state(settings, rebind=False, crawl_id=None),
     ):
         pass
 
@@ -82,9 +86,9 @@ def test_inventory_keeps_a_cursor_per_source(tmp_path: Path) -> None:
         tmp_path / "changes" / "R", [page("https://a.test/new", "https://a.test/g.pdf")]
     )
     with WorkState.open(tmp_path / "work", "c1") as state:
-        index_inventory(final, state)
-        index_inventory(changes, state)
-        index_inventory(final, state)
+        index_inventory(JsonlArticleSource(final), state)
+        index_inventory(JsonlArticleSource(changes), state)
+        index_inventory(JsonlArticleSource(final), state)
 
         assert state.inventory_done(source_key(final))
         assert state.inventory_done(source_key(changes))
@@ -101,8 +105,8 @@ def test_modified_page_refs_are_replaced(tmp_path: Path) -> None:
         json.dumps({"url": "https://a.test/hub", "change": "modified"}) + "\n", encoding="utf-8"
     )
     with WorkState.open(tmp_path / "work", "c1") as state:
-        index_inventory(final, state)
-        index_inventory(changes, state)
+        index_inventory(JsonlArticleSource(final), state)
+        index_inventory(JsonlArticleSource(changes), state)
 
         assert refs(state) == {("https://a.test/hub", "https://a.test/new.pdf")}
 
@@ -125,7 +129,7 @@ def test_resumed_changes_inventory_does_not_delete_refs_again(tmp_path: Path) ->
         )
         state.conn.commit()
 
-        index_inventory(changes, state)
+        index_inventory(JsonlArticleSource(changes), state)
 
         assert ("https://a.test/hub", "https://a.test/kept") in refs(state)
 
@@ -133,26 +137,26 @@ def test_resumed_changes_inventory_does_not_delete_refs_again(tmp_path: Path) ->
 def test_inventory_restarts_when_source_file_changes(tmp_path: Path) -> None:
     final = write_source(tmp_path / "final", [page("https://a.test/", "https://a.test/f.pdf")])
     with WorkState.open(tmp_path / "work", "c1") as state:
-        index_inventory(final, state)
+        index_inventory(JsonlArticleSource(final), state)
         write_source(
             final,
             [page("https://a.test/rewritten-hub-with-a-longer-url", "https://a.test/g.pdf")],
         )
 
-        index_inventory(final, state)
+        index_inventory(JsonlArticleSource(final), state)
 
         urls = {row[0] for row in state.conn.execute("SELECT url FROM inventory")}
         assert urls == {"https://a.test/f.pdf", "https://a.test/g.pdf"}
 
 
 def test_inventory_returns_early_when_done(tmp_path: Path) -> None:
-    final = write_source(tmp_path / "final", [page("https://a.test/", "https://a.test/f.pdf")])
+    source = FakeArticleSource([page("https://a.test/", "https://a.test/f.pdf")])
     with WorkState.open(tmp_path / "work", "c1") as state:
-        index_inventory(final, state)
+        index_inventory(source, state)
         state.conn.execute("DELETE FROM inventory")
         state.conn.commit()
 
-        summary = index_inventory(final, state)
+        summary = index_inventory(source, state)
 
         assert summary.candidates == 0
         assert state.conn.execute("SELECT count(*) FROM inventory").fetchone()[0] == 0
@@ -163,7 +167,7 @@ def test_refs_stored_only_for_document_targets(tmp_path: Path) -> None:
     row["assets"] = [{"url": "https://a.test/logo.png", "role": "inline_image"}]
     final = write_source(tmp_path / "final", [row])
     with WorkState.open(tmp_path / "work", "c1") as state:
-        index_inventory(final, state)
+        index_inventory(JsonlArticleSource(final), state)
 
         assert refs(state) == {("https://a.test/", "https://a.test/f.pdf")}
 
@@ -171,7 +175,7 @@ def test_refs_stored_only_for_document_targets(tmp_path: Path) -> None:
 def test_inventory_is_not_done_after_source_rewrite(tmp_path: Path) -> None:
     final = write_source(tmp_path / "final", [page("https://a.test/", "https://a.test/f.pdf")])
     with WorkState.open(tmp_path / "work", "c1") as state:
-        index_inventory(final, state)
+        index_inventory(JsonlArticleSource(final), state)
         assert state.inventory_done(source_key(final))
 
         write_source(final, [page("https://a.test/refreshed-page", "https://a.test/g.pdf")])

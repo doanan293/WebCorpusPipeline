@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import AbstractAsyncContextManager
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from data_pipeline.enrich.domain.models import DownloadedFile, DownloadJob, HttpResponse, RunSummary
 from data_pipeline.shared.domain.config import Settings
@@ -69,3 +69,18 @@ class WorkState(Protocol):
     def next_retry_delay(self) -> float | None: ...
 
     def summary(self) -> RunSummary: ...
+
+
+class ArticleSource(Protocol):
+    """The crawl's article rows, read from a byte offset so inventory can resume."""
+
+    @property
+    def key(self) -> str: ...
+
+    def crawl_id(self) -> str | None: ...
+
+    def stat(self) -> tuple[int, int]: ...
+
+    def modified_pages(self) -> set[str]: ...
+
+    def rows(self, offset: int) -> Iterator[tuple[dict[str, Any], int]]: ...

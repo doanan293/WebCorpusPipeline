@@ -20,7 +20,7 @@ def recorded(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     seen: dict[str, object] = {}
 
     @contextmanager
-    def open_work_state(settings: Settings, *, rebind: bool) -> Iterator[object]:
+    def open_work_state(settings: Settings, *, rebind: bool, **_: object) -> Iterator[object]:
         seen["settings"] = settings
         seen["rebind"] = rebind
         seen["state"] = state = object()

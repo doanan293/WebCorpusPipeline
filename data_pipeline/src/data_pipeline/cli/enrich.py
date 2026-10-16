@@ -10,6 +10,7 @@ import typer
 from data_pipeline.cli import context
 from data_pipeline.cli.context import JsonOption, RebindOption, SourceOption, WorkDirOption
 from data_pipeline.enrich.domain.models import RunSummary, jsonable
+from data_pipeline.enrich.infrastructure.files.articles import JsonlArticleSource, source_key
 
 app = typer.Typer(help="Download crawled documents and extract their text.", no_args_is_help=True)
 
@@ -38,8 +39,10 @@ def inventory(
     from data_pipeline.enrich.application import session
 
     settings = context.build_settings(source, work_dir)
-    with session.open_work_state(settings, rebind=rebind_source) as state:
-        summary = enrich_inventory.index_inventory(settings.source_path, state)
+    with session.open_work_state(
+        settings, rebind=rebind_source, crawl_id=context.source_crawl_id(settings)
+    ) as state:
+        summary = enrich_inventory.index_inventory(JsonlArticleSource(settings.source_path), state)
     print(json.dumps(jsonable(summary), ensure_ascii=False, indent=2))
     return 0
 
@@ -62,7 +65,9 @@ def download(
     from data_pipeline.enrich.infrastructure.http.aiohttp_transport import PublicTransport
 
     settings = context.build_settings(source, work_dir)
-    with session.open_work_state(settings, rebind=rebind_source) as state:
+    with session.open_work_state(
+        settings, rebind=rebind_source, crawl_id=context.source_crawl_id(settings)
+    ) as state:
         if retry_failed:
             print(f"requeued {state.reset_failed_downloads()} failed downloads")
         summary = asyncio.run(
@@ -93,7 +98,9 @@ def extract(
 
     settings = context.build_settings(source, work_dir)
     api_keys = load_api_keys(context.current_paths().env_file)
-    with session.open_work_state(settings, rebind=rebind_source) as state:
+    with session.open_work_state(
+        settings, rebind=rebind_source, crawl_id=context.source_crawl_id(settings)
+    ) as state:
         if reparse_cloud:
             print(f"requeued {state.requeue_cloud_parses()} documents for LlamaParse")
         summary = pipeline.extract_documents(state, settings, api_keys=api_keys)
@@ -118,9 +125,11 @@ def run(
 
     settings = context.build_settings(source, work_dir)
     api_keys = load_api_keys(context.current_paths().env_file)
-    with session.open_work_state(settings, rebind=rebind_source) as state:
-        if not state.inventory_done(enrich_inventory.source_key(settings.source_path)):
-            enrich_inventory.index_inventory(settings.source_path, state)
+    with session.open_work_state(
+        settings, rebind=rebind_source, crawl_id=context.source_crawl_id(settings)
+    ) as state:
+        if not state.inventory_done(source_key(settings.source_path)):
+            enrich_inventory.index_inventory(JsonlArticleSource(settings.source_path), state)
         asyncio.run(
             downloader.run_downloads(
                 state, settings, transport_factory=PublicTransport, files=LocalDownloadFiles()
@@ -141,7 +150,9 @@ def status(
     from data_pipeline.enrich.application import session
 
     settings = context.build_settings(source, work_dir)
-    with session.open_work_state(settings, rebind=rebind_source) as state:
+    with session.open_work_state(
+        settings, rebind=rebind_source, crawl_id=context.source_crawl_id(settings)
+    ) as state:
         summary = state.summary()
     return _summary(summary, json_output)
 
@@ -158,7 +169,9 @@ def export(
     from data_pipeline.enrich.application import session
 
     settings = context.build_settings(source, work_dir)
-    with session.open_work_state(settings, rebind=rebind_source) as state:
+    with session.open_work_state(
+        settings, rebind=rebind_source, crawl_id=context.source_crawl_id(settings)
+    ) as state:
         enrich_export.export_enrichment(state, output)
     return 0
 

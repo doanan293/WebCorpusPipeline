@@ -45,3 +45,10 @@ def build_settings(source: Path | None, work_dir: Path | None) -> Settings:
     if work_dir is not None:
         overrides["work_dir"] = work_dir.resolve()
     return load_settings(current_paths(), overrides)
+
+
+def source_crawl_id(settings: Settings) -> str | None:
+    """The crawl id recorded next to the crawl output enrichment reads."""
+    from data_pipeline.enrich.infrastructure.files.articles import JsonlArticleSource
+
+    return JsonlArticleSource(settings.source_path).crawl_id()

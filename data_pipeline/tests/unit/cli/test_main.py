@@ -29,7 +29,7 @@ class FakeState:
 
 def fake_open_work_state(seen: dict[str, object], summary: RunSummary | None = None) -> object:
     @contextmanager
-    def open_work_state(settings: Settings, *, rebind: bool) -> Iterator[FakeState]:
+    def open_work_state(settings: Settings, *, rebind: bool, **_: object) -> Iterator[FakeState]:
         seen["settings"] = settings
         seen["rebind"] = rebind
         yield FakeState(summary or RunSummary())

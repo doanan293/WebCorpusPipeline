@@ -39,7 +39,7 @@ def state(monkeypatch: pytest.MonkeyPatch) -> FakeState:
     fake = FakeState()
 
     @contextmanager
-    def open_work_state(settings: Settings, *, rebind: bool) -> Iterator[FakeState]:
+    def open_work_state(settings: Settings, *, rebind: bool, **_: object) -> Iterator[FakeState]:
         yield fake
 
     monkeypatch.setattr(enrich_session, "open_work_state", open_work_state)

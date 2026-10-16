@@ -25,21 +25,6 @@ from data_pipeline.enrich.domain.serializers import parse_result_from_dict
 from data_pipeline.enrich.infrastructure.files.download_files import verify_file
 
 
-def read_crawl_id(source: Path) -> str | None:
-    folder = source if source.is_dir() else source.parent
-    for name in ("README.json", "summary.json"):
-        path = folder / name
-        if not path.exists():
-            continue
-        try:
-            value = json.loads(path.read_text(encoding="utf-8")).get("crawl_id")
-        except (json.JSONDecodeError, AttributeError):
-            continue
-        if value:
-            return str(value)
-    return None
-
-
 def _locked[**P, R](
     method: Callable[Concatenate[WorkState, P], R],
 ) -> Callable[Concatenate[WorkState, P], R]:
