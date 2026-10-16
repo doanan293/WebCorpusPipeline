@@ -83,11 +83,11 @@ def run(
     ] = False,
 ) -> int:
     """Crawl hostname and exact-URL seeds with the unified hybrid crawler."""
-    from data_pipeline.crawl.config import CrawlerConfig
-    from data_pipeline.crawl.frontier.seeds import parse_seed_file
-    from data_pipeline.crawl.options import crawl_options_from_config
-    from data_pipeline.crawl.run import full as run_full
-    from data_pipeline.crawl.runtime.profiles import resolve_runtime_tuning
+    from data_pipeline.crawl.application import run_crawl as run_full
+    from data_pipeline.crawl.domain.config import CrawlerConfig
+    from data_pipeline.crawl.domain.options import crawl_options_from_config
+    from data_pipeline.crawl.domain.seeds import parse_seed_file
+    from data_pipeline.crawl.domain.tuning import resolve_runtime_tuning
 
     run_full.validate_mode_flags(
         resume=resume,
@@ -159,10 +159,10 @@ def discover(
     ] = False,
 ) -> int:
     """Sitemap-only URL discovery for mixed hostname and exact URL seeds."""
-    from data_pipeline.crawl.config import CrawlerConfig
-    from data_pipeline.crawl.frontier.seeds import parse_seed_file
-    from data_pipeline.crawl.run import discovery as run_discovery
-    from data_pipeline.crawl.runtime.profiles import resolve_runtime_tuning
+    from data_pipeline.crawl.application import run_discovery
+    from data_pipeline.crawl.domain.config import CrawlerConfig
+    from data_pipeline.crawl.domain.seeds import parse_seed_file
+    from data_pipeline.crawl.domain.tuning import resolve_runtime_tuning
 
     if not input_path.is_file():
         return errors.fail(f"input file not found: {input_path}")
@@ -200,7 +200,7 @@ def reextract(
     ],
 ) -> int:
     """Re-run extraction on the stored raw HTML of a finished crawl and rebuild final/ (offline)."""
-    from data_pipeline.crawl.run import reextract as run_reextract
+    from data_pipeline.crawl.application import reextract as run_reextract
 
     summary = run_reextract.reextract(output)
     print(

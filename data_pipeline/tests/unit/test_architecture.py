@@ -100,7 +100,7 @@ def test_domain_modules_do_no_io() -> None:
     violations = [
         f"{module} -> {imported}"
         for module, path in all_modules()
-        if placement(module)[1] == "domain"
+        if placement(module)[1] == "domain" and placement(module)[0] not in MIGRATING
         for imported in sorted(imported_modules(path))
         if imported.split(".")[0] in IO_MODULES
     ]

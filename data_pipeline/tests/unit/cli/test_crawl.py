@@ -7,10 +7,10 @@ import pytest
 import yaml
 
 from data_pipeline.cli.main import main
-from data_pipeline.crawl.run import discovery as run_discovery
-from data_pipeline.crawl.run import full as run_full
-from data_pipeline.crawl.run import reextract as run_reextract
-from data_pipeline.crawl.run.reextract import ReextractSummary
+from data_pipeline.crawl.application import reextract as run_reextract
+from data_pipeline.crawl.application import run_crawl as run_full
+from data_pipeline.crawl.application import run_discovery
+from data_pipeline.crawl.application.reextract import ReextractSummary
 from data_pipeline.shared.domain.config import ProjectPaths
 
 

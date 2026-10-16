@@ -10,16 +10,16 @@ from urllib.parse import urlsplit
 
 from scrapy.http import HtmlResponse, Request, Response, TextResponse
 
-from data_pipeline.crawl.config import CrawlerConfig
-from data_pipeline.crawl.frontier.assets import AssetPolicy
-from data_pipeline.crawl.frontier.frontier import FrontierPolicy
-from data_pipeline.crawl.frontier.seeds import SeedSet
-from data_pipeline.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
-from data_pipeline.crawl.options import CrawlOptions
-from data_pipeline.crawl.output.writer import CrawlWriter
-from data_pipeline.crawl.spider.unified import UnifiedSpider
-from data_pipeline.crawl.state.discovery import upsert_host_discovery
-from data_pipeline.crawl.state.store import CrawlState
+from data_pipeline.crawl.application.writer import CrawlWriter
+from data_pipeline.crawl.domain.config import CrawlerConfig
+from data_pipeline.crawl.domain.frontier.assets import AssetPolicy
+from data_pipeline.crawl.domain.frontier.frontier import FrontierPolicy
+from data_pipeline.crawl.domain.frontier.sitemaps import SitemapDiscoveryCoordinator
+from data_pipeline.crawl.domain.options import CrawlOptions
+from data_pipeline.crawl.domain.seeds import SeedSet
+from data_pipeline.crawl.infrastructure.scrapy.unified_spider import UnifiedSpider
+from data_pipeline.crawl.infrastructure.sqlite.discovery_rows import upsert_host_discovery
+from data_pipeline.crawl.infrastructure.sqlite.state_store import CrawlState
 
 
 @dataclass(frozen=True, slots=True)

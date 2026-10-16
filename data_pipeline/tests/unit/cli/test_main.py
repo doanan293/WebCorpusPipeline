@@ -12,7 +12,7 @@ from pymongo.errors import ServerSelectionTimeoutError
 from data_pipeline.cli.main import main
 from data_pipeline.corpus.application import package
 from data_pipeline.corpus.infrastructure import mongo as mongo_adapter
-from data_pipeline.crawl import run as run_package
+from data_pipeline.crawl import application as crawl_application
 from data_pipeline.enrich.application import download as downloader
 from data_pipeline.enrich.application import session as enrich_session
 from data_pipeline.enrich.domain.models import RunSummary
@@ -106,8 +106,8 @@ def test_missing_extra_prints_an_install_hint(
     capsys: pytest.CaptureFixture[str],
     project: ProjectPaths,
 ) -> None:
-    monkeypatch.delitem(sys.modules, "data_pipeline.crawl.run.full", raising=False)
-    monkeypatch.delattr(run_package, "full", raising=False)
+    monkeypatch.delitem(sys.modules, "data_pipeline.crawl.application.run_crawl", raising=False)
+    monkeypatch.delattr(crawl_application, "run_crawl", raising=False)
     monkeypatch.setitem(sys.modules, "scrapy.crawler", None)
     seeds = tmp_path / "seeds.txt"
     seeds.write_text("a.test\n", encoding="utf-8")
