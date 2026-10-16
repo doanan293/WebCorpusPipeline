@@ -58,6 +58,107 @@ class DownloadFiles(Protocol):
     ) -> DownloadedFile: ...
 
 
+class Inventory(Protocol):
+    """Which crawl sources were read and which files they point at."""
+
+    def source_progress(self, source_key: str) -> SourceProgress | None: ...
+
+    def add_inventory_batch(
+        self, candidates: list[str], refs: list[SourceRef], progress: SourceProgress
+    ) -> None: ...
+
+    def inventory_done(self, source_key: str) -> bool: ...
+
+    def inventory_counts(self) -> InventorySummary: ...
+
+    def delete_refs_from(self, source_urls: Iterable[str]) -> None: ...
+
+    def refs_for(self, target: str) -> list[dict[str, Any]]: ...
+
+    def inventory_rows(self) -> Iterable[Mapping[str, Any]]: ...
+
+
+class Downloads(Protocol):
+    """The download queue: claim a file, checkpoint it, finish it, retry it later."""
+
+    def claim_download(self) -> DownloadJob | None: ...
+
+    def checkpoint_download(self, job: DownloadJob) -> None: ...
+
+    def mark_finalizing(self, file: DownloadedFile) -> None: ...
+
+    def mark_downloaded(self, file: DownloadedFile) -> None: ...
+
+    def next_retry_delay(self) -> float | None: ...
+
+    def reset_failed_downloads(self) -> int: ...
+
+
+class Parses(Protocol):
+    """Parse results per downloaded file, and the cloud parse jobs behind them."""
+
+    def pending_parse(self) -> Iterator[DownloadedFile]: ...
+
+    def mark_parse(
+        self,
+        url: str,
+        result: ParseResult,
+        cache_path: Path | None = None,
+        *,
+        used_cloud: bool = False,
+    ) -> None: ...
+
+    def parse_record(self, url: str) -> ParseResult | None: ...
+
+    def requeue_cloud_parses(self) -> int: ...
+
+    def save_cloud_job(
+        self,
+        request_id: str,
+        url: str,
+        *,
+        file_id: str | None = None,
+        job_id: str | None = None,
+        key_label: str | None = None,
+        key_fingerprint: str | None = None,
+        status: str = "accepted",
+        payload: str | None = None,
+    ) -> None: ...
+
+
+class Failures(Protocol):
+    """Failed downloads and parses, with when to retry them."""
+
+    def record_failure(
+        self, url: str, stage: str, reason: str, retry_at: float | None = None
+    ) -> None: ...
+
+
+class EnrichUnitOfWork(Protocol):
+    """One open work state: its repositories share one connection and one write lock."""
+
+    @property
+    def inventory(self) -> Inventory: ...
+
+    @property
+    def downloads(self) -> Downloads: ...
+
+    @property
+    def parses(self) -> Parses: ...
+
+    @property
+    def failures(self) -> Failures: ...
+
+    @property
+    def root(self) -> Path: ...
+
+    def recover(self) -> None: ...
+
+    def summary(self) -> RunSummary: ...
+
+    def close(self) -> None: ...
+
+
 class WorkState(Protocol):
     """The enrichment work state: inventory, downloads, parse results and failures."""
 

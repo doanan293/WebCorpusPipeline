@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -103,6 +104,133 @@ class FakeCloudParser:
     ) -> ParseResult:
         self.calls.append(document_url)
         return self._parse(document_url, file, local, missing)
+
+
+@dataclass
+class _EnrichMemory:
+    """What the fake enrich repositories of one unit of work share."""
+
+    inventory_is_done: bool = False
+    requeued: bool = False
+
+
+class FakeInventory:
+    """An inventory that is empty; ``inventory_done`` answers from the shared memory."""
+
+    def __init__(self, memory: _EnrichMemory) -> None:
+        self.memory = memory
+
+    def source_progress(self, source_key: str) -> SourceProgress | None:
+        return None
+
+    def add_inventory_batch(
+        self, candidates: list[str], refs: list[SourceRef], progress: SourceProgress
+    ) -> None:
+        return None
+
+    def inventory_done(self, source_key: str) -> bool:
+        return self.memory.inventory_is_done
+
+    def inventory_counts(self) -> InventorySummary:
+        return InventorySummary(0, 0)
+
+    def delete_refs_from(self, source_urls: Iterable[str]) -> None:
+        return None
+
+    def refs_for(self, target: str) -> list[dict[str, Any]]:
+        return []
+
+    def inventory_rows(self) -> Iterable[Mapping[str, Any]]:
+        return []
+
+
+class FakeDownloads:
+    """A download queue with nothing in it."""
+
+    def __init__(self, memory: _EnrichMemory) -> None:
+        self.memory = memory
+
+    def claim_download(self) -> DownloadJob | None:
+        return None
+
+    def checkpoint_download(self, job: DownloadJob) -> None:
+        return None
+
+    def mark_finalizing(self, file: DownloadedFile) -> None:
+        return None
+
+    def mark_downloaded(self, file: DownloadedFile) -> None:
+        return None
+
+    def next_retry_delay(self) -> float | None:
+        return None
+
+    def reset_failed_downloads(self) -> int:
+        return 0
+
+
+class FakeParses:
+    """Parse results that are never stored; a cloud requeue is noted in the shared memory."""
+
+    def __init__(self, memory: _EnrichMemory) -> None:
+        self.memory = memory
+
+    def pending_parse(self) -> Iterator[DownloadedFile]:
+        return iter(())
+
+    def mark_parse(
+        self,
+        url: str,
+        result: ParseResult,
+        cache_path: Path | None = None,
+        *,
+        used_cloud: bool = False,
+    ) -> None:
+        return None
+
+    def parse_record(self, url: str) -> ParseResult | None:
+        return None
+
+    def requeue_cloud_parses(self) -> int:
+        self.memory.requeued = True
+        return 3
+
+    def save_cloud_job(self, request_id: str, url: str, **fields: str | None) -> None:
+        return None
+
+
+class FakeFailures:
+    """Failures that are ignored."""
+
+    def __init__(self, memory: _EnrichMemory) -> None:
+        self.memory = memory
+
+    def record_failure(
+        self, url: str, stage: str, reason: str, retry_at: float | None = None
+    ) -> None:
+        return None
+
+
+class FakeEnrichUnitOfWork:
+    """A work state that holds nothing, split into the repositories of a unit of work."""
+
+    def __init__(self, root: Path = Path("work"), summary: RunSummary | None = None) -> None:
+        self.root = root
+        self.memory = _EnrichMemory()
+        self.inventory = FakeInventory(self.memory)
+        self.downloads = FakeDownloads(self.memory)
+        self.parses = FakeParses(self.memory)
+        self.failures = FakeFailures(self.memory)
+        self._summary = summary or RunSummary(downloaded=2, parsed=1)
+
+    def recover(self) -> None:
+        return None
+
+    def summary(self) -> RunSummary:
+        return self._summary
+
+    def close(self) -> None:
+        return None
 
 
 class FakeWorkState:

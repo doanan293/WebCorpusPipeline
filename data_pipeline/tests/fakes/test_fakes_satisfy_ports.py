@@ -14,6 +14,7 @@ from tests.fakes.crawl import (
 from tests.fakes.enrich import (
     FakeArticleSource,
     FakeCloudParser,
+    FakeEnrichUnitOfWork,
     FakeLocalParser,
     FakeTransport,
     FakeWorkState,
@@ -100,3 +101,19 @@ def test_fake_repositories_share_one_memory() -> None:
     )
     assert uow.articles.article("https://a.test/") == {"url": "https://a.test/", "text": "t"}
     assert uow.urls.is_finished("https://a.test/")
+
+
+def test_enrich_repository_fakes_satisfy_their_ports() -> None:
+    uow: ports.EnrichUnitOfWork = FakeEnrichUnitOfWork()
+    inventory: ports.Inventory = uow.inventory
+    downloads: ports.Downloads = uow.downloads
+    parses: ports.Parses = uow.parses
+    failures: ports.Failures = uow.failures
+    for fake, port in (
+        (uow, ports.EnrichUnitOfWork),
+        (inventory, ports.Inventory),
+        (downloads, ports.Downloads),
+        (parses, ports.Parses),
+        (failures, ports.Failures),
+    ):
+        _check(fake, port)
