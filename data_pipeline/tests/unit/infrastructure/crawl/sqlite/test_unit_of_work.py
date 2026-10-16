@@ -55,3 +55,15 @@ def test_close_releases_the_lock_after_an_error(tmp_path: Path) -> None:
     assert not (tmp_path / "state" / "run.lock").exists()
     reopened = SqliteCrawlUnitOfWork.open_existing(tmp_path / "state")
     reopened.close()
+
+
+def test_opening_a_state_without_refresh_adds_no_refresh_tables(tmp_path: Path) -> None:
+    uow = open_uow(tmp_path)
+    try:
+        tables = {
+            str(row[0])
+            for row in uow.connection.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        }
+    finally:
+        uow.close()
+    assert not {name for name in tables if name.startswith("refresh_")}

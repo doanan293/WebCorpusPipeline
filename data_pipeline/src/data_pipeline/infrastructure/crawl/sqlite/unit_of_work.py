@@ -67,7 +67,7 @@ class SqliteCrawlUnitOfWork:
         self.assets = SqliteAssets(connection)
         self.families = SqliteRouteFamilies(connection)
         self.hosts = SqliteHostDiscovery(connection)
-        self.refresh = RefreshStore(connection)
+        self._refresh: RefreshStore | None = None
         self.html = HtmlStore(html_dir, connection)
 
     @classmethod
@@ -187,6 +187,13 @@ class SqliteCrawlUnitOfWork:
             );
             """
         )
+
+    @property
+    def refresh(self) -> RefreshStore:
+        """The refresh runs; their tables are created on first use, so only refresh adds them."""
+        if self._refresh is None:
+            self._refresh = RefreshStore(self.connection)
+        return self._refresh
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
