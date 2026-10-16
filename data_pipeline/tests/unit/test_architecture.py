@@ -45,6 +45,7 @@ def imported_modules(path: Path) -> set[str]:
     for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
         if isinstance(node, ast.Import):
             imported.update(alias.name for alias in node.names)
+        # Relative imports are skipped here; ruff's ban-relative-imports = "all" forbids them.
         elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
             imported.add(node.module)
             imported.update(f"{node.module}.{alias.name}" for alias in node.names)
@@ -66,7 +67,7 @@ def allowed(importer: str, imported: str) -> bool:
     layer, context = placement(importer)
     target_layer, target_context = placement(imported)
     if layer == BOOTSTRAP:
-        return True
+        return target_layer not in OUTER
     # Entry points call use cases and bootstrap; they never build adapters themselves.
     if layer in OUTER:
         return target_layer != "infrastructure" and target_layer not in OUTER - {layer}
@@ -81,7 +82,8 @@ def allowed(importer: str, imported: str) -> bool:
         return False
     # Infrastructure reaches the application layer only through its context's ports.
     if layer == "infrastructure" and target_layer == "application":
-        return imported.startswith(f"data_pipeline.application.{context}.ports")
+        ports = f"data_pipeline.application.{context}.ports"
+        return imported == ports or imported.startswith(f"{ports}.")
     return RANK[target_layer] <= RANK[layer]
 
 
@@ -155,6 +157,8 @@ def test_entry_points_do_not_build_adapters() -> None:
     assert allowed("data_pipeline.cli.crawl", "data_pipeline.application.crawl.run_crawl")
     assert allowed("data_pipeline.bootstrap", "data_pipeline.infrastructure.crawl.scrapy.runner")
     assert not allowed("data_pipeline.application.crawl.run_crawl", "data_pipeline.bootstrap")
+    # The composition root serves the entry points; it never reaches back into them.
+    assert not allowed("data_pipeline.bootstrap", "data_pipeline.cli.context")
 
 
 def test_layers_point_inwards() -> None:
@@ -173,6 +177,8 @@ def test_infrastructure_may_import_only_ports_from_application() -> None:
     assert allowed(infra, "data_pipeline.application.enrich.ports")
     assert not allowed(infra, "data_pipeline.application.enrich.download")
     assert not allowed(infra, "data_pipeline.application.crawl.ports")
+    # Only the ports module itself, not a sibling that happens to share the prefix.
+    assert not allowed(infra, "data_pipeline.application.enrich.ports_extra")
 
 
 def test_contexts_never_import_each_other() -> None:
@@ -183,7 +189,7 @@ def test_contexts_never_import_each_other() -> None:
     assert not allowed("data_pipeline.domain.shared.url", "data_pipeline.domain.crawl.access")
     assert allowed(
         "data_pipeline.bootstrap",
-        "data_pipeline.infrastructure.crawl.sqlite.state_store",
+        "data_pipeline.infrastructure.crawl.sqlite.unit_of_work",
     )
 
 
