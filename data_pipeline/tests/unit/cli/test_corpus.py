@@ -10,6 +10,7 @@ import pytest
 
 from data_pipeline.cli.main import main
 from data_pipeline.corpus.application import graph, kaggle, mongo, package, query
+from data_pipeline.corpus.infrastructure import mongo as mongo_adapter
 from data_pipeline.enrich.application import session as enrich_session
 from data_pipeline.shared.domain.config import ProjectPaths, Settings
 from data_pipeline.shared.infrastructure.settings import project_paths
@@ -35,7 +36,7 @@ def test_package_uses_the_default_source_and_work_directories(
 ) -> None:
     calls: list[tuple[Path, object, Path]] = []
 
-    def package_corpus(source: Path, state: object, output: Path) -> None:
+    def package_corpus(source: Path, state: object, output: Path, **_: object) -> None:
         calls.append((source, state, output))
 
     monkeypatch.setattr(package, "package_corpus", package_corpus)
@@ -53,7 +54,7 @@ def test_build_graph_passes_the_output_directory(
 ) -> None:
     calls: list[Path] = []
 
-    def build_graph(source: Path, output: Path) -> None:
+    def build_graph(articles: object, output: Path, open_index: object) -> None:
         calls.append(output)
 
     monkeypatch.setattr(graph, "build_graph", build_graph)
@@ -65,7 +66,7 @@ def test_build_graph_passes_the_output_directory(
 def test_verify_prints_the_report_and_succeeds_for_a_valid_corpus(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    def valid_corpus(corpus: Path) -> dict[str, Any]:
+    def valid_corpus(corpus: Path, files: object) -> dict[str, Any]:
         return {"valid": True, "errors": []}
 
     monkeypatch.setattr(package, "verify_corpus", valid_corpus)
@@ -75,7 +76,7 @@ def test_verify_prints_the_report_and_succeeds_for_a_valid_corpus(
 
 
 def test_verify_exits_3_for_an_invalid_corpus(monkeypatch: pytest.MonkeyPatch) -> None:
-    def invalid_corpus(corpus: Path) -> dict[str, Any]:
+    def invalid_corpus(corpus: Path, files: object) -> dict[str, Any]:
         return {"valid": False, "errors": ["missing manifest"]}
 
     monkeypatch.setattr(package, "verify_corpus", invalid_corpus)
@@ -102,7 +103,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> FakeClient:
     def connect(settings: Settings) -> FakeClient:
         return fake
 
-    monkeypatch.setattr(mongo, "connect", connect)
+    monkeypatch.setattr(mongo_adapter, "connect", connect)
     return fake
 
 
@@ -111,8 +112,9 @@ def test_import_mongo_passes_force(
 ) -> None:
     calls: list[tuple[Path, object, bool]] = []
 
-    def import_corpus(corpus: Path, db: object, *, force: bool) -> dict[str, str]:
-        calls.append((corpus, db, force))
+    def import_corpus(corpus: Path, db: object, files: object, *, force: bool) -> dict[str, str]:
+        assert isinstance(db, mongo_adapter.MongoCorpusDatabase)
+        calls.append((corpus, db.db, force))
         return {"status": "ready"}
 
     monkeypatch.setattr(mongo, "import_corpus", import_corpus)
@@ -165,7 +167,13 @@ def test_publish_defaults_to_the_project_kaggle_config(
     calls: list[tuple[Path, Path, bool, str | None]] = []
 
     def publish_corpus(
-        corpus: Path, config: Path, *, update: bool, message: str | None
+        corpus: Path,
+        config: Path,
+        publisher: object,
+        files: object,
+        *,
+        update: bool,
+        message: str | None,
     ) -> dict[str, str]:
         calls.append((corpus, config, update, message))
         return {"status": "ok"}
@@ -185,7 +193,7 @@ def test_pull_defaults_to_the_project_lock_and_destination(
 ) -> None:
     calls: list[tuple[Path, Path]] = []
 
-    def pull_corpus(lock: Path, destination: Path) -> str:
+    def pull_corpus(lock: Path, destination: Path, publisher: object, files: object) -> str:
         calls.append((lock, destination))
         return "ok"
 

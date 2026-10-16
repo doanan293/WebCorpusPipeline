@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-import subprocess
 from pathlib import Path
 
 import pytest
 
-from data_pipeline.corpus.application import kaggle
+from data_pipeline.corpus.application.kaggle import publish_corpus, pull_corpus
 from data_pipeline.corpus.application.package import verify_corpus
+from data_pipeline.corpus.infrastructure.files.corpus_files import LocalCorpusFiles
+from tests.fakes.corpus import FakePublisher
 
+FILES = LocalCorpusFiles()
 CONFIG = {
     "owner": "me",
     "slug": "corpus",
@@ -41,74 +43,76 @@ def write_config(tmp_path: Path, **overrides: object) -> Path:
     return path
 
 
-def test_publish_uploads_only_manifest_files(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def write_lock(tmp_path: Path, source: Path) -> Path:
+    snapshot = json.loads((source / "manifest.json").read_text())["snapshot_id"]
+    lock = tmp_path / "lock.json"
+    lock.write_text(
+        json.dumps({"owner": "me", "slug": "corpus", "version": 3, "snapshot_id": snapshot})
+    )
+    return lock
+
+
+def test_publish_uploads_only_manifest_files(tmp_path: Path) -> None:
     corpus = make_corpus(tmp_path / "corpus")
-    uploaded: list[list[str]] = []
-
-    def run(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-        uploaded.append(sorted(p.name for p in Path(args[args.index("-p") + 1]).iterdir()))
-        return subprocess.CompletedProcess(args, 0, "", "")
-
-    monkeypatch.setattr(kaggle, "_run", run)
+    publisher = FakePublisher()
     (corpus / ".env").write_text("SECRET=1")
 
     with pytest.raises(ValueError, match=r"\.env"):
-        kaggle.publish_corpus(corpus, write_config(tmp_path))
+        publish_corpus(corpus, write_config(tmp_path), publisher, FILES)
     (corpus / ".env").unlink()
-    kaggle.publish_corpus(corpus, write_config(tmp_path))
+    result = publish_corpus(corpus, write_config(tmp_path), publisher, FILES)
 
-    assert uploaded == [["articles.jsonl", "dataset-metadata.json", "manifest.json"]]
+    assert publisher.uploads == [
+        ("create", ["articles.jsonl", "dataset-metadata.json", "manifest.json"])
+    ]
+    assert result["dataset"] == "me/corpus"
+
+
+def test_update_needs_a_message_and_publishes_a_version(tmp_path: Path) -> None:
+    corpus = make_corpus(tmp_path / "corpus")
+    publisher = FakePublisher()
+
+    with pytest.raises(ValueError, match="--message"):
+        publish_corpus(corpus, write_config(tmp_path), publisher, FILES, update=True)
+    result = publish_corpus(
+        corpus, write_config(tmp_path), publisher, FILES, update=True, message="v2"
+    )
+
+    assert result["operation"] == "version"
+    assert [operation for operation, _ in publisher.uploads] == ["version"]
 
 
 def test_verify_rejects_unlisted_file(tmp_path: Path) -> None:
     corpus = make_corpus(tmp_path / "corpus")
     (corpus / "notes.txt").write_text("x")
 
-    report = verify_corpus(corpus)
+    report = verify_corpus(corpus, FILES)
 
     assert not report["valid"]
     assert "unlisted file notes.txt" in report["errors"]
 
 
-def test_pull_downloads_pinned_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_pull_downloads_pinned_version(tmp_path: Path) -> None:
     source = make_corpus(tmp_path / "remote")
-    snapshot = json.loads((source / "manifest.json").read_text())["snapshot_id"]
-    lock = tmp_path / "lock.json"
-    lock.write_text(
-        json.dumps({"owner": "me", "slug": "corpus", "version": 3, "snapshot_id": snapshot})
-    )
-    refs: list[str] = []
+    publisher = FakePublisher(source)
 
-    def run(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-        refs.append(args[3])
-        target = Path(args[args.index("-p") + 1])
-        for item in source.iterdir():
-            (target / item.name).write_bytes(item.read_bytes())
-        return subprocess.CompletedProcess(args, 0, "", "")
+    pulled = pull_corpus(write_lock(tmp_path, source), tmp_path / "pulled", publisher, FILES)
 
-    monkeypatch.setattr(kaggle, "_run", run)
+    assert publisher.downloads == ["me/corpus/3"]
+    assert verify_corpus(pulled, FILES)["valid"]
 
-    pulled = kaggle.pull_corpus(lock, tmp_path / "pulled")
 
-    assert refs == ["me/corpus/3"]
-    assert verify_corpus(pulled)["valid"]
+def test_pull_falls_back_to_single_files_when_the_archive_fails(tmp_path: Path) -> None:
+    source = make_corpus(tmp_path / "remote")
+    publisher = FakePublisher(source, bulk_fails=True)
+
+    pulled = pull_corpus(write_lock(tmp_path, source), tmp_path / "pulled", publisher, FILES)
+
+    assert verify_corpus(pulled, FILES)["valid"]
 
 
 def test_missing_metadata_key_is_a_clear_error(tmp_path: Path) -> None:
     corpus = make_corpus(tmp_path / "corpus")
 
     with pytest.raises(ValueError, match="Kaggle metadata missing: license_name"):
-        kaggle.publish_corpus(corpus, write_config(tmp_path, license_name=None))
-
-
-def test_kaggle_stderr_in_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def failing(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        stderr = "403 Forbidden: not your dataset"
-        raise subprocess.CalledProcessError(1, ["kaggle"], "", stderr)
-
-    monkeypatch.setattr(kaggle.subprocess, "run", failing)
-
-    with pytest.raises(kaggle.KaggleError, match="403 Forbidden: not your dataset"):
-        kaggle.publish_corpus(make_corpus(tmp_path / "corpus"), write_config(tmp_path))
+        publish_corpus(corpus, write_config(tmp_path, license_name=None), FakePublisher(), FILES)

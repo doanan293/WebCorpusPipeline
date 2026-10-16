@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from data_pipeline.corpus.application import ports as corpus_ports
 from data_pipeline.enrich.application import ports
+from tests.fakes.corpus import FakeCorpusDatabase, FakePublisher
 from tests.fakes.enrich import (
     FakeArticleSource,
     FakeCloudParser,
@@ -34,3 +36,10 @@ def test_enrich_fakes_satisfy_their_ports() -> None:
     _check(local, ports.LocalParser)
     _check(cloud, ports.CloudParser)
     _check(transport, ports.HttpTransport)
+
+
+def test_corpus_fakes_satisfy_their_ports() -> None:
+    db: corpus_ports.CorpusDatabase = FakeCorpusDatabase()
+    publisher: corpus_ports.DatasetPublisher = FakePublisher()
+    _check(db, corpus_ports.CorpusDatabase)
+    _check(publisher, corpus_ports.DatasetPublisher)

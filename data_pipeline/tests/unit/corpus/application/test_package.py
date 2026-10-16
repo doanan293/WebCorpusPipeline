@@ -1,15 +1,38 @@
 import json
 import stat
+from contextlib import AbstractContextManager
 from pathlib import Path
 
 import pytest
 
 from data_pipeline.corpus.application import package as corpus_package
-from data_pipeline.corpus.application.package import package_corpus, verify_corpus
+from data_pipeline.corpus.application.package import verify_corpus
+from data_pipeline.corpus.application.ports import EdgeIndex, EdgeIndexFactory
+from data_pipeline.corpus.infrastructure.files.corpus_files import LocalCorpusFiles
+from data_pipeline.corpus.infrastructure.graph_index import open_edge_index
+from data_pipeline.enrich.application.export import export_enrichment
 from data_pipeline.enrich.application.inventory import index_inventory
 from data_pipeline.enrich.domain.models import DownloadedFile, ParseResult
 from data_pipeline.enrich.infrastructure.files.articles import JsonlArticleSource
 from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
+
+FILES = LocalCorpusFiles()
+
+
+def package_corpus(
+    source: Path,
+    state: SqliteWorkState,
+    output: Path,
+    open_index: EdgeIndexFactory = open_edge_index,
+) -> Path:
+    return corpus_package.package_corpus(
+        source,
+        state,
+        output,
+        export_documents=lambda folder: export_enrichment(state, folder),
+        files=FILES,
+        open_index=open_index,
+    )
 
 
 def write_source(folder: Path, urls: list[str]) -> Path:
@@ -35,7 +58,7 @@ def test_package_and_verify(tmp_path: Path) -> None:
 
     output = package(tmp_path, source)
 
-    assert verify_corpus(output)["valid"]
+    assert verify_corpus(output, FILES)["valid"]
     assert (output / "links.jsonl").exists() and (output / "manifest.json").exists()
     assert not (output / ".graph.sqlite3").exists()
 
@@ -101,24 +124,21 @@ def test_report_comes_from_state_summary(tmp_path: Path) -> None:
     assert report["failed"] == 1
 
 
-def test_package_keeps_old_output_when_copy_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_package_keeps_old_output_when_copy_fails(tmp_path: Path) -> None:
     source = write_source(tmp_path / "source", ["https://example.test/a"])
     old = tmp_path / "corpus"
     old.mkdir()
     (old / "manifest.json").write_text("old")
 
-    def fail(*args: object, **kwargs: object) -> None:
+    def fail(output: Path) -> AbstractContextManager[EdgeIndex]:
         msg = "disk full"
         raise OSError(msg)
 
-    monkeypatch.setattr(corpus_package, "build_graph", fail)
     with SqliteWorkState.open(tmp_path / "work", "c1") as state:
         index_inventory(JsonlArticleSource(source), state)
         settle(state)
         with pytest.raises(OSError, match="disk full"):
-            package_corpus(source, state, old)
+            package_corpus(source, state, old, open_index=fail)
 
     assert (old / "manifest.json").read_text() == "old"
     assert [p.name for p in tmp_path.iterdir() if p.name.startswith("corpus")] == ["corpus"]

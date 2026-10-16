@@ -32,8 +32,12 @@ def build_graph(
 ) -> int:
     """Build the page/link graph from the crawl output alone."""
     from data_pipeline.corpus.application import graph
+    from data_pipeline.corpus.infrastructure.files.corpus_files import LocalCorpusFiles
+    from data_pipeline.corpus.infrastructure.graph_index import open_edge_index
 
-    graph.build_graph(context.build_settings(source, None).source_path, output)
+    files = LocalCorpusFiles()
+    articles = files.articles_path(context.build_settings(source, None).source_path)
+    graph.build_graph(files.read_jsonl(articles), output, open_edge_index)
     return 0
 
 
@@ -46,7 +50,10 @@ def package(
 ) -> int:
     """Package articles, documents, images and links into a versioned corpus."""
     from data_pipeline.corpus.application import package as corpus_package
+    from data_pipeline.corpus.infrastructure.files.corpus_files import LocalCorpusFiles
+    from data_pipeline.corpus.infrastructure.graph_index import open_edge_index
     from data_pipeline.enrich.application import session
+    from data_pipeline.enrich.application.export import export_enrichment
     from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
 
     settings = context.build_settings(source, work_dir)
@@ -56,7 +63,14 @@ def package(
         crawl_id=context.source_crawl_id(settings),
         opener=SqliteWorkState.open,
     ) as state:
-        corpus_package.package_corpus(settings.source_path, state, output)
+        corpus_package.package_corpus(
+            settings.source_path,
+            state,
+            output,
+            export_documents=lambda folder: export_enrichment(state, folder),
+            files=LocalCorpusFiles(),
+            open_index=open_edge_index,
+        )
     return 0
 
 
@@ -64,20 +78,21 @@ def package(
 def verify(corpus: CorpusOption) -> int:
     """Verify the files and checksums of a packaged corpus."""
     from data_pipeline.corpus.application import package as corpus_package
+    from data_pipeline.corpus.infrastructure.files.corpus_files import LocalCorpusFiles
 
-    report = corpus_package.verify_corpus(corpus)
+    report = corpus_package.verify_corpus(corpus, LocalCorpusFiles())
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["valid"] else 3
 
 
 @contextmanager
 def _mongo_database() -> Iterator[Any]:
-    from data_pipeline.corpus.application import mongo
+    from data_pipeline.corpus.infrastructure import mongo as mongo_adapter
 
     settings = context.build_settings(None, None)
-    client = mongo.connect(settings)
+    client = mongo_adapter.connect(settings)
     try:
-        yield client[settings.mongo_database]
+        yield mongo_adapter.MongoCorpusDatabase(client[settings.mongo_database])
     finally:
         client.close()
 
@@ -91,9 +106,11 @@ def import_mongo(
 ) -> int:
     """Import a packaged corpus into MongoDB."""
     from data_pipeline.corpus.application import mongo
+    from data_pipeline.corpus.infrastructure.files.corpus_files import LocalCorpusFiles
 
     with _mongo_database() as db:
-        print(json.dumps(mongo.import_corpus(corpus, db, force=force), indent=2))
+        result = mongo.import_corpus(corpus, db, LocalCorpusFiles(), force=force)
+        print(json.dumps(result, indent=2))
     return 0
 
 
@@ -147,13 +164,14 @@ def publish(
 ) -> int:
     """Publish the corpus to Kaggle."""
     from data_pipeline.corpus.application import kaggle
+    from data_pipeline.corpus.infrastructure.files.corpus_files import LocalCorpusFiles
+    from data_pipeline.corpus.infrastructure.kaggle_cli import KaggleCli
 
     config_path = context.pick(config, context.current_paths().kaggle_config)
-    print(
-        json.dumps(
-            kaggle.publish_corpus(corpus, config_path, update=update, message=message), indent=2
-        )
+    result = kaggle.publish_corpus(
+        corpus, config_path, KaggleCli(), LocalCorpusFiles(), update=update, message=message
     )
+    print(json.dumps(result, indent=2))
     return 0
 
 
@@ -168,11 +186,16 @@ def pull(
 ) -> int:
     """Download the locked corpus snapshot from Kaggle."""
     from data_pipeline.corpus.application import kaggle
+    from data_pipeline.corpus.infrastructure.files.corpus_files import LocalCorpusFiles
+    from data_pipeline.corpus.infrastructure.kaggle_cli import KaggleCli
 
     paths = context.current_paths()
     print(
         kaggle.pull_corpus(
-            context.pick(lock, paths.corpus_lock), context.pick(destination, paths.corpus_pulled)
+            context.pick(lock, paths.corpus_lock),
+            context.pick(destination, paths.corpus_pulled),
+            KaggleCli(),
+            LocalCorpusFiles(),
         )
     )
     return 0
