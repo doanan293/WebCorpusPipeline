@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from scrapy.exceptions import IgnoreRequest, StopDownload
 from scrapy.http import Headers, HtmlResponse, Request, Response
 from twisted.internet import task
@@ -519,3 +520,27 @@ def test_html_shell_is_not_rendered_for_non_page_requests(purpose: str) -> None:
     )
 
     assert PlaywrightFallbackMiddleware().process_response(request, response) is response
+
+
+def test_stable_body_wait_is_bounded_by_time_not_iterations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"now": 0.0}
+
+    class SlowEmptyPage:
+        """Each evaluate takes 2 s (a busy event loop) and the body never gets text."""
+
+        async def evaluate(self, script: str) -> dict[str, object]:
+            clock["now"] += 2.0
+            return {"document_id": 1, "text_length": 0}
+
+        async def wait_for_timeout(self, ms: float) -> None:
+            clock["now"] += ms / 1000
+
+    monkeypatch.setattr(middlewares, "monotonic", lambda: clock["now"])
+
+    with pytest.raises(PlaywrightTimeoutError, match="45 seconds"):
+        asyncio.run(middlewares._wait_for_stable_body(cast(Any, SlowEmptyPage())))
+
+    # Counting 120 iterations would have run ~270 s here.
+    assert middlewares.RENDER_STABLE_TIMEOUT_SECONDS <= clock["now"] < 50

@@ -66,6 +66,8 @@ def build_settings(
         "PLAYWRIGHT_BROWSER_TYPE": "chromium",
         "PLAYWRIGHT_MAX_PAGES_PER_CONTEXT": tuning.playwright_max_pages,
         "PLAYWRIGHT_ABORT_REQUEST": _skip_heavy_resource,
+        # Under a full crawl the page's own requests queue behind Scrapy's; 30 s was too tight.
+        "PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT": 60_000,
         "DOWNLOADER_MIDDLEWARES": {
             # Asset DNS safety must run before Scrapy's RobotsTxtMiddleware
             # (priority 100), otherwise Scrapy can fetch the asset host's

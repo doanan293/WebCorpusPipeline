@@ -54,3 +54,7 @@ def test_rendering_skips_images_media_and_fonts() -> None:
     assert [abort(request(k)) for k in ("image", "media", "font")] == [True] * 3
     kept = ("document", "script", "stylesheet", "xhr", "fetch")
     assert [abort(request(k)) for k in kept] == [False] * len(kept)
+
+
+def test_navigation_timeout_is_60_seconds() -> None:
+    assert build_settings(config())["PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT"] == 60_000

@@ -5,6 +5,7 @@ import random
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
+from time import monotonic
 from typing import ClassVar
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
@@ -31,6 +32,7 @@ from data_pipeline.core.policies.url import UrlPolicy
 _HTTP_PORT = 80
 _MIN_RENDERED_TEXT = 40
 _STABLE_SAMPLES_REQUIRED = 8
+RENDER_STABLE_TIMEOUT_SECONDS = 45.0
 
 _RETRYABLE_EXCEPTIONS = tuple(
     load_object(value) if isinstance(value, str) else value for value in RETRY_EXCEPTIONS
@@ -54,9 +56,15 @@ def _reactor_clock():
 
 
 async def _wait_for_stable_body(page: Page) -> None:
+    """Return once the rendered body has text that stays put; give up after a time budget.
+
+    The budget is wall-clock time: under a full crawl each evaluate waits on a busy event loop,
+    so counting iterations gave up long before the page had rendered.
+    """
+    deadline = monotonic() + RENDER_STABLE_TIMEOUT_SECONDS
     document_id = None
     stable_samples = 0
-    for _ in range(120):
+    while monotonic() < deadline:
         try:
             snapshot = await page.evaluate(
                 """() => ({
@@ -81,7 +89,7 @@ async def _wait_for_stable_body(page: Page) -> None:
                 document_id = current_id
                 stable_samples = 0
         await page.wait_for_timeout(250)
-    msg = "rendered body did not stabilize within 30 seconds"
+    msg = f"rendered body did not stabilize within {RENDER_STABLE_TIMEOUT_SECONDS:.0f} seconds"
     raise PlaywrightTimeoutError(msg)
 
 

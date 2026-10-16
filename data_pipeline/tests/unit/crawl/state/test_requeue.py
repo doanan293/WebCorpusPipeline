@@ -101,3 +101,20 @@ def test_requeue_retryable_failures_only_resets_transport_errors(tmp_path: Path)
         "https://a.test/server-error",
     ]
     state.close()
+
+
+def test_render_timeouts_are_retryable(tmp_path: Path) -> None:
+    state = open_state(tmp_path)
+    messages = {
+        "https://a.test/goto": 'Page.goto: Timeout 30000ms exceeded.\nCall log:\n  - navigating to "x"',
+        "https://a.test/stable": "rendered body did not stabilize within 45 seconds",
+    }
+    for url, message in messages.items():
+        state.merge_url({"url": url, "status": "scheduled", "frontier_action": "scheduled"})
+        state.complete_url(
+            {"url": url, "status": "failed"},
+            error={"url": url, "error": "request_failed", "message": message},
+        )
+
+    assert requeue_retryable_failures(state) == 2
+    state.close()

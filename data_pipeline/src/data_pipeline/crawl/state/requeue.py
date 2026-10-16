@@ -7,6 +7,11 @@ if TYPE_CHECKING:
     from data_pipeline.crawl.state.store import CrawlState
 
 _RETRYABLE_REQUEST_FAILURE_MARKERS = (
+    # A browser render that ran out of time under load; it usually works on a retry.
+    "page.goto: timeout",
+    "timeout 30000ms exceeded",
+    "timeout 60000ms exceeded",
+    "rendered body did not stabilize",
     "an error occurred while connecting",
     "connection failure",
     "connection refused",
