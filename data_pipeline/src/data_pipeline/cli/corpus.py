@@ -49,12 +49,12 @@ def package(
     from data_pipeline.application.corpus import package as corpus_package
 
     settings = context.build_settings(source, work_dir)
-    with bootstrap.work_state(settings, rebind=rebind_source) as state:
+    with bootstrap.work_state(settings, rebind=rebind_source) as uow:
         corpus_package.package_corpus(
             settings.source_path,
-            state,
+            bootstrap.enrichment_status(uow),
             output,
-            export_documents=bootstrap.export_documents(state),
+            export_documents=bootstrap.export_documents(uow),
             files=bootstrap.corpus_files(),
             open_index=bootstrap.edge_index(),
         )

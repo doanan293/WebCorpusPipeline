@@ -15,18 +15,18 @@ from data_pipeline.application.enrich import session as enrich_session
 from data_pipeline.cli.main import main
 from data_pipeline.domain.enrich.models import InventorySummary, RunSummary
 from data_pipeline.domain.shared.config import ProjectPaths, Settings
-from data_pipeline.infrastructure.enrich.sqlite.work_state import SqliteWorkState
-from tests.fakes.enrich import FakeWorkState
+from data_pipeline.infrastructure.enrich.sqlite.unit_of_work import SqliteEnrichUnitOfWork
+from tests.fakes.enrich import FakeEnrichUnitOfWork, FakeParses
 
 
 @pytest.fixture
-def state(monkeypatch: pytest.MonkeyPatch) -> FakeWorkState:
-    fake = FakeWorkState()
+def state(monkeypatch: pytest.MonkeyPatch) -> FakeEnrichUnitOfWork:
+    fake = FakeEnrichUnitOfWork()
 
     @contextmanager
     def open_work_state(
         settings: Settings, *, rebind: bool, **_: object
-    ) -> Iterator[FakeWorkState]:
+    ) -> Iterator[FakeEnrichUnitOfWork]:
         yield fake
 
     monkeypatch.setattr(enrich_session, "open_work_state", open_work_state)
@@ -34,7 +34,7 @@ def state(monkeypatch: pytest.MonkeyPatch) -> FakeWorkState:
 
 
 def test_status_prints_a_one_line_summary(
-    state: FakeWorkState, capsys: pytest.CaptureFixture[str]
+    state: FakeEnrichUnitOfWork, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert main(["enrich", "status"]) == 0
     assert (
@@ -44,14 +44,14 @@ def test_status_prints_a_one_line_summary(
 
 
 def test_status_json_prints_the_summary(
-    state: FakeWorkState, capsys: pytest.CaptureFixture[str]
+    state: FakeEnrichUnitOfWork, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert main(["enrich", "status", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["downloaded"] == 2
 
 
 def test_inventory_indexes_the_source(
-    state: FakeWorkState, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    state: FakeEnrichUnitOfWork, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     calls: list[Path] = []
 
@@ -67,7 +67,7 @@ def test_inventory_indexes_the_source(
 
 
 def test_run_indexes_downloads_and_extracts_in_order(
-    state: FakeWorkState, monkeypatch: pytest.MonkeyPatch
+    state: FakeEnrichUnitOfWork, monkeypatch: pytest.MonkeyPatch
 ) -> None:
 
     order: list[str] = []
@@ -76,13 +76,13 @@ def test_run_indexes_downloads_and_extracts_in_order(
         order.append("inventory")
         return InventorySummary(candidates=0, referrers=0)
 
-    async def download(current: object, settings: object, **_: object) -> RunSummary:
+    async def download(downloads: object, failures: object, settings: object, **_: object) -> None:
         order.append("download")
-        return RunSummary()
 
-    def extract(current: object, settings: object, *, api_keys: object, **_: object) -> RunSummary:
+    def extract(
+        parses: object, failures: object, settings: object, *, api_keys: object, **_: object
+    ) -> None:
         order.append("extract")
-        return RunSummary()
 
     monkeypatch.setattr(enrich_inventory, "index_inventory", index)
     monkeypatch.setattr(downloader, "run_downloads", download)
@@ -93,19 +93,19 @@ def test_run_indexes_downloads_and_extracts_in_order(
 
 
 def test_run_skips_inventory_when_it_is_already_done(
-    state: FakeWorkState, monkeypatch: pytest.MonkeyPatch
+    state: FakeEnrichUnitOfWork, monkeypatch: pytest.MonkeyPatch
 ) -> None:
 
-    state.inventory_is_done = True
+    state.memory.inventory_is_done = True
     order: list[str] = []
 
-    async def download(current: object, settings: object, **_: object) -> RunSummary:
+    async def download(downloads: object, failures: object, settings: object, **_: object) -> None:
         order.append("download")
-        return RunSummary()
 
-    def extract(current: object, settings: object, *, api_keys: object, **_: object) -> RunSummary:
+    def extract(
+        parses: object, failures: object, settings: object, *, api_keys: object, **_: object
+    ) -> None:
         order.append("extract")
-        return RunSummary()
 
     monkeypatch.setattr(downloader, "run_downloads", download)
     monkeypatch.setattr(pipeline, "extract_documents", extract)
@@ -114,16 +114,16 @@ def test_run_skips_inventory_when_it_is_already_done(
     assert order == ["download", "extract"]
 
 
-def test_export_requires_an_output_directory(state: FakeWorkState) -> None:
+def test_export_requires_an_output_directory(state: FakeEnrichUnitOfWork) -> None:
     assert main(["enrich", "export"]) == 2
 
 
 def test_export_writes_to_the_output_directory(
-    state: FakeWorkState, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    state: FakeEnrichUnitOfWork, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[Path] = []
 
-    def export(current: object, destination: Path) -> Path:
+    def export(inventory: object, parses: object, summary: object, destination: Path) -> Path:
         calls.append(destination)
         return destination
 
@@ -137,8 +137,8 @@ def test_reconcile_job_reports_the_job_status(
     project: ProjectPaths, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     work = tmp_path / "work"
-    with SqliteWorkState.open(work, "c1") as current:
-        current.save_cloud_job(
+    with SqliteEnrichUnitOfWork.open(work, "c1") as current:
+        current.parses.save_cloud_job(
             "req-1", "https://a.test/f.pdf", file_id="file-1", job_id="job-1", status="running"
         )
 
@@ -167,7 +167,7 @@ def test_reconcile_job_rejects_an_unknown_pair(
     project: ProjectPaths, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     work = tmp_path / "work"
-    with SqliteWorkState.open(work, "c1"):
+    with SqliteEnrichUnitOfWork.open(work, "c1"):
         pass
 
     code = main(
@@ -180,15 +180,14 @@ def test_reconcile_job_rejects_an_unknown_pair(
 
 @pytest.mark.parametrize(("args", "requeued"), [([], False), (["--reparse-cloud"], True)])
 def test_extract_reparses_cloud_documents_only_on_request(
-    state: FakeWorkState, monkeypatch: pytest.MonkeyPatch, args: list[str], requeued: bool
+    state: FakeEnrichUnitOfWork, monkeypatch: pytest.MonkeyPatch, args: list[str], requeued: bool
 ) -> None:
     seen: list[bool] = []
 
     def extract(
-        current: FakeWorkState, settings: object, *, api_keys: object, **_: object
-    ) -> RunSummary:
-        seen.append(current.requeued)
-        return current.summary()
+        parses: FakeParses, failures: object, settings: object, *, api_keys: object, **_: object
+    ) -> None:
+        seen.append(parses.memory.requeued)
 
     monkeypatch.setattr(pipeline, "extract_documents", extract)
 
@@ -197,7 +196,7 @@ def test_extract_reparses_cloud_documents_only_on_request(
 
 
 def test_download_retry_failed_requeues_before_downloading(
-    state: FakeWorkState, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    state: FakeEnrichUnitOfWork, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     order: list[str] = []
 
@@ -205,11 +204,10 @@ def test_download_retry_failed_requeues_before_downloading(
         order.append("reset")
         return 2
 
-    async def download(current: object, settings: object, **_: object) -> RunSummary:
+    async def download(downloads: object, failures: object, settings: object, **_: object) -> None:
         order.append("download")
-        return RunSummary()
 
-    monkeypatch.setattr(state, "reset_failed_downloads", reset, raising=False)
+    monkeypatch.setattr(state.downloads, "reset_failed_downloads", reset)
     monkeypatch.setattr(downloader, "run_downloads", download)
 
     assert main(["enrich", "download", "--retry-failed"]) == 0
@@ -218,7 +216,7 @@ def test_download_retry_failed_requeues_before_downloading(
 
 
 def test_cloud_failed_makes_exit_code_4(
-    state: FakeWorkState, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    state: FakeEnrichUnitOfWork, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(state, "summary", lambda: RunSummary(parsed=1, cloud_failed=2))
 

@@ -8,7 +8,7 @@ from typing import Any
 
 import pymupdf as fitz
 
-from data_pipeline.application.enrich.ports import WorkState
+from data_pipeline.application.enrich.ports import Parses
 from data_pipeline.domain.enrich.cloud_errors import classify_cloud_error
 from data_pipeline.domain.enrich.key_pool import KeyPool
 from data_pipeline.domain.enrich.models import (
@@ -48,7 +48,7 @@ def parse_cloud_subset(
     file: Path,
     local: LocalResult,
     mapping: dict[int, int],
-    state: WorkState,
+    parses: Parses,
     settings: Settings,
     pool: KeyPool,
 ) -> ParseResult:
@@ -63,7 +63,7 @@ def parse_cloud_subset(
     request_id = uuid.uuid4().hex
 
     def record(status: str, **fields: str | None) -> None:
-        state.save_cloud_job(
+        parses.save_cloud_job(
             request_id,
             document_url,
             key_label=label,
@@ -93,7 +93,7 @@ def parse_cloud_subset(
         record(kind, payload=str(exc)[:500])
         if kind == "quota":
             pool.mark_quota_exhausted(label)
-            return parse_cloud_subset(document_url, file, local, mapping, state, settings, pool)
+            return parse_cloud_subset(document_url, file, local, mapping, parses, settings, pool)
         if kind == "invalid":
             # LlamaParse will never accept this file; keep the local text instead of retrying.
             warning = f"cloud_rejected: {kind}: {exc}"
@@ -128,8 +128,8 @@ def build_pdf_subset(path: Path, indices: list[int], destination: Path) -> dict[
 class LlamaParseCloud:
     """The ``CloudParser`` port: sends the missing pages of a PDF to LlamaParse."""
 
-    def __init__(self, state: WorkState, settings: Settings, keys: list[tuple[str, str]]) -> None:
-        self.state = state
+    def __init__(self, parses: Parses, settings: Settings, keys: list[tuple[str, str]]) -> None:
+        self.parses = parses
         self.settings = settings
         self.pool = KeyPool(keys)
 
@@ -140,5 +140,5 @@ class LlamaParseCloud:
             subset = Path(temp) / "subset.pdf"
             mapping = build_pdf_subset(file.path, missing, subset)
             return parse_cloud_subset(
-                document_url, subset, local, mapping, self.state, self.settings, self.pool
+                document_url, subset, local, mapping, self.parses, self.settings, self.pool
             )

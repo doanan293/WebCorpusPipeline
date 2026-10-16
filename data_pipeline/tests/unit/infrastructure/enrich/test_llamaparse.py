@@ -11,7 +11,7 @@ from data_pipeline.domain.enrich.key_pool import KeyPool
 from data_pipeline.domain.enrich.models import ExtractedPart, LocalResult
 from data_pipeline.domain.shared.config import Settings
 from data_pipeline.infrastructure.enrich.llamaparse import parse_cloud_subset
-from data_pipeline.infrastructure.enrich.sqlite.work_state import SqliteWorkState
+from data_pipeline.infrastructure.enrich.sqlite.unit_of_work import SqliteEnrichUnitOfWork
 
 DOC = "https://a.test/report.pdf"
 
@@ -66,9 +66,9 @@ def cloud(monkeypatch: pytest.MonkeyPatch) -> type[FakeCloud]:
 
 def run_subset(tmp_path: Path, pool: KeyPool) -> tuple[Any, list[dict[str, Any]]]:
     local = LocalResult("sha", [ExtractedPart(1, "page", "", True, "pymupdf")], [], "pymupdf")
-    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
+    with SqliteEnrichUnitOfWork.open(tmp_path / "work", "c1") as state:
         result = parse_cloud_subset(
-            DOC, tmp_path / "subset.pdf", local, {1: 1}, state, Settings(tmp_path), pool
+            DOC, tmp_path / "subset.pdf", local, {1: 1}, state.parses, Settings(tmp_path), pool
         )
         jobs = [dict(row) for row in state.conn.execute("SELECT * FROM cloud_jobs")]
     return result, jobs

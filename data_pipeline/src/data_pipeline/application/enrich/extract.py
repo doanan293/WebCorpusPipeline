@@ -3,12 +3,18 @@ from __future__ import annotations
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 
-from data_pipeline.application.enrich.ports import CloudParser, LocalParser, ParseCache, WorkState
+from data_pipeline.application.enrich.ports import (
+    CloudParser,
+    Failures,
+    LocalParser,
+    ParseCache,
+    Parses,
+)
 from data_pipeline.domain.enrich.cache_key import CLOUD_CACHE_REVISION, cache_key
 from data_pipeline.domain.enrich.cloud_pages import cloud_part_indices
 from data_pipeline.domain.enrich.key_pool import KeysExhaustedError
 from data_pipeline.domain.enrich.merge import merge_parts
-from data_pipeline.domain.enrich.models import DownloadedFile, LocalResult, ParseResult, RunSummary
+from data_pipeline.domain.enrich.models import DownloadedFile, LocalResult, ParseResult
 from data_pipeline.domain.shared.config import Settings
 
 
@@ -17,15 +23,16 @@ def _blocked(local: LocalResult, warning: str) -> ParseResult:
 
 
 def extract_documents(
-    state: WorkState,
+    parses: Parses,
+    failures: Failures,
     settings: Settings,
     *,
     api_keys: list[tuple[str, str]],
     local: LocalParser,
     cloud: CloudParser,
     cache: ParseCache,
-) -> RunSummary:
-    pending = list(state.pending_parse())
+) -> None:
+    pending = list(parses.pending_parse())
 
     def parse_local_safe(
         file: DownloadedFile,
@@ -55,7 +62,7 @@ def extract_documents(
     def finish_cloud(
         file: DownloadedFile, result: LocalResult, remote: ParseResult, cached: Path | None
     ) -> None:
-        state.mark_parse(file.url, merge_parts(result, remote), cached, used_cloud=True)
+        parses.mark_parse(file.url, merge_parts(result, remote), cached, used_cloud=True)
 
     def drain(timeout: float | None) -> None:
         done, _ = wait(in_cloud, timeout=timeout, return_when=FIRST_COMPLETED)
@@ -77,14 +84,16 @@ def extract_documents(
             if in_cloud:
                 drain(timeout=0)
             if result is None:
-                state.record_failure(file.url, "parse", str(error))
-                state.mark_parse(file.url, ParseResult(file.sha256, [], "failed", [str(error)], {}))
+                failures.record_failure(file.url, "parse", str(error))
+                parses.mark_parse(
+                    file.url, ParseResult(file.sha256, [], "failed", [str(error)], {})
+                )
                 continue
             is_pdf = file.path.suffix.lower() == ".pdf"
             missing: list[int] = cloud_part_indices(result) if is_pdf else []
             if not missing:
                 local_versions = {"local": result.parser_version}
-                state.mark_parse(
+                parses.mark_parse(
                     file.url,
                     ParseResult(
                         result.source_sha256,
@@ -108,4 +117,3 @@ def extract_documents(
                 in_cloud[cloud_workers.submit(parse_cloud, file, result, missing, key)] = key
         while in_cloud:
             drain(timeout=None)
-    return state.summary()

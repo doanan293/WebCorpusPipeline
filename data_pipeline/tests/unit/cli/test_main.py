@@ -18,17 +18,17 @@ from data_pipeline.domain.enrich.models import RunSummary
 from data_pipeline.domain.shared.config import ProjectPaths, Settings
 from data_pipeline.infrastructure.crawl import scrapy as crawl_scrapy
 from data_pipeline.infrastructure.shared.settings import project_paths
-from tests.fakes.enrich import FakeWorkState
+from tests.fakes.enrich import FakeEnrichUnitOfWork
 
 
 def fake_open_work_state(seen: dict[str, object], summary: RunSummary | None = None) -> object:
     @contextmanager
     def open_work_state(
         settings: Settings, *, rebind: bool, **_: object
-    ) -> Iterator[FakeWorkState]:
+    ) -> Iterator[FakeEnrichUnitOfWork]:
         seen["settings"] = settings
         seen["rebind"] = rebind
-        yield FakeWorkState(summary or RunSummary())
+        yield FakeEnrichUnitOfWork(summary=summary or RunSummary())
 
     return open_work_state
 
@@ -127,7 +127,9 @@ def test_missing_extra_prints_an_install_hint(
 
 def test_keyboard_interrupt_exits_130(monkeypatch: pytest.MonkeyPatch) -> None:
 
-    async def interrupted(state: object, settings: object, **_: object) -> RunSummary:
+    async def interrupted(
+        downloads: object, failures: object, settings: object, **_: object
+    ) -> None:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(enrich_session, "open_work_state", fake_open_work_state({}))

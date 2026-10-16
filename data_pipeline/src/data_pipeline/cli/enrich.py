@@ -43,9 +43,9 @@ def inventory(
     from data_pipeline.application.enrich import inventory as enrich_inventory
 
     settings = context.build_settings(source, work_dir)
-    with bootstrap.work_state(settings, rebind=rebind_source) as state:
+    with bootstrap.work_state(settings, rebind=rebind_source) as uow:
         summary = enrich_inventory.index_inventory(
-            bootstrap.article_source(settings.source_path), state
+            bootstrap.article_source(settings.source_path), uow.inventory
         )
     print(json.dumps(jsonable(summary), ensure_ascii=False, indent=2))
     return 0
@@ -66,17 +66,20 @@ def download(
     from data_pipeline.application.enrich import download as downloader
 
     settings = context.build_settings(source, work_dir)
-    with bootstrap.work_state(settings, rebind=rebind_source) as state:
+    with bootstrap.work_state(settings, rebind=rebind_source) as uow:
         if retry_failed:
-            print(f"requeued {state.reset_failed_downloads()} failed downloads")
-        summary = asyncio.run(
+            print(f"requeued {uow.downloads.reset_failed_downloads()} failed downloads")
+        asyncio.run(
             downloader.run_downloads(
-                state,
+                uow.downloads,
+                uow.failures,
                 settings,
+                files_root=uow.root / "files",
                 transport_factory=bootstrap.http_transport_factory(),
                 files=bootstrap.download_files(),
             )
         )
+        summary = uow.summary()
     return _summary(summary, json_output)
 
 
@@ -98,17 +101,19 @@ def extract(
 
     settings = context.build_settings(source, work_dir)
     api_keys = bootstrap.api_keys(context.current_paths())
-    with bootstrap.work_state(settings, rebind=rebind_source) as state:
+    with bootstrap.work_state(settings, rebind=rebind_source) as uow:
         if reparse_cloud:
-            print(f"requeued {state.requeue_cloud_parses()} documents for LlamaParse")
-        summary = pipeline.extract_documents(
-            state,
+            print(f"requeued {uow.parses.requeue_cloud_parses()} documents for LlamaParse")
+        pipeline.extract_documents(
+            uow.parses,
+            uow.failures,
             settings,
             api_keys=api_keys,
             local=bootstrap.local_parser(),
-            cloud=bootstrap.cloud_parser(state, settings, api_keys),
-            cache=bootstrap.parse_cache(state),
+            cloud=bootstrap.cloud_parser(uow.parses, settings, api_keys),
+            cache=bootstrap.parse_cache(uow.root),
         )
+        summary = uow.summary()
     return _summary(summary, json_output)
 
 
@@ -126,25 +131,31 @@ def run(
 
     settings = context.build_settings(source, work_dir)
     api_keys = bootstrap.api_keys(context.current_paths())
-    with bootstrap.work_state(settings, rebind=rebind_source) as state:
-        if not state.inventory_done(bootstrap.inventory_key(settings.source_path)):
-            enrich_inventory.index_inventory(bootstrap.article_source(settings.source_path), state)
+    with bootstrap.work_state(settings, rebind=rebind_source) as uow:
+        if not uow.inventory.inventory_done(bootstrap.inventory_key(settings.source_path)):
+            enrich_inventory.index_inventory(
+                bootstrap.article_source(settings.source_path), uow.inventory
+            )
         asyncio.run(
             downloader.run_downloads(
-                state,
+                uow.downloads,
+                uow.failures,
                 settings,
+                files_root=uow.root / "files",
                 transport_factory=bootstrap.http_transport_factory(),
                 files=bootstrap.download_files(),
             )
         )
-        summary = pipeline.extract_documents(
-            state,
+        pipeline.extract_documents(
+            uow.parses,
+            uow.failures,
             settings,
             api_keys=api_keys,
             local=bootstrap.local_parser(),
-            cloud=bootstrap.cloud_parser(state, settings, api_keys),
-            cache=bootstrap.parse_cache(state),
+            cloud=bootstrap.cloud_parser(uow.parses, settings, api_keys),
+            cache=bootstrap.parse_cache(uow.root),
         )
+        summary = uow.summary()
     return _summary(summary, json_output)
 
 
@@ -158,8 +169,8 @@ def status(
     """Report downloaded, parsed, failed, pending and quota-blocked work."""
 
     settings = context.build_settings(source, work_dir)
-    with bootstrap.work_state(settings, rebind=rebind_source) as state:
-        summary = state.summary()
+    with bootstrap.work_state(settings, rebind=rebind_source) as uow:
+        summary = uow.summary()
     return _summary(summary, json_output)
 
 
@@ -174,8 +185,8 @@ def export(
     from data_pipeline.application.enrich import export as enrich_export
 
     settings = context.build_settings(source, work_dir)
-    with bootstrap.work_state(settings, rebind=rebind_source) as state:
-        enrich_export.export_enrichment(state, output)
+    with bootstrap.work_state(settings, rebind=rebind_source) as uow:
+        enrich_export.export_enrichment(uow.inventory, uow.parses, uow.summary(), output)
     return 0
 
 

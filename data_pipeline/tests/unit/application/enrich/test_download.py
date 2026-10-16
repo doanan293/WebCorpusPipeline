@@ -24,7 +24,7 @@ from data_pipeline.domain.enrich.models import (
 from data_pipeline.domain.shared.config import ProjectPaths, Settings
 from data_pipeline.infrastructure.enrich.files.download_files import LocalDownloadFiles
 from data_pipeline.infrastructure.enrich.http.aiohttp_transport import USER_AGENT
-from data_pipeline.infrastructure.enrich.sqlite.work_state import SqliteWorkState
+from data_pipeline.infrastructure.enrich.sqlite.unit_of_work import SqliteEnrichUnitOfWork
 from data_pipeline.infrastructure.shared.settings import load_settings
 from tests.fakes.enrich import FakeTransport, Served, noop_close
 
@@ -59,11 +59,11 @@ def settings(tmp_path: Path) -> Settings:
 
 @pytest.fixture
 def state(tmp_path: Path):
-    with SqliteWorkState.open(tmp_path / "work", "c1") as opened:
+    with SqliteEnrichUnitOfWork.open(tmp_path / "work", "c1") as opened:
         yield opened
 
 
-def job_for(state: SqliteWorkState, **fields: Any) -> DownloadJob:
+def job_for(state: SqliteEnrichUnitOfWork, **fields: Any) -> DownloadJob:
     part = state.root / "parts" / "job.part"
     return DownloadJob(URL, part, **fields)
 
@@ -72,10 +72,21 @@ def run(coroutine: Any) -> Any:
     return asyncio.run(coroutine)
 
 
-def test_downloads_a_document_and_records_it(state: SqliteWorkState, settings: Settings) -> None:
+def test_downloads_a_document_and_records_it(
+    state: SqliteEnrichUnitOfWork, settings: Settings
+) -> None:
     job = job_for(state)
 
-    result = run(download_one(job, state, settings, FakeTransport(reply()), FILES))
+    result = run(
+        download_one(
+            job,
+            state.downloads,
+            settings,
+            FakeTransport(reply()),
+            FILES,
+            files_root=state.root / "files",
+        )
+    )
 
     expected_name = hashlib.sha256(URL.encode()).hexdigest() + ".pdf"
     assert result.path == state.root / "files" / expected_name
@@ -86,7 +97,7 @@ def test_downloads_a_document_and_records_it(state: SqliteWorkState, settings: S
 
 
 def test_resumes_with_a_range_request_when_the_etag_is_strong(
-    state: SqliteWorkState, settings: Settings
+    state: SqliteEnrichUnitOfWork, settings: Settings
 ) -> None:
     job = job_for(state, durable_offset=20, strong_etag='"v1"')
     job.part_path.parent.mkdir(parents=True)
@@ -99,26 +110,39 @@ def test_resumes_with_a_range_request_when_the_etag_is_strong(
         )
     )
 
-    result = run(download_one(job, state, settings, transport, FILES))
+    result = run(
+        download_one(
+            job, state.downloads, settings, transport, FILES, files_root=state.root / "files"
+        )
+    )
 
     assert transport.requests == [{"Range": "bytes=20-", "If-Range": '"v1"'}]
     assert result.path.read_bytes() == PDF
 
 
 def test_restarts_from_zero_when_the_server_ignores_the_range(
-    state: SqliteWorkState, settings: Settings
+    state: SqliteEnrichUnitOfWork, settings: Settings
 ) -> None:
     job = job_for(state, durable_offset=20, strong_etag='"v1"')
     job.part_path.parent.mkdir(parents=True)
     job.part_path.write_bytes(PDF[:20])
 
-    result = run(download_one(job, state, settings, FakeTransport(reply(200, PDF)), FILES))
+    result = run(
+        download_one(
+            job,
+            state.downloads,
+            settings,
+            FakeTransport(reply(200, PDF)),
+            FILES,
+            files_root=state.root / "files",
+        )
+    )
 
     assert result.path.read_bytes() == PDF
 
 
 def test_restarts_with_a_plain_request_when_the_validator_changed(
-    state: SqliteWorkState, settings: Settings
+    state: SqliteEnrichUnitOfWork, settings: Settings
 ) -> None:
     job = job_for(state, durable_offset=20, strong_etag='"v1"')
     job.part_path.parent.mkdir(parents=True)
@@ -132,7 +156,11 @@ def test_restarts_with_a_plain_request_when_the_validator_changed(
         reply(200, PDF, {"ETag": '"v2"'}),
     )
 
-    result = run(download_one(job, state, settings, transport, FILES))
+    result = run(
+        download_one(
+            job, state.downloads, settings, transport, FILES, files_root=state.root / "files"
+        )
+    )
 
     assert transport.requests == [{"Range": "bytes=20-", "If-Range": '"v1"'}, None]
     assert result.path.read_bytes() == PDF
@@ -140,7 +168,7 @@ def test_restarts_with_a_plain_request_when_the_validator_changed(
 
 
 def test_a_changed_validator_followed_by_a_bad_status_is_retryable(
-    state: SqliteWorkState, settings: Settings
+    state: SqliteEnrichUnitOfWork, settings: Settings
 ) -> None:
     job = job_for(state, durable_offset=20, strong_etag='"v1"')
     job.part_path.parent.mkdir(parents=True)
@@ -151,41 +179,72 @@ def test_a_changed_validator_followed_by_a_bad_status_is_retryable(
     )
 
     with pytest.raises(RetryableDownloadError, match="validator changed"):
-        run(download_one(job, state, settings, transport, FILES))
+        run(
+            download_one(
+                job, state.downloads, settings, transport, FILES, files_root=state.root / "files"
+            )
+        )
 
 
 @pytest.mark.parametrize("status", [404, 410, 403, 301])
 def test_client_errors_are_permanent(
-    status: int, state: SqliteWorkState, settings: Settings
+    status: int, state: SqliteEnrichUnitOfWork, settings: Settings
 ) -> None:
     with pytest.raises(PermanentDownloadError, match=f"HTTP {status}"):
-        run(download_one(job_for(state), state, settings, FakeTransport(reply(status, b"")), FILES))
+        run(
+            download_one(
+                job_for(state),
+                state.downloads,
+                settings,
+                FakeTransport(reply(status, b"")),
+                FILES,
+                files_root=state.root / "files",
+            )
+        )
 
 
 @pytest.mark.parametrize("status", [408, 425, 429, 500, 503])
 def test_transient_statuses_are_retryable_and_honour_retry_after(
-    status: int, state: SqliteWorkState, settings: Settings
+    status: int, state: SqliteEnrichUnitOfWork, settings: Settings
 ) -> None:
     transport = FakeTransport(reply(status, b"", {"Retry-After": "7"}))
 
     with pytest.raises(RetryableDownloadError) as caught:
-        run(download_one(job_for(state), state, settings, transport, FILES))
+        run(
+            download_one(
+                job_for(state),
+                state.downloads,
+                settings,
+                transport,
+                FILES,
+                files_root=state.root / "files",
+            )
+        )
 
     assert str(caught.value) == f"HTTP {status}"
     assert caught.value.retry_after == 7.0
 
 
 def test_a_declared_size_over_the_limit_is_permanent(
-    state: SqliteWorkState, settings: Settings
+    state: SqliteEnrichUnitOfWork, settings: Settings
 ) -> None:
     big = reply(200, PDF, {"Content-Length": str(settings.max_file_bytes + 1)})
 
     with pytest.raises(PermanentDownloadError, match="max_file_bytes"):
-        run(download_one(job_for(state), state, settings, FakeTransport(big), FILES))
+        run(
+            download_one(
+                job_for(state),
+                state.downloads,
+                settings,
+                FakeTransport(big),
+                FILES,
+                files_root=state.root / "files",
+            )
+        )
 
 
 def test_a_body_that_outgrows_the_limit_is_permanent(
-    state: SqliteWorkState, settings: Settings, tmp_path: Path
+    state: SqliteEnrichUnitOfWork, settings: Settings, tmp_path: Path
 ) -> None:
     small = load_settings(
         ProjectPaths(tmp_path), {"work_dir": tmp_path / "work", "max_file_bytes": 50}
@@ -193,31 +252,60 @@ def test_a_body_that_outgrows_the_limit_is_permanent(
     no_length = reply(200, PDF, {"Content-Length": ""})
 
     with pytest.raises(PermanentDownloadError, match="max_file_bytes"):
-        run(download_one(job_for(state), state, small, FakeTransport(no_length), FILES))
+        run(
+            download_one(
+                job_for(state),
+                state.downloads,
+                small,
+                FakeTransport(no_length),
+                FILES,
+                files_root=state.root / "files",
+            )
+        )
     assert small.max_file_bytes == 50 and settings.max_file_bytes > 50
 
 
-def test_a_short_body_is_a_truncated_response(state: SqliteWorkState, settings: Settings) -> None:
+def test_a_short_body_is_a_truncated_response(
+    state: SqliteEnrichUnitOfWork, settings: Settings
+) -> None:
     short = reply(200, PDF[:30], {"Content-Length": str(len(PDF))})
 
     with pytest.raises(RetryableDownloadError, match="truncated response"):
-        run(download_one(job_for(state), state, settings, FakeTransport(short), FILES))
+        run(
+            download_one(
+                job_for(state),
+                state.downloads,
+                settings,
+                FakeTransport(short),
+                FILES,
+                files_root=state.root / "files",
+            )
+        )
 
 
 def test_html_pretending_to_be_a_pdf_is_rejected(
-    state: SqliteWorkState, settings: Settings
+    state: SqliteEnrichUnitOfWork, settings: Settings
 ) -> None:
     page = reply(200, b"<html><body>not a pdf</body></html>")
 
     with pytest.raises(PermanentDownloadError, match="not a document"):
-        run(download_one(job_for(state), state, settings, FakeTransport(page), FILES))
+        run(
+            download_one(
+                job_for(state),
+                state.downloads,
+                settings,
+                FakeTransport(page),
+                FILES,
+                files_root=state.root / "files",
+            )
+        )
 
 
 def test_run_downloads_downloads_pending_files_and_schedules_retries(
-    state: SqliteWorkState, settings: Settings
+    state: SqliteEnrichUnitOfWork, settings: Settings
 ) -> None:
     good, bad = "https://a.test/good.pdf", "https://b.test/bad.pdf"
-    state.add_inventory_batch([good, bad], [], SourceProgress("s", 0, 0, 0, done=True))
+    state.inventory.add_inventory_batch([good, bad], [], SourceProgress("s", 0, 0, 0, done=True))
     replies = {good: lambda: reply(200, PDF, url=good), bad: lambda: reply(503, b"", url=bad)}
 
     class Transport:
@@ -238,7 +326,17 @@ def test_run_downloads_downloads_pending_files_and_schedules_retries(
         {"work_dir": settings.work_path, "retries": 1, "host_delay_seconds": 0.001},
     )
 
-    summary = run(run_downloads(state, fast, transport_factory=Transport, files=FILES))
+    run(
+        run_downloads(
+            state.downloads,
+            state.failures,
+            fast,
+            files_root=state.root / "files",
+            transport_factory=Transport,
+            files=FILES,
+        )
+    )
+    summary = state.summary()
 
     assert summary.downloaded == 1
     failure = state.conn.execute(
@@ -248,8 +346,8 @@ def test_run_downloads_downloads_pending_files_and_schedules_retries(
     assert (failure["stage"], failure["reason"]) == ("download", "HTTP 503")
 
 
-def serve(state: SqliteWorkState, replies: dict[str, Any]) -> Served:
-    state.add_inventory_batch(list(replies), [], SourceProgress("s", 0, 0, 0, done=True))
+def serve(state: SqliteEnrichUnitOfWork, replies: dict[str, Any]) -> Served:
+    state.inventory.add_inventory_batch(list(replies), [], SourceProgress("s", 0, 0, 0, done=True))
     return Served(replies)
 
 
@@ -260,10 +358,19 @@ def quick(settings: Settings, **overrides: object) -> Settings:
     )
 
 
-def test_permanent_error_is_not_retried(state: SqliteWorkState, settings: Settings) -> None:
+def test_permanent_error_is_not_retried(state: SqliteEnrichUnitOfWork, settings: Settings) -> None:
     transport = serve(state, {URL: lambda: reply(404, b"", url=URL)})
 
-    run(run_downloads(state, quick(settings, retries=3), transport_factory=transport, files=FILES))
+    run(
+        run_downloads(
+            state.downloads,
+            state.failures,
+            quick(settings, retries=3),
+            files_root=state.root / "files",
+            transport_factory=transport,
+            files=FILES,
+        )
+    )
 
     assert transport.calls == [URL]
     row = state.conn.execute(
@@ -272,11 +379,20 @@ def test_permanent_error_is_not_retried(state: SqliteWorkState, settings: Settin
     assert (row["status"], row["retry_at"]) == ("failed", None)
 
 
-def test_retry_after_http_date_is_parsed(state: SqliteWorkState, settings: Settings) -> None:
+def test_retry_after_http_date_is_parsed(state: SqliteEnrichUnitOfWork, settings: Settings) -> None:
     when = "Wed, 21 Oct 2099 07:28:00 GMT"
     transport = serve(state, {URL: lambda: reply(503, b"", {"Retry-After": when}, url=URL)})
 
-    run(run_downloads(state, quick(settings), transport_factory=transport, files=FILES))
+    run(
+        run_downloads(
+            state.downloads,
+            state.failures,
+            quick(settings),
+            files_root=state.root / "files",
+            transport_factory=transport,
+            files=FILES,
+        )
+    )
 
     row = state.conn.execute(
         "SELECT status, retry_at FROM inventory WHERE url=?", (URL,)
@@ -285,38 +401,62 @@ def test_retry_after_http_date_is_parsed(state: SqliteWorkState, settings: Setti
     assert row["retry_at"] > 4_000_000_000
 
 
-def test_retry_after_is_capped_at_300_seconds(state: SqliteWorkState, settings: Settings) -> None:
+def test_retry_after_is_capped_at_300_seconds(
+    state: SqliteEnrichUnitOfWork, settings: Settings
+) -> None:
     transport = serve(state, {URL: lambda: reply(429, b"", {"Retry-After": "100000"}, url=URL)})
     started = time.monotonic()
 
-    summary = run(run_downloads(state, quick(settings), transport_factory=transport, files=FILES))
+    run(
+        run_downloads(
+            state.downloads,
+            state.failures,
+            quick(settings),
+            files_root=state.root / "files",
+            transport_factory=transport,
+            files=FILES,
+        )
+    )
+    summary = state.summary()
 
     assert time.monotonic() - started < 5
     assert summary.pending == 1
     assert transport.calls == [URL]
 
 
-def test_one_session_per_run(state: SqliteWorkState, settings: Settings) -> None:
+def test_one_session_per_run(state: SqliteEnrichUnitOfWork, settings: Settings) -> None:
     urls = [f"https://a.test/{n}.pdf" for n in range(3)]
     transport = serve(state, {url: (lambda u=url: reply(200, PDF, url=u)) for url in urls})
 
-    summary = run(run_downloads(state, quick(settings), transport_factory=transport, files=FILES))
+    run(
+        run_downloads(
+            state.downloads,
+            state.failures,
+            quick(settings),
+            files_root=state.root / "files",
+            transport_factory=transport,
+            files=FILES,
+        )
+    )
+    summary = state.summary()
 
     assert summary.downloaded == 3
     assert transport.sessions == 1
 
 
 def test_recover_finishes_or_resets_finalizing_rows(
-    state: SqliteWorkState, settings: Settings
+    state: SqliteEnrichUnitOfWork, settings: Settings
 ) -> None:
     good, lost = "https://a.test/good.pdf", "https://a.test/lost.pdf"
-    state.add_inventory_batch([good, lost], [], SourceProgress("s", 0, 0, 0, done=True))
+    state.inventory.add_inventory_batch([good, lost], [], SourceProgress("s", 0, 0, 0, done=True))
     final = state.root / "files" / "good.pdf"
     final.parent.mkdir(parents=True)
     final.write_bytes(PDF)
     digest = hashlib.sha256(PDF).hexdigest()
     for url, path in ((good, final), (lost, state.root / "files" / "lost.pdf")):
-        state.mark_finalizing(DownloadedFile(url, path, digest, len(PDF), "application/pdf", url))
+        state.downloads.mark_finalizing(
+            DownloadedFile(url, path, digest, len(PDF), "application/pdf", url)
+        )
 
     state.recover()
 
@@ -324,15 +464,15 @@ def test_recover_finishes_or_resets_finalizing_rows(
     assert statuses == {good: "downloaded", lost: "pending"}
 
 
-def test_retry_failed_resets_failed_rows_and_parts(state: SqliteWorkState) -> None:
-    state.add_inventory_batch([URL], [], SourceProgress("s", 0, 0, 0, done=True))
+def test_retry_failed_resets_failed_rows_and_parts(state: SqliteEnrichUnitOfWork) -> None:
+    state.inventory.add_inventory_batch([URL], [], SourceProgress("s", 0, 0, 0, done=True))
     part = state.root / "parts" / "x.part"
     part.parent.mkdir(parents=True)
     part.write_bytes(b"partial")
     state.conn.execute("UPDATE inventory SET part_path=? WHERE url=?", (str(part), URL))
-    state.record_failure(URL, "download", "HTTP 404")
+    state.failures.record_failure(URL, "download", "HTTP 404")
 
-    assert state.reset_failed_downloads() == 1
+    assert state.downloads.reset_failed_downloads() == 1
 
     row = state.conn.execute(
         "SELECT status, attempts FROM inventory WHERE url=?", (URL,)

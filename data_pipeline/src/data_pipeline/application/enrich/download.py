@@ -4,13 +4,15 @@ import asyncio
 import time
 from collections import defaultdict
 from http import HTTPStatus
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from data_pipeline.application.enrich.ports import (
     DownloadFiles,
+    Downloads,
+    Failures,
     HttpTransport,
     TransportFactory,
-    WorkState,
 )
 from data_pipeline.domain.enrich.download_rules import (
     MAX_RETRY_WAIT_SECONDS,
@@ -21,7 +23,7 @@ from data_pipeline.domain.enrich.download_rules import (
     raise_for_status,
     range_start,
 )
-from data_pipeline.domain.enrich.models import DownloadedFile, DownloadJob, HttpResponse, RunSummary
+from data_pipeline.domain.enrich.models import DownloadedFile, DownloadJob, HttpResponse
 from data_pipeline.domain.shared.config import Settings
 
 
@@ -60,10 +62,12 @@ async def _settle_resume(
 
 async def download_one(
     job: DownloadJob,
-    state: WorkState,
+    downloads: Downloads,
     settings: Settings,
     transport: HttpTransport,
     files: DownloadFiles,
+    *,
+    files_root: Path,
 ) -> DownloadedFile:
     offset, headers = files.resume_point(job)
     response = await transport.get(job.url, headers)
@@ -84,7 +88,7 @@ async def download_one(
             offset,
             max_bytes=settings.max_file_bytes,
             checkpoint_bytes=settings.checkpoint_bytes,
-            checkpoint=state.checkpoint_download,
+            checkpoint=downloads.checkpoint_download,
         )
     finally:
         await response.close()
@@ -95,17 +99,20 @@ async def download_one(
     if not looks_like_document(files.head(job), mime):
         msg = "response is not a document"
         raise PermanentDownloadError(msg)
-    result = files.finalize(job, mime, state.root / "files", before_move=state.mark_finalizing)
-    state.mark_downloaded(result)
+    result = files.finalize(job, mime, files_root, before_move=downloads.mark_finalizing)
+    downloads.mark_downloaded(result)
     return result
 
 
 async def run_downloads(
-    state: WorkState,
+    downloads: Downloads,
+    failures: Failures,
     settings: Settings,
+    *,
+    files_root: Path,
     transport_factory: TransportFactory,
     files: DownloadFiles,
-) -> RunSummary:
+) -> None:
     host_locks = defaultdict(lambda: asyncio.Semaphore(settings.per_host))
     host_last = defaultdict(float)
     active: dict[asyncio.Task[DownloadedFile], DownloadJob] = {}
@@ -117,38 +124,41 @@ async def run_downloads(
             if wait > 0:
                 await asyncio.sleep(wait)
             host_last[host] = time.monotonic()
-            return await download_one(job, state, settings, transport, files)
+            return await download_one(
+                job, downloads, settings, transport, files, files_root=files_root
+            )
 
     async with transport_factory(settings) as transport:
         while True:
             while len(active) < settings.concurrency:
-                job = state.claim_download()
+                job = downloads.claim_download()
                 if not job:
                     break
                 active[asyncio.create_task(worker(job, transport))] = job
             if not active:
-                delay = state.next_retry_delay()
+                delay = downloads.next_retry_delay()
                 if delay is None or delay > MAX_RETRY_WAIT_SECONDS:
                     break
                 await asyncio.sleep(min(delay, 2.0))
                 continue
             done, _ = await asyncio.wait(active, return_when=asyncio.FIRST_COMPLETED)
             for task in done:
-                _record_outcome(state, settings, active.pop(task), task)
-    return state.summary()
+                _record_outcome(failures, settings, active.pop(task), task)
 
 
 def _record_outcome(
-    state: WorkState, settings: Settings, job: DownloadJob, task: asyncio.Task[DownloadedFile]
+    failures: Failures, settings: Settings, job: DownloadJob, task: asyncio.Task[DownloadedFile]
 ) -> None:
     """Record a failed download once if it is permanent, else schedule a retry within budget."""
     try:
         task.result()
     except PermanentDownloadError as exc:
-        state.record_failure(job.url, "download", str(exc))
+        failures.record_failure(job.url, "download", str(exc))
     except Exception as exc:  # noqa: BLE001 -- any other download failure is retried per policy
         if job.attempts > settings.retries:
-            state.record_failure(job.url, "download", str(exc))
+            failures.record_failure(job.url, "download", str(exc))
             return
         wait = exc.retry_after if isinstance(exc, RetryableDownloadError) else None
-        state.record_failure(job.url, "download", str(exc), time.time() + (wait or 2**job.attempts))
+        failures.record_failure(
+            job.url, "download", str(exc), time.time() + (wait or 2**job.attempts)
+        )

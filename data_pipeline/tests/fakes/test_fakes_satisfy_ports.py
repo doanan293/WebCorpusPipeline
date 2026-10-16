@@ -17,7 +17,6 @@ from tests.fakes.enrich import (
     FakeEnrichUnitOfWork,
     FakeLocalParser,
     FakeTransport,
-    FakeWorkState,
 )
 from tests.fakes.hosts import FakeBrowser, FakeProber, MemoryReports
 
@@ -34,12 +33,10 @@ def _check(instance: object, port: type) -> None:
 
 def test_enrich_fakes_satisfy_their_ports() -> None:
     # The annotated assignments are checked by pyrefly; _check catches a missing member at runtime.
-    state: ports.WorkState = FakeWorkState()
     source: ports.ArticleSource = FakeArticleSource([], "c1")
     local: ports.LocalParser = FakeLocalParser(_never)
     cloud: ports.CloudParser = FakeCloudParser(_never)
     transport: ports.HttpTransport = FakeTransport()
-    _check(state, ports.WorkState)
     _check(source, ports.ArticleSource)
     _check(local, ports.LocalParser)
     _check(cloud, ports.CloudParser)

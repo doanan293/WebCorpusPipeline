@@ -47,7 +47,9 @@ def test_package_uses_the_default_source_and_work_directories(
     settings = recorded["settings"]
     assert isinstance(settings, Settings)
     assert settings.work_path == project_paths().enrichment
-    assert calls == [(settings.source_path, recorded["state"], tmp_path / "out")]
+    [(source, status, output)] = calls
+    assert (source, output) == (settings.source_path, tmp_path / "out")
+    assert getattr(status, "uow", None) is recorded["state"]
 
 
 def test_build_graph_passes_the_output_directory(

@@ -21,6 +21,8 @@ if TYPE_CHECKING:
         CorpusFiles,
         DatasetPublisher,
         EdgeIndexFactory,
+        EnrichmentCounts,
+        EnrichmentStatus,
         ExportDocuments,
     )
     from data_pipeline.application.crawl.ports import CrawlEngine, CrawlStorage
@@ -28,10 +30,11 @@ if TYPE_CHECKING:
         ArticleSource,
         CloudParser,
         DownloadFiles,
+        EnrichUnitOfWork,
         LocalParser,
         ParseCache,
+        Parses,
         TransportFactory,
-        WorkState,
     )
     from data_pipeline.application.hosts.ports import AuditReports, BrowserProber, HostProber
     from data_pipeline.domain.crawl.config import CrawlerConfig
@@ -103,21 +106,21 @@ def source_crawl_id(settings: Settings) -> str | None:
     return article_source(settings.source_path).crawl_id()
 
 
-def work_state(settings: Settings, *, rebind: bool) -> AbstractContextManager[WorkState]:
+def work_state(settings: Settings, *, rebind: bool) -> AbstractContextManager[EnrichUnitOfWork]:
     """Open the work directory bound to the crawl that produced the source."""
     from data_pipeline.application.enrich import session
-    from data_pipeline.infrastructure.enrich.sqlite.work_state import SqliteWorkState
+    from data_pipeline.infrastructure.enrich.sqlite.unit_of_work import SqliteEnrichUnitOfWork
 
     return session.open_work_state(
         settings,
         rebind=rebind,
         crawl_id=source_crawl_id(settings),
-        opener=SqliteWorkState.open,
+        opener=SqliteEnrichUnitOfWork.open,
     )
 
 
 def cloud_job_status(work_path: Path, request_id: str, job_id: str) -> str | None:
-    from data_pipeline.infrastructure.enrich.sqlite.work_state import read_cloud_job_status
+    from data_pipeline.infrastructure.enrich.sqlite.unit_of_work import read_cloud_job_status
 
     return read_cloud_job_status(work_path, request_id, job_id)
 
@@ -146,16 +149,16 @@ def local_parser() -> LocalParser:
     return LocalParserAdapter()
 
 
-def cloud_parser(state: WorkState, settings: Settings, keys: list[tuple[str, str]]) -> CloudParser:
+def cloud_parser(parses: Parses, settings: Settings, keys: list[tuple[str, str]]) -> CloudParser:
     from data_pipeline.infrastructure.enrich.llamaparse import LlamaParseCloud
 
-    return LlamaParseCloud(state, settings, keys)
+    return LlamaParseCloud(parses, settings, keys)
 
 
-def parse_cache(state: WorkState) -> ParseCache:
+def parse_cache(root: Path) -> ParseCache:
     from data_pipeline.infrastructure.enrich.files.cache import FileParseCache
 
-    return FileParseCache(state.root / "cache")
+    return FileParseCache(root / "cache")
 
 
 # -- corpus -----------------------------------------------------------------------------------
@@ -189,12 +192,12 @@ def mongo_database(settings: Settings) -> Iterator[CorpusDatabase]:
         client.close()
 
 
-def export_documents(state: WorkState) -> ExportDocuments:
+def export_documents(uow: EnrichUnitOfWork) -> ExportDocuments:
     """The enrich export, handed to corpus packaging (corpus may not import enrich)."""
     from data_pipeline.application.enrich.export import export_enrichment
 
     def export(folder: Path) -> Path:
-        return export_enrichment(state, folder)
+        return export_enrichment(uow.inventory, uow.parses, uow.summary(), folder)
 
     return export
 
@@ -222,3 +225,24 @@ def audit_reports(all_path: Path, active_path: Path, report_path: Path) -> Audit
     from data_pipeline.infrastructure.hosts.report_files import FileAuditReports
 
     return FileAuditReports(all_path, active_path, report_path)
+
+
+class _EnrichmentStatus:
+    """The corpus's view of an enrich unit of work (corpus may not import enrich)."""
+
+    def __init__(self, uow: EnrichUnitOfWork) -> None:
+        self.uow = uow
+
+    def inventory_done(self, source_key: str) -> bool:
+        return self.uow.inventory.inventory_done(source_key)
+
+    def summary(self) -> EnrichmentCounts:
+        return self.uow.summary()
+
+    def pending_parse(self) -> Iterator[object]:
+        return self.uow.parses.pending_parse()
+
+
+def enrichment_status(uow: EnrichUnitOfWork) -> EnrichmentStatus:
+    """How far enrichment has got, as the corpus packaging asks it."""
+    return _EnrichmentStatus(uow)

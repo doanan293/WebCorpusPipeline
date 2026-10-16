@@ -4,19 +4,21 @@ import json
 from pathlib import Path
 from typing import Any
 
-from data_pipeline.application.enrich.ports import WorkState
-from data_pipeline.domain.enrich.models import jsonable
+from data_pipeline.application.enrich.ports import Inventory, Parses
+from data_pipeline.domain.enrich.models import RunSummary, jsonable
 
 
-def export_enrichment(state: WorkState, destination: Path) -> Path:
+def export_enrichment(
+    inventory: Inventory, parses: Parses, summary: RunSummary, destination: Path
+) -> Path:
     destination.mkdir(parents=True, exist_ok=True)
     documents = destination / "documents.jsonl"
     with documents.open("w", encoding="utf-8") as out:
-        for row in state.inventory_rows():
+        for row in inventory.inventory_rows():
             if row["status"] != "downloaded":
                 continue
-            parsed = state.parse_record(row["url"])
-            refs = state.refs_for(row["url"])
+            parsed = parses.parse_record(row["url"])
+            refs = inventory.refs_for(row["url"])
             parts: list[Any] = jsonable(parsed.parts) if parsed else []
             versions: dict[str, str] = parsed.parser_versions if parsed else {}
             record = {
@@ -32,7 +34,6 @@ def export_enrichment(state: WorkState, destination: Path) -> Path:
                 "referrers": refs,
             }
             out.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
-    summary = state.summary()
     report = jsonable(summary)
     (destination / "extraction-report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n"

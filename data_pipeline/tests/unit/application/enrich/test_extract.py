@@ -17,7 +17,7 @@ from data_pipeline.domain.enrich.models import (
 )
 from data_pipeline.domain.shared.config import Settings
 from data_pipeline.infrastructure.enrich.files.cache import FileParseCache
-from data_pipeline.infrastructure.enrich.sqlite.work_state import SqliteWorkState
+from data_pipeline.infrastructure.enrich.sqlite.unit_of_work import SqliteEnrichUnitOfWork
 from tests.fakes.enrich import FakeCloudParser, FakeLocalParser
 
 type Cloud = Callable[[str, DownloadedFile, LocalResult, list[int]], ParseResult]
@@ -48,16 +48,18 @@ def run_extract(
     local: Callable[[DownloadedFile], LocalResult] = textless,
     settings: Settings | None = None,
 ) -> dict[str, dict[str, Any]]:
-    with SqliteWorkState.open(tmp_path / "work", "c1") as state:
-        state.pending_parse = lambda: iter(files)  # type: ignore[method-assign]
-        summary = extract_documents(
-            state,
+    with SqliteEnrichUnitOfWork.open(tmp_path / "work", "c1") as state:
+        state.parses.pending_parse = lambda: iter(files)  # type: ignore[method-assign]
+        extract_documents(
+            state.parses,
+            state.failures,
             settings or Settings(tmp_path),
             api_keys=[("K1", "s")] if keys is None else keys,
             local=FakeLocalParser(local),
             cloud=FakeCloudParser(cloud),
             cache=FileParseCache(tmp_path / "work" / "cache"),
         )
+        summary = state.summary()
         rows = {
             row["url"]: {**dict(row), "result": json.loads(row["result_json"])}
             for row in state.conn.execute("SELECT * FROM parse_results")
