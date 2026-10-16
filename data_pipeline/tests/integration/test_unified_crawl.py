@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 import sys
 from collections import Counter
@@ -213,3 +214,25 @@ def test_polite_retry_recovers_transient_failures(tmp_path: Path) -> None:
     assert req_urls.count("https://a.test/retry-page") == 2
     articles = records_by_url(tmp_path / "crawl/articles.jsonl")
     assert "https://a.test/retry-page" in articles
+
+
+def test_a_copied_finished_state_resumes_unchanged(tmp_path: Path) -> None:
+    first = tmp_path / "first"
+    first.mkdir()
+    res = run_fixture(first)
+    assert res.returncode == 0, f"STDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}"
+    before = read_json(first / "crawl" / "manifest.json")
+
+    second = tmp_path / "second"
+    (second / "crawl" / "state").mkdir(parents=True)
+    for name in ("index.sqlite3", "manifest.json"):
+        shutil.copy2(first / "crawl" / "state" / name, second / "crawl" / "state" / name)
+    resumed = run_fixture(second, mode="resume")
+
+    assert resumed.returncode == 0, f"STDOUT:\n{resumed.stdout}\nSTDERR:\n{resumed.stderr}"
+    after = read_json(second / "crawl" / "manifest.json")
+    assert after["status"] == "complete"
+    assert after["counts"]["url_status_extracted"] == before["counts"]["url_status_extracted"]
+    # Robots and sitemaps are probed again on every start; no page is fetched twice.
+    refetched = [url for url in requested_urls(second) if not url.endswith((".txt", ".xml"))]
+    assert refetched == []
