@@ -7,12 +7,8 @@ from urllib.parse import urlparse
 
 from playwright.async_api import Route, WebSocketRoute
 
-from data_pipeline.domains.infrastructure.http_probe import (
-    ProbeAttempt,
-    ProbeResult,
-    classify_response,
-    is_target_web_url,
-)
+from data_pipeline.domains.domain.classify import classify_response, is_target_web_url
+from data_pipeline.domains.domain.models import ProbeAttempt, ProbeResult
 from data_pipeline.shared.infrastructure.network import resolve_hostname
 
 
@@ -145,3 +141,14 @@ def browser_probe_results(
         return attempts
 
     return asyncio.run(render())
+
+
+class PlaywrightBrowserProber:
+    """The ``BrowserProber`` port: renders JavaScript shells in headless Chromium."""
+
+    def __init__(self, *, timeout: float, workers: int) -> None:
+        self.timeout = timeout
+        self.workers = workers
+
+    def probe(self, shells: list[ProbeResult]) -> dict[str, ProbeAttempt]:
+        return browser_probe_results(shells, timeout=self.timeout, workers=self.workers)

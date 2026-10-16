@@ -1,60 +1,43 @@
-import importlib
-import sys
-from pathlib import Path
+from __future__ import annotations
 
 import pytest
 
 from data_pipeline.cli import domains as cli_domains
-from data_pipeline.domains.application.audit import AuditOptions, run_audit
-from data_pipeline.domains.infrastructure.http_probe import (
-    ProbeAttempt,
-    ProbeResult,
-)
+from data_pipeline.domains.application.audit import run_audit, summarize
+from data_pipeline.domains.domain.models import ProbeAttempt, ProbeResult
+from tests.fakes.domains import FakeBrowser, FakeProber, MemoryReports
 
 
-def test_run_audit_updates_both_lists_and_writes_report(tmp_path: Path) -> None:
-    all_path = tmp_path / "domain_all.txt"
-    all_path.write_text("b.hust.edu.vn\na.hust.edu.vn\n", encoding="utf-8")
-    active_path = tmp_path / "domain_active.txt"
-    active_path.write_text(
-        "Tên nhóm: BK\nList active domain:\nold.hust.edu.vn\n",
-        encoding="utf-8",
-    )
-    report_path = tmp_path / "domain_status.jsonl"
+def shell(hostname: str) -> ProbeResult:
+    return ProbeResult(hostname, False, "javascript_shell", scheme="https", status=200)
+
+
+def test_run_audit_updates_both_lists_and_writes_report() -> None:
+    reports = MemoryReports("b.hust.edu.vn", "a.hust.edu.vn")
 
     results = run_audit(
-        all_path,
-        active_path,
-        report_path,
+        reports,
         workers=2,
-        probe=lambda hostname: ProbeResult(
-            hostname,
-            hostname.startswith("a."),
-            "public_response" if hostname.startswith("a.") else "dns_error",
+        prober=FakeProber(
+            lambda hostname: ProbeResult(
+                hostname,
+                hostname.startswith("a."),
+                "public_response" if hostname.startswith("a.") else "dns_error",
+            )
         ),
     )
 
-    assert [result.hostname for result in results] == [
-        "a.hust.edu.vn",
-        "b.hust.edu.vn",
-    ]
-    assert all_path.read_text() == "a.hust.edu.vn\nb.hust.edu.vn\n"
-    assert active_path.read_text() == "a.hust.edu.vn\n"
-    assert len(report_path.read_text().splitlines()) == 2
+    assert [result.hostname for result in results] == ["a.hust.edu.vn", "b.hust.edu.vn"]
+    assert reports.all_hostnames == ["a.hust.edu.vn", "b.hust.edu.vn"]
+    assert reports.active == ["a.hust.edu.vn"]
+    assert len(reports.results) == 2
+    assert summarize(results, "r.jsonl") == {"active": 1, "checked": 2, "report": "r.jsonl"}
 
 
-def test_run_audit_promotes_only_public_browser_rendered_shells(tmp_path: Path) -> None:
-    all_path = tmp_path / "domain_all.txt"
-    all_path.write_text(
-        "login.hust.edu.vn\nportal.hust.edu.vn\n",
-        encoding="utf-8",
-    )
-    active_path = tmp_path / "domain_active.txt"
-    report_path = tmp_path / "domain_status.jsonl"
-    browser_calls: list[list[str]] = []
+def test_run_audit_promotes_only_public_browser_rendered_shells() -> None:
+    reports = MemoryReports("login.hust.edu.vn", "portal.hust.edu.vn")
 
-    def browser_probe(results: list[ProbeResult]) -> dict[str, ProbeAttempt]:
-        browser_calls.append([result.hostname for result in results])
+    def render(results: list[ProbeResult]) -> dict[str, ProbeAttempt]:
         return {
             "login.hust.edu.vn": ProbeAttempt(
                 status=200,
@@ -70,25 +53,26 @@ def test_run_audit_promotes_only_public_browser_rendered_shells(tmp_path: Path) 
             ),
         }
 
+    browser = FakeBrowser(render)
     results = run_audit(
-        all_path,
-        active_path,
-        report_path,
+        reports,
         workers=1,
-        probe=lambda hostname: ProbeResult(
-            hostname,
-            False,
-            "javascript_shell",
-            scheme="https",
-            status=200,
-            final_url=f"https://{hostname}/",
-            content_type="text/html",
+        prober=FakeProber(
+            lambda hostname: ProbeResult(
+                hostname,
+                False,
+                "javascript_shell",
+                scheme="https",
+                status=200,
+                final_url=f"https://{hostname}/",
+                content_type="text/html",
+            )
         ),
-        browser_probe=browser_probe,
+        browser=browser,
     )
 
-    assert browser_calls == [["login.hust.edu.vn", "portal.hust.edu.vn"]]
-    assert active_path.read_text() == "portal.hust.edu.vn\n"
+    assert browser.calls == [["login.hust.edu.vn", "portal.hust.edu.vn"]]
+    assert reports.active == ["portal.hust.edu.vn"]
     assert [(item.hostname, item.active, item.reason) for item in results] == [
         ("login.hust.edu.vn", False, "login_only"),
         ("portal.hust.edu.vn", True, "public_response"),
@@ -96,102 +80,85 @@ def test_run_audit_promotes_only_public_browser_rendered_shells(tmp_path: Path) 
     assert results[1].browser_rendered is True
 
 
-def test_run_audit_keeps_only_canonical_hust_redirect_target(tmp_path: Path) -> None:
-    all_path = tmp_path / "domain_all.txt"
-    all_path.write_text("alias.hust.edu.vn\ncanonical.hust.edu.vn\n", encoding="utf-8")
-    active_path = tmp_path / "domain_active.txt"
-    report_path = tmp_path / "domain_status.jsonl"
+def test_run_audit_keeps_only_canonical_hust_redirect_target() -> None:
+    reports = MemoryReports("alias.hust.edu.vn", "canonical.hust.edu.vn")
 
     results = run_audit(
-        all_path,
-        active_path,
-        report_path,
+        reports,
         workers=1,
-        probe=lambda hostname: ProbeResult(
-            hostname,
-            True,
-            "public_response",
-            scheme="https",
-            status=200,
-            final_url="https://canonical.hust.edu.vn/",
-            title="Canonical site",
+        prober=FakeProber(
+            lambda hostname: ProbeResult(
+                hostname,
+                True,
+                "public_response",
+                scheme="https",
+                status=200,
+                final_url="https://canonical.hust.edu.vn/",
+                title="Canonical site",
+            )
         ),
     )
 
-    assert active_path.read_text() == "canonical.hust.edu.vn\n"
+    assert reports.active == ["canonical.hust.edu.vn"]
     assert [(result.hostname, result.active, result.reason) for result in results] == [
         ("alias.hust.edu.vn", False, "redirect_duplicate"),
         ("canonical.hust.edu.vn", True, "public_response"),
     ]
 
 
-def test_run_audit_excludes_redirect_outside_hust_scope(tmp_path: Path) -> None:
-    all_path = tmp_path / "domain_all.txt"
-    all_path.write_text("journal.hust.edu.vn\n", encoding="utf-8")
-    active_path = tmp_path / "domain_active.txt"
-    report_path = tmp_path / "domain_status.jsonl"
+def test_run_audit_excludes_redirect_outside_hust_scope() -> None:
+    reports = MemoryReports("journal.hust.edu.vn")
 
     results = run_audit(
-        all_path,
-        active_path,
-        report_path,
+        reports,
         workers=1,
-        probe=lambda hostname: ProbeResult(
-            hostname,
-            True,
-            "public_response",
-            scheme="https",
-            status=200,
-            final_url="https://journal.example.org/",
-            title="External journal",
+        prober=FakeProber(
+            lambda hostname: ProbeResult(
+                hostname,
+                True,
+                "public_response",
+                scheme="https",
+                status=200,
+                final_url="https://journal.example.org/",
+                title="External journal",
+            )
         ),
     )
 
-    assert active_path.read_text() == ""
+    assert reports.active == []
     assert results[0].active is False
     assert results[0].reason == "external_redirect"
 
 
-def test_run_audit_keeps_shortest_hostname_for_identical_content(tmp_path: Path) -> None:
-    all_path = tmp_path / "domain_all.txt"
-    all_path.write_text(
-        "unit-meta.hust.edu.vn\nunit.hust.edu.vn\n",
-        encoding="utf-8",
-    )
-    active_path = tmp_path / "domain_active.txt"
-    report_path = tmp_path / "domain_status.jsonl"
+def test_run_audit_keeps_shortest_hostname_for_identical_content() -> None:
+    reports = MemoryReports("unit-meta.hust.edu.vn", "unit.hust.edu.vn")
 
     results = run_audit(
-        all_path,
-        active_path,
-        report_path,
+        reports,
         workers=1,
-        probe=lambda hostname: ProbeResult(
-            hostname,
-            True,
-            "public_response",
-            scheme="https",
-            status=200,
-            final_url=f"https://{hostname}/",
-            title="Same public site",
-            content_digest="same-body-digest",
+        prober=FakeProber(
+            lambda hostname: ProbeResult(
+                hostname,
+                True,
+                "public_response",
+                scheme="https",
+                status=200,
+                final_url=f"https://{hostname}/",
+                title="Same public site",
+                content_digest="same-body-digest",
+            )
         ),
     )
 
-    assert active_path.read_text() == "unit.hust.edu.vn\n"
+    assert reports.active == ["unit.hust.edu.vn"]
     assert [(result.hostname, result.active, result.reason) for result in results] == [
         ("unit-meta.hust.edu.vn", False, "content_duplicate"),
         ("unit.hust.edu.vn", True, "public_response"),
     ]
 
 
-def shell(hostname: str) -> ProbeResult:
-    return ProbeResult(hostname, False, "javascript_shell", scheme="https", status=200)
-
-
-def test_browser_launch_failure_keeps_http_results(tmp_path: Path) -> None:
-    all_path = tmp_path / "all.txt"
-    all_path.write_text("a.hust.edu.vn\nb.hust.edu.vn\n", encoding="utf-8")
+def test_browser_launch_failure_keeps_http_results() -> None:
+    reports = MemoryReports("a.hust.edu.vn", "b.hust.edu.vn")
 
     def broken_browser(results: list[ProbeResult]) -> dict[str, ProbeAttempt]:
         msg = "Executable doesn't exist"
@@ -203,15 +170,10 @@ def test_browser_launch_failure_keeps_http_results(tmp_path: Path) -> None:
         return shell(hostname)
 
     results = run_audit(
-        all_path,
-        tmp_path / "active.txt",
-        tmp_path / "report.jsonl",
-        workers=1,
-        probe=probe,
-        browser_probe=broken_browser,
+        reports, workers=1, prober=FakeProber(probe), browser=FakeBrowser(broken_browser)
     )
 
-    assert (tmp_path / "active.txt").read_text() == "a.hust.edu.vn\n"
+    assert reports.active == ["a.hust.edu.vn"]
     by_host = {item.hostname: item for item in results}
     assert by_host["b.hust.edu.vn"].reason == "javascript_shell"
     assert "browser_error: RuntimeError: Executable doesn't exist" in str(
@@ -219,30 +181,16 @@ def test_browser_launch_failure_keeps_http_results(tmp_path: Path) -> None:
     )
 
 
-def test_no_browser_works_without_playwright(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    for name in ("playwright", "playwright.async_api"):
-        monkeypatch.setitem(sys.modules, name, None)
-    for name in (
-        "data_pipeline.domains.infrastructure.browser_probe",
-        "data_pipeline.domains.application.audit",
-    ):
-        monkeypatch.delitem(sys.modules, name, raising=False)
-    fresh = importlib.import_module("data_pipeline.domains.application.audit")
-    all_path = tmp_path / "all.txt"
-    all_path.write_text("a.hust.edu.vn\n", encoding="utf-8")
+def test_a_crashing_probe_is_recorded_not_raised() -> None:
+    reports = MemoryReports("a.hust.edu.vn")
 
-    def probe_host(hostname: str, **_: object) -> ProbeResult:
-        return shell(hostname)
+    def explode(hostname: str) -> ProbeResult:
+        msg = "boom"
+        raise RuntimeError(msg)
 
-    monkeypatch.setattr(fresh, "probe_host", probe_host)
+    results = run_audit(reports, workers=1, prober=FakeProber(explode))
 
-    summary = fresh.audit_domains(
-        all_path, tmp_path / "active.txt", tmp_path / "report.jsonl", AuditOptions(browser=False)
-    )
-
-    assert summary["checked"] == 1
+    assert (results[0].reason, results[0].error) == ("probe_error", "RuntimeError: boom")
 
 
 def test_progress_goes_to_stderr(capsys: pytest.CaptureFixture[str]) -> None:

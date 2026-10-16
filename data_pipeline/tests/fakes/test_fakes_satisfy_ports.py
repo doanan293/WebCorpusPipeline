@@ -3,8 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from data_pipeline.corpus.application import ports as corpus_ports
+from data_pipeline.domains.application import ports as domains_ports
 from data_pipeline.enrich.application import ports
 from tests.fakes.corpus import FakeCorpusDatabase, FakePublisher
+from tests.fakes.domains import FakeBrowser, FakeProber, MemoryReports
 from tests.fakes.enrich import (
     FakeArticleSource,
     FakeCloudParser,
@@ -43,3 +45,12 @@ def test_corpus_fakes_satisfy_their_ports() -> None:
     publisher: corpus_ports.DatasetPublisher = FakePublisher()
     _check(db, corpus_ports.CorpusDatabase)
     _check(publisher, corpus_ports.DatasetPublisher)
+
+
+def test_domains_fakes_satisfy_their_ports() -> None:
+    prober: domains_ports.HostProber = FakeProber(_never)
+    browser: domains_ports.BrowserProber = FakeBrowser(_never)
+    reports: domains_ports.AuditReports = MemoryReports()
+    _check(prober, domains_ports.HostProber)
+    _check(browser, domains_ports.BrowserProber)
+    _check(reports, domains_ports.AuditReports)

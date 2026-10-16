@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
 
 from data_pipeline.cli.main import main
-from data_pipeline.domains.application import audit as domain_audit
-from data_pipeline.domains.infrastructure.http_probe import ProbeAttempt
+from data_pipeline.domains.domain.models import ProbeAttempt
+from data_pipeline.domains.infrastructure import http_probe
 from data_pipeline.shared.domain.config import ProjectPaths
 
 
@@ -28,8 +29,8 @@ def test_audit_updates_domain_files_with_the_project_defaults(
             body=b"<title>Working</title><h1>Public information</h1>",
         )
 
-    monkeypatch.setattr(domain_audit, "fetch_url", fetch)
-    monkeypatch.setattr(domain_audit, "resolve_hostname", resolve_ok)
+    monkeypatch.setattr(http_probe, "fetch_url", fetch)
+    monkeypatch.setattr(http_probe, "resolve_hostname", resolve_ok)
 
     code = main(["domains", "audit", "--workers", "1", "--timeout", "1", "--no-browser"])
 
@@ -60,7 +61,7 @@ def test_audit_updates_domain_files_with_configured_paths(
     active_path = tmp_path / "active.txt"
     active_path.write_text("List active domain:\n", encoding="utf-8")
     report_path = tmp_path / "status.jsonl"
-    monkeypatch.setattr(domain_audit, "resolve_hostname", resolve_ok)
+    monkeypatch.setattr(http_probe, "resolve_hostname", resolve_ok)
     fetch_count = 0
 
     def fetch(url: str, timeout: float) -> ProbeAttempt:
@@ -74,7 +75,7 @@ def test_audit_updates_domain_files_with_configured_paths(
             body=b"<title>Working</title><h1>Public information</h1>",
         )
 
-    monkeypatch.setattr(domain_audit, "fetch_url", fetch)
+    monkeypatch.setattr(http_probe, "fetch_url", fetch)
 
     exit_code = main(
         [
@@ -99,3 +100,25 @@ def test_audit_updates_domain_files_with_configured_paths(
     assert fetch_count == 3
     assert active_path.read_text() == "a.hust.edu.vn\n"
     assert json.loads(report_path.read_text())["active"] is True
+
+
+def test_no_browser_works_without_playwright(
+    project: ProjectPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in ("playwright", "playwright.async_api"):
+        monkeypatch.setitem(sys.modules, name, None)
+    monkeypatch.delitem(
+        sys.modules, "data_pipeline.domains.infrastructure.browser_probe", raising=False
+    )
+    project.domains_all.parent.mkdir(parents=True)
+    project.domains_all.write_text("a.hust.edu.vn\n", encoding="utf-8")
+
+    def fetch(url: str, timeout: float) -> ProbeAttempt:
+        return ProbeAttempt(
+            status=200, final_url=url, content_type="text/html", body=b"<div></div>"
+        )
+
+    monkeypatch.setattr(http_probe, "fetch_url", fetch)
+    monkeypatch.setattr(http_probe, "resolve_hostname", resolve_ok)
+
+    assert main(["domains", "audit", "--workers", "1", "--retries", "0", "--no-browser"]) == 0

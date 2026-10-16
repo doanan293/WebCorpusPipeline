@@ -3,14 +3,18 @@ from pathlib import Path
 
 import pytest
 
-from data_pipeline.domains.infrastructure.http_probe import (
-    ProbeResult,
-)
+from data_pipeline.domains.domain.models import ProbeResult
 from data_pipeline.domains.infrastructure.report_files import (
-    load_candidate_hostnames,
+    FileAuditReports,
     render_active_domains,
     render_report,
 )
+
+
+def load_candidate_hostnames(path: Path) -> tuple[str, ...]:
+    return FileAuditReports(
+        path, path.with_name("active.txt"), path.with_name("r.jsonl")
+    ).load_candidates()
 
 
 def test_candidate_hostnames_are_normalized_unique_and_hust_scoped(tmp_path: Path) -> None:
@@ -63,3 +67,14 @@ def test_report_is_stable_jsonl_sorted_by_hostname() -> None:
     ]
     assert json.loads(lines[0])["active"] is True
     assert json.loads(lines[1])["reason"] == "dns_error"
+
+
+def test_file_reports_write_the_three_outputs(tmp_path: Path) -> None:
+    reports = FileAuditReports(tmp_path / "all.txt", tmp_path / "active.txt", tmp_path / "r.jsonl")
+    result = ProbeResult("a.hust.edu.vn", True, "public_response")
+
+    reports.write(["a.hust.edu.vn", "b.hust.edu.vn"], ["a.hust.edu.vn"], [result])
+
+    assert reports.load_candidates() == ("a.hust.edu.vn", "b.hust.edu.vn")
+    assert (tmp_path / "active.txt").read_text() == "a.hust.edu.vn\n"
+    assert json.loads((tmp_path / "r.jsonl").read_text())["hostname"] == "a.hust.edu.vn"
