@@ -7,7 +7,6 @@ from functools import partial
 from pathlib import Path
 from urllib.parse import urlparse
 
-from data_pipeline.core.policies.network import resolve_hostname
 from data_pipeline.domains.probe import (
     ProbeAttempt,
     ProbeResult,
@@ -19,11 +18,12 @@ from data_pipeline.domains.probe import (
     probe_host,
 )
 from data_pipeline.domains.report import (
-    atomic_write_text,
     load_candidate_hostnames,
     render_active_domains,
     render_report,
 )
+from data_pipeline.shared.infrastructure.files import atomic_write_text
+from data_pipeline.shared.infrastructure.network import resolve_hostname
 
 _MIN_DUPLICATE_GROUP = 2
 

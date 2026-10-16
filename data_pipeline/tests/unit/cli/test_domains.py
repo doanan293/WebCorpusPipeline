@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 
 from data_pipeline.cli.main import main
-from data_pipeline.core.paths import ProjectPaths
 from data_pipeline.domains import audit as domain_audit
 from data_pipeline.domains.probe import ProbeAttempt
+from data_pipeline.shared.domain.config import ProjectPaths
 
 
 def resolve_ok(hostname: str) -> None:

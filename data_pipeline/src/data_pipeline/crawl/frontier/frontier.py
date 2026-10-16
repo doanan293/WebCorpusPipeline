@@ -7,12 +7,12 @@ from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import parse_qsl, urlsplit
 
-from data_pipeline.core.policies.url import canonicalize_url, classify_frontier_trap
 from data_pipeline.crawl.frontier.assets import AssetGroup, AssetRole
 from data_pipeline.crawl.frontier.link_policy import LinkKind, is_navigation_path, query_key_kind
 from data_pipeline.crawl.frontier.seeds import SeedMode, SeedSet
 from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.state.discovery import FamilyObservation, RouteFamilyState
+from data_pipeline.shared.domain.url import canonicalize_url, classify_frontier_trap
 
 _MIN_PAGINATION_SEGMENTS = 2
 

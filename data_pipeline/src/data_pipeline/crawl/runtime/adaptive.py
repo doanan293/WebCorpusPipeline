@@ -11,7 +11,7 @@ from scrapy import Spider, signals
 from scrapy.crawler import Crawler
 from scrapy.http import Request, Response
 
-from data_pipeline.core.policies.access import classify_access
+from data_pipeline.crawl.domain.access import classify_access
 from data_pipeline.crawl.runtime.resources import ResourceMonitor, ResourceSample
 
 _FORBIDDEN_STREAK_LIMIT = 3

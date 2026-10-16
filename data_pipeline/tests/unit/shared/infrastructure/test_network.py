@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from data_pipeline.core.policies.network import (
+from data_pipeline.shared.infrastructure.network import (
     NonPublicAddressError,
     resolve_public_hostname,
     validate_public_web_url,

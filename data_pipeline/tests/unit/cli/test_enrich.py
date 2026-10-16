@@ -8,8 +8,6 @@ from pathlib import Path
 import pytest
 
 from data_pipeline.cli.main import main
-from data_pipeline.core.paths import ProjectPaths
-from data_pipeline.core.settings import Settings
 from data_pipeline.enrich import export as enrich_export
 from data_pipeline.enrich import inventory as enrich_inventory
 from data_pipeline.enrich import session as enrich_session
@@ -17,6 +15,7 @@ from data_pipeline.enrich.download import downloader
 from data_pipeline.enrich.models import InventorySummary, RunSummary
 from data_pipeline.enrich.parsing import pipeline
 from data_pipeline.enrich.state import WorkState
+from data_pipeline.shared.domain.config import ProjectPaths, Settings
 
 
 class FakeState:

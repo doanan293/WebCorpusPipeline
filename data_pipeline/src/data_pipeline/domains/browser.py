@@ -7,13 +7,13 @@ from urllib.parse import urlparse
 
 from playwright.async_api import Route, WebSocketRoute
 
-from data_pipeline.core.policies.network import resolve_hostname
 from data_pipeline.domains.probe import (
     ProbeAttempt,
     ProbeResult,
     classify_response,
     is_target_web_url,
 )
+from data_pipeline.shared.infrastructure.network import resolve_hostname
 
 
 async def _bounded_close(resource: Any, *, timeout: float = 3.0) -> None:

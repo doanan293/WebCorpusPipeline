@@ -5,9 +5,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urldefrag, urlsplit
 
-from data_pipeline.core.refs import classify_ref
 from data_pipeline.enrich.models import InventorySummary, SourceProgress, SourceRef
 from data_pipeline.enrich.state import WorkState
+from data_pipeline.shared.domain.refs import classify_ref
 
 DOC_EXT = {
     ".pdf",

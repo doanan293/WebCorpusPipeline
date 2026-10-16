@@ -3,11 +3,11 @@ from typing import Any, cast
 
 import pytest
 
-from data_pipeline.core.policies.network import NonPublicAddressError
 from data_pipeline.domains import browser as domain_browser
 from data_pipeline.domains.probe import (
     ProbeAttempt,
 )
+from data_pipeline.shared.infrastructure.network import NonPublicAddressError
 
 
 def test_browser_resource_close_has_a_hard_timeout() -> None:

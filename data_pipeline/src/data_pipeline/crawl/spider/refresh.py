@@ -10,9 +10,8 @@ from urllib.parse import urlsplit
 import scrapy
 from scrapy.http import Response
 
-from data_pipeline.core.policies.access import classify_page_gate
-from data_pipeline.core.policies.url import canonicalize_url
 from data_pipeline.crawl.config import CrawlerConfig
+from data_pipeline.crawl.domain.access import classify_page_gate
 from data_pipeline.crawl.extract.article import analyze_article
 from data_pipeline.crawl.extract.fingerprint import change_fingerprint
 from data_pipeline.crawl.frontier.seeds import SeedMode
@@ -20,6 +19,7 @@ from data_pipeline.crawl.frontier.sitemaps import SitemapParseError, parse_sitem
 from data_pipeline.crawl.options import CrawlOptions
 from data_pipeline.crawl.output.writer import CrawlWriter, content_id_for
 from data_pipeline.crawl.state.refresh_store import RefreshStore
+from data_pipeline.shared.domain.url import canonicalize_url
 
 if TYPE_CHECKING:
     from data_pipeline.crawl.spider.html import HtmlHandler

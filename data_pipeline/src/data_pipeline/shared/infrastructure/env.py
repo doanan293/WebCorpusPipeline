@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dotenv import load_dotenv
 
-from data_pipeline.core.paths import ProjectPaths
+from data_pipeline.shared.domain.config import ProjectPaths
 
 
 def load_env(paths: ProjectPaths) -> None:

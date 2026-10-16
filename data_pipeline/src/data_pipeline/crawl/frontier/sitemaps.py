@@ -7,8 +7,8 @@ from typing import Any, Literal, cast
 from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
-from data_pipeline.core.policies.url import canonicalize_url
 from data_pipeline.crawl.extract.links import normalize_url
+from data_pipeline.shared.domain.url import canonicalize_url
 
 DiscoveryStrategy = Literal["sitemap-only", "hybrid-unified"]
 HostMode = Literal["pending", "sitemap", "sitemap_partial", "no_sitemap", "exact"]

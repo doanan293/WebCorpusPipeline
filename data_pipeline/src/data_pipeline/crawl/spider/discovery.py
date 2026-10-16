@@ -8,7 +8,6 @@ from urllib.parse import urlsplit
 import scrapy
 from scrapy.http import Response
 
-from data_pipeline.core.policies.url import canonicalize_url
 from data_pipeline.crawl.config import CrawlerConfig
 from data_pipeline.crawl.frontier.seeds import SeedSet
 from data_pipeline.crawl.frontier.sitemaps import (
@@ -19,6 +18,7 @@ from data_pipeline.crawl.frontier.sitemaps import (
 )
 from data_pipeline.crawl.output.discovery_writer import DiscoveryWriter
 from data_pipeline.crawl.spider.routing import ResponseRoute, route_response
+from data_pipeline.shared.domain.url import canonicalize_url
 
 
 @dataclass(frozen=True, slots=True)

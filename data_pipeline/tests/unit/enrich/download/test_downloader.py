@@ -11,8 +11,6 @@ from typing import Any
 
 import pytest
 
-from data_pipeline.core.paths import ProjectPaths
-from data_pipeline.core.settings import Settings, load_settings
 from data_pipeline.enrich.download.downloader import (
     PermanentDownloadError,
     RetryableDownloadError,
@@ -22,6 +20,8 @@ from data_pipeline.enrich.download.downloader import (
 from data_pipeline.enrich.download.transport import USER_AGENT, Response
 from data_pipeline.enrich.models import DownloadedFile, DownloadJob, SourceProgress
 from data_pipeline.enrich.state import WorkState
+from data_pipeline.shared.domain.config import ProjectPaths, Settings
+from data_pipeline.shared.infrastructure.settings import load_settings
 
 PDF = b"%PDF-1.4\n" + b"0123456789" * 10
 URL = "https://a.test/files/report.pdf"

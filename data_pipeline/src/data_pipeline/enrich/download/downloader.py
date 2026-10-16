@@ -11,11 +11,11 @@ from email.utils import parsedate_to_datetime
 from http import HTTPStatus
 from urllib.parse import urlsplit
 
-from data_pipeline.core.settings import Settings
 from data_pipeline.enrich.download.artifacts import extension_for, looks_like_document, sha256_file
 from data_pipeline.enrich.download.transport import HttpClient, PublicTransport, Response
 from data_pipeline.enrich.models import DownloadedFile, DownloadJob, RunSummary
 from data_pipeline.enrich.state import WorkState
+from data_pipeline.shared.domain.config import Settings
 
 _RETRYABLE_STATUSES = frozenset(
     {HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_EARLY, HTTPStatus.TOO_MANY_REQUESTS}

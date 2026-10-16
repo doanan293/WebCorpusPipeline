@@ -1,6 +1,6 @@
 import pytest
 
-from data_pipeline.core.policies.access import classify_access, classify_page_gate
+from data_pipeline.crawl.domain.access import classify_access, classify_page_gate
 
 
 @pytest.mark.parametrize(

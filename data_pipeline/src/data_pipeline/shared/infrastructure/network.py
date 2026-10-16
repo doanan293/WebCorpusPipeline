@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
-from data_pipeline.core.policies.url import canonicalize_url
+from data_pipeline.shared.domain.url import canonicalize_url
 
 
 class NonPublicAddressError(OSError):

@@ -4,7 +4,6 @@ import tempfile
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 
-from data_pipeline.core.settings import Settings
 from data_pipeline.enrich.models import DownloadedFile, LocalResult, ParseResult, RunSummary
 from data_pipeline.enrich.parsing.cache import cache_key, read_cached, write_cached
 from data_pipeline.enrich.parsing.cloud.key_pool import KeyPool, KeysExhaustedError
@@ -12,6 +11,7 @@ from data_pipeline.enrich.parsing.cloud.llamaparse import merge_parts, parse_clo
 from data_pipeline.enrich.parsing.local import parse_local
 from data_pipeline.enrich.parsing.local.pdf import build_pdf_subset, cloud_part_indices
 from data_pipeline.enrich.state import WorkState
+from data_pipeline.shared.domain.config import Settings
 
 # Part of the LlamaParse cache key. Bump it when the way cloud results are read changes, so stale
 # cached results are not reused ("page-text": text is read per page from the "text" expansion).

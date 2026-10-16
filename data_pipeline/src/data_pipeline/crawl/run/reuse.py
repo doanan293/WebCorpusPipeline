@@ -10,12 +10,12 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import cast
 
-from data_pipeline.core.policies.network import validate_public_web_url
 from data_pipeline.crawl.frontier.assets import AssetRole, classify_asset
 from data_pipeline.crawl.spider.reuse import ReusedAssetTarget
 from data_pipeline.crawl.state.refresh_store import FINISHED_STATUSES
 from data_pipeline.crawl.state.resume import STATE_VERSION
 from data_pipeline.crawl.state.store import CrawlState
+from data_pipeline.shared.infrastructure.network import validate_public_web_url
 
 _ASSET_ROLES = frozenset({"inline_image", "media_reference", "document_attachment"})
 

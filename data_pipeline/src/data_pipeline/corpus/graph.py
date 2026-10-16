@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urldefrag
 
-from data_pipeline.core.refs import classify_ref
+from data_pipeline.shared.domain.refs import classify_ref
 
 EDGE_BATCH_SIZE = 5000
 

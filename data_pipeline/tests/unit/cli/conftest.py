@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from data_pipeline.cli import context
-from data_pipeline.core.paths import ProjectPaths
+from data_pipeline.shared.domain.config import ProjectPaths
 
 
 @pytest.fixture

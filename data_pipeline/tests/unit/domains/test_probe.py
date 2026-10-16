@@ -6,7 +6,6 @@ from typing import Any, override
 
 import pytest
 
-from data_pipeline.core.policies.network import NonPublicAddressError, resolve_hostname
 from data_pipeline.domains import probe as domain_probe
 from data_pipeline.domains.probe import (
     ProbeAttempt,
@@ -16,6 +15,7 @@ from data_pipeline.domains.probe import (
     fetch_url,
     probe_host,
 )
+from data_pipeline.shared.infrastructure.network import NonPublicAddressError, resolve_hostname
 
 
 @pytest.mark.parametrize(

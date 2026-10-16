@@ -3,7 +3,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from data_pipeline.core.hostnames import load_hostnames
 from data_pipeline.crawl.config import (
     CrawlerConfig,
     runtime_config_snapshot,
@@ -11,6 +10,7 @@ from data_pipeline.crawl.config import (
     validate_network_contact,
 )
 from data_pipeline.crawl.runtime.profiles import RuntimeTuning
+from data_pipeline.shared.infrastructure.files import load_hostnames
 
 
 @pytest.fixture(autouse=True)

@@ -9,8 +9,8 @@ from typing import Any
 from pymongo import ASCENDING, MongoClient, ReplaceOne
 from pymongo.collection import Collection
 
-from data_pipeline.core.settings import Settings
 from data_pipeline.corpus.package import verify_corpus
+from data_pipeline.shared.domain.config import Settings
 
 MAX_BATCH_OPERATIONS = 100
 

@@ -55,6 +55,33 @@ class ProjectPaths:
         return self.root / "data/corpus/pulled"
 
 
-def project_paths(root: Path | None = None) -> ProjectPaths:
-    """Return the paths of ``root``, defaulting to the directory holding ``pyproject.toml``."""
-    return ProjectPaths(root if root is not None else Path(__file__).resolve().parents[3])
+@dataclass(frozen=True)
+class Settings:
+    project_root: Path
+    work_dir: Path | None = None
+    source: Path | None = None
+    concurrency: int = 64
+    per_host: int = 2
+    host_delay_seconds: float = 0.25
+    max_file_bytes: int = 104857600
+    timeout_seconds: float = 60
+    retries: int = 3
+    max_redirects: int = 20
+    chunk_bytes: int = 262144
+    checkpoint_bytes: int = 1048576
+    local_workers: int = 2
+    cloud_workers: int = 1
+    cloud_poll_seconds: float = 5
+    cloud_timeout_seconds: float = 1800
+    mongo_uri: str = "mongodb://127.0.0.1:27017"
+    mongo_database: str = "information_retrieval"
+
+    @property
+    def source_path(self) -> Path:
+        """``source``, or the project's ``data/crawl/final``."""
+        return self.source or ProjectPaths(self.project_root).crawl_final
+
+    @property
+    def work_path(self) -> Path:
+        """``work_dir``, or the project's ``data/enrichment``."""
+        return self.work_dir or ProjectPaths(self.project_root).enrichment

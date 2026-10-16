@@ -1,6 +1,6 @@
 import pytest
 
-from data_pipeline.core.refs import classify_ref
+from data_pipeline.shared.domain.refs import classify_ref
 
 
 @pytest.mark.parametrize(

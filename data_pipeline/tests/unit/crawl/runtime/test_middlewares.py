@@ -9,7 +9,6 @@ from scrapy.http import Headers, HtmlResponse, Request, Response
 from twisted.internet import task
 from twisted.internet.error import ConnectError
 
-from data_pipeline.core.policies.network import resolve_public_hostname
 from data_pipeline.crawl.runtime import middlewares
 from data_pipeline.crawl.runtime.middlewares import (
     ContentOnlyHeadersGuard,
@@ -18,6 +17,7 @@ from data_pipeline.crawl.runtime.middlewares import (
     PublicAssetAddressMiddleware,
     SafeRedirectMiddleware,
 )
+from data_pipeline.shared.infrastructure.network import resolve_public_hostname
 
 
 def test_redirect_outside_exact_hosts_raises_ignore_request() -> None:

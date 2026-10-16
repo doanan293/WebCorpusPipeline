@@ -7,7 +7,7 @@ from typing import NoReturn
 import typer
 
 from data_pipeline.cli import context, corpus, crawl, domains, enrich, errors, eval
-from data_pipeline.core.env import load_env
+from data_pipeline.shared.infrastructure.env import load_env
 
 app = typer.Typer(
     name="data-pipeline",

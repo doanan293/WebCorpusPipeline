@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from data_pipeline.core.paths import ProjectPaths, project_paths
+from data_pipeline.shared.domain.config import ProjectPaths
+from data_pipeline.shared.infrastructure.settings import project_paths
 
 
 def test_default_root_is_the_pipeline_directory() -> None:

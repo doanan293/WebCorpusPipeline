@@ -17,9 +17,9 @@ from scrapy import signals
 
 import data_pipeline.crawl.runtime.settings as crawl_settings
 from data_pipeline.cli.main import main as cli_main
-from data_pipeline.core.policies.network import NonPublicAddressError
 from data_pipeline.crawl.run import full as runner
 from data_pipeline.crawl.runtime.adaptive import AdaptiveConcurrencyMiddleware
+from data_pipeline.shared.infrastructure.network import NonPublicAddressError
 
 
 class InterruptExtension:

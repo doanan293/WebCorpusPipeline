@@ -25,9 +25,12 @@ from scrapy_playwright.page import PageMethod
 from twisted.internet import task
 from twisted.internet.interfaces import IReactorTime
 
-from data_pipeline.core.policies.access import classify_access
-from data_pipeline.core.policies.network import resolve_public_hostname, validate_public_web_url
-from data_pipeline.core.policies.url import UrlPolicy
+from data_pipeline.crawl.domain.access import classify_access
+from data_pipeline.shared.domain.url import UrlPolicy
+from data_pipeline.shared.infrastructure.network import (
+    resolve_public_hostname,
+    validate_public_web_url,
+)
 
 _HTTP_PORT = 80
 _MIN_RENDERED_TEXT = 40

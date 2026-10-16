@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from data_pipeline.core.env import load_env
-from data_pipeline.core.paths import ProjectPaths
+from data_pipeline.shared.domain.config import ProjectPaths
+from data_pipeline.shared.infrastructure.env import load_env
 
 
 def test_load_env_reads_values_from_the_project_env_file(

@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from data_pipeline.core.hostnames import normalize_hostname
-from data_pipeline.core.policies.url import canonicalize_url
+from data_pipeline.shared.domain.hostnames import normalize_hostname
+from data_pipeline.shared.domain.url import canonicalize_url
 
 SeedMode = Literal["recursive", "exact"]
 

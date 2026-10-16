@@ -4,7 +4,7 @@ import sqlite3
 import subprocess
 import sys
 
-from data_pipeline.core.errors import ExternalFailure
+from data_pipeline.shared.domain.errors import ExternalFailure
 
 _EXTRA_FOR_MODULE = {
     "scrapy": "crawl",

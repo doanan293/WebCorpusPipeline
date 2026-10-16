@@ -5,11 +5,11 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from data_pipeline.core.settings import Settings
 from data_pipeline.enrich.models import ExtractedPart, LocalResult, ParseResult
 from data_pipeline.enrich.parsing.cloud.errors import classify_cloud_error
 from data_pipeline.enrich.parsing.cloud.key_pool import KeyPool
 from data_pipeline.enrich.state import WorkState
+from data_pipeline.shared.domain.config import Settings
 
 
 def _value(obj: Any, name: str, default: Any = None) -> Any:

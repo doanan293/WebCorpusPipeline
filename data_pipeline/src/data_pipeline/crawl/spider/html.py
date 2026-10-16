@@ -10,8 +10,7 @@ from urllib.parse import urlsplit
 import scrapy
 from scrapy.http import Response
 
-from data_pipeline.core.policies.access import classify_page_gate
-from data_pipeline.core.policies.url import canonicalize_url
+from data_pipeline.crawl.domain.access import classify_page_gate
 from data_pipeline.crawl.extract.article import analyze_article
 from data_pipeline.crawl.frontier.assets import (
     AssetPolicy,
@@ -41,6 +40,7 @@ from data_pipeline.crawl.spider.requests import RequestFactory
 from data_pipeline.crawl.spider.routing import ResponseRoute, route_response
 from data_pipeline.crawl.state.discovery import FamilyObservation, put_route_family
 from data_pipeline.crawl.state.store import CrawlState
+from data_pipeline.shared.domain.url import canonicalize_url
 
 
 @dataclass(frozen=True, slots=True)

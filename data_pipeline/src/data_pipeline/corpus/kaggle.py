@@ -10,8 +10,9 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from data_pipeline.core.errors import ExternalFailure
-from data_pipeline.corpus.package import swap_into_place, verify_corpus
+from data_pipeline.corpus.package import verify_corpus
+from data_pipeline.shared.domain.errors import ExternalFailure
+from data_pipeline.shared.infrastructure.files import swap_into_place
 
 
 class KaggleError(ExternalFailure):

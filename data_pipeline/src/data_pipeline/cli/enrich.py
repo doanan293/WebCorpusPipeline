@@ -81,9 +81,9 @@ def extract(
     ] = False,
 ) -> int:
     """Extract plain text from the downloaded documents."""
-    from data_pipeline.core.settings import load_api_keys
     from data_pipeline.enrich import session
     from data_pipeline.enrich.parsing import pipeline
+    from data_pipeline.shared.infrastructure.settings import load_api_keys
 
     settings = context.build_settings(source, work_dir)
     api_keys = load_api_keys(context.current_paths().env_file)
@@ -102,11 +102,11 @@ def run(
     rebind_source: RebindOption = False,
 ) -> int:
     """Run inventory (if needed), download and extract in one go."""
-    from data_pipeline.core.settings import load_api_keys
     from data_pipeline.enrich import inventory as enrich_inventory
     from data_pipeline.enrich import session
     from data_pipeline.enrich.download import downloader
     from data_pipeline.enrich.parsing import pipeline
+    from data_pipeline.shared.infrastructure.settings import load_api_keys
 
     settings = context.build_settings(source, work_dir)
     api_keys = load_api_keys(context.current_paths().env_file)

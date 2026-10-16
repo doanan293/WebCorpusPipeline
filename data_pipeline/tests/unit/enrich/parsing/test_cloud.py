@@ -7,11 +7,11 @@ from typing import Any
 import llama_cloud
 import pytest
 
-from data_pipeline.core.settings import Settings
 from data_pipeline.enrich.models import ExtractedPart, LocalResult
 from data_pipeline.enrich.parsing.cloud.key_pool import KeyPool
 from data_pipeline.enrich.parsing.cloud.llamaparse import parse_cloud_subset
 from data_pipeline.enrich.state import WorkState
+from data_pipeline.shared.domain.config import Settings
 
 DOC = "https://a.test/report.pdf"
 

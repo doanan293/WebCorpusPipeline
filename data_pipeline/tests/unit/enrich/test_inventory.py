@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from data_pipeline.core.settings import Settings
 from data_pipeline.enrich.inventory import index_inventory, source_key
 from data_pipeline.enrich.models import SourceProgress
 from data_pipeline.enrich.session import open_work_state
 from data_pipeline.enrich.state import WorkState, read_crawl_id
+from data_pipeline.shared.domain.config import Settings
 
 
 def write_source(

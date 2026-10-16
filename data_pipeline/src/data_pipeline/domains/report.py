@@ -4,8 +4,8 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from data_pipeline.core.hostnames import load_hostnames
 from data_pipeline.domains.probe import ProbeResult
+from data_pipeline.shared.infrastructure.files import load_hostnames
 
 
 def load_candidate_hostnames(path: Path) -> tuple[str, ...]:
@@ -28,10 +28,3 @@ def render_report(results: list[ProbeResult]) -> str:
         json.dumps(asdict(result), ensure_ascii=False, sort_keys=True) + "\n"
         for result in sorted(results, key=lambda item: item.hostname)
     )
-
-
-def atomic_write_text(path: Path, value: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.tmp")
-    temporary.write_text(value, encoding="utf-8")
-    temporary.replace(path)

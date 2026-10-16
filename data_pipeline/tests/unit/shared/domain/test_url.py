@@ -1,6 +1,6 @@
 import pytest
 
-from data_pipeline.core.policies.url import (
+from data_pipeline.shared.domain.url import (
     UrlDecision,
     UrlPolicy,
     canonicalize_url,

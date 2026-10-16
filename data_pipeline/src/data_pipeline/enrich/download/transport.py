@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 import aiohttp
 
-from data_pipeline.core.settings import Settings
+from data_pipeline.shared.domain.config import Settings
 
 USER_AGENT = f"data-pipeline/{version('data-pipeline')}"
 

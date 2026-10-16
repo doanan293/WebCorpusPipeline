@@ -8,11 +8,11 @@ from typing import Any
 import pytest
 from pymongo.results import DeleteResult
 
-from data_pipeline.core.paths import ProjectPaths
-from data_pipeline.core.settings import load_settings
 from data_pipeline.corpus import mongo
 from data_pipeline.corpus.mongo import _page_value, _record_id, prune_snapshots
 from data_pipeline.corpus.query import query_links
+from data_pipeline.shared.domain.config import ProjectPaths
+from data_pipeline.shared.infrastructure.settings import load_settings
 from tests.unit.corpus.test_kaggle import make_corpus
 
 

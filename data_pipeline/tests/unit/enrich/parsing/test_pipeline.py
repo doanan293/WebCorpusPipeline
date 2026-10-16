@@ -8,11 +8,11 @@ from typing import Any
 
 import pytest
 
-from data_pipeline.core.settings import Settings
 from data_pipeline.enrich.models import DownloadedFile, ExtractedPart, LocalResult, ParseResult
 from data_pipeline.enrich.parsing import pipeline
 from data_pipeline.enrich.parsing.cloud.key_pool import KeyPool, KeysExhaustedError
 from data_pipeline.enrich.state import WorkState
+from data_pipeline.shared.domain.config import Settings
 
 
 def test_cloud_parses_run_concurrently_up_to_cloud_workers(

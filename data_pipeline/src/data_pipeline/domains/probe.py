@@ -24,7 +24,7 @@ from urllib.request import (
     build_opener,
 )
 
-from data_pipeline.core.policies.network import NonPublicAddressError, resolve_hostname
+from data_pipeline.shared.infrastructure.network import NonPublicAddressError, resolve_hostname
 
 _THIN_PAGE_CHARS = 500
 

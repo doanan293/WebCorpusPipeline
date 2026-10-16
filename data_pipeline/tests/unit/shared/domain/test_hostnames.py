@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from data_pipeline.core.hostnames import load_hostnames
+from data_pipeline.shared.infrastructure.files import load_hostnames
 
 
 @pytest.mark.parametrize("line", ["-bad.test", "a.test:8080", "a test", "a.test/path"])

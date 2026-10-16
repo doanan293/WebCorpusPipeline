@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from data_pipeline.core.settings import Settings
 from data_pipeline.enrich.state import WorkState, read_crawl_id
+from data_pipeline.shared.domain.config import Settings
 
 
 @contextmanager

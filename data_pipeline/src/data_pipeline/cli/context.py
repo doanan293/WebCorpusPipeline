@@ -5,8 +5,8 @@ from typing import Annotated
 
 import typer
 
-from data_pipeline.core.paths import ProjectPaths, project_paths
-from data_pipeline.core.settings import Settings, load_settings
+from data_pipeline.shared.domain.config import ProjectPaths, Settings
+from data_pipeline.shared.infrastructure.settings import load_settings, project_paths
 
 SourceOption = Annotated[
     Path | None, typer.Option(help="Crawl output to read (default: data/crawl/final).")

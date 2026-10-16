@@ -11,6 +11,7 @@ from data_pipeline.corpus.graph import build_graph
 from data_pipeline.enrich.export import export_enrichment
 from data_pipeline.enrich.inventory import source_key
 from data_pipeline.enrich.state import WorkState
+from data_pipeline.shared.infrastructure.files import swap_into_place
 
 PAYLOAD = (
     "articles.jsonl",
@@ -55,21 +56,6 @@ def _assert_enrichment_complete(state: WorkState, source: Path) -> None:
 def _line_count(path: Path) -> int:
     with path.open("rb") as stream:
         return sum(1 for _ in stream)
-
-
-def swap_into_place(staging: Path, output: Path) -> None:
-    """Replace ``output`` with ``staging``; the old output survives until the swap succeeds."""
-    previous = output.with_name(f"{output.name}.old-{os.getpid()}")
-    had_output = output.exists()
-    if had_output:
-        output.replace(previous)
-    try:
-        staging.replace(output)
-    except OSError:
-        if had_output:
-            previous.replace(output)  # put the old package back
-        raise
-    shutil.rmtree(previous, ignore_errors=True)
 
 
 def package_corpus(source: Path, state: WorkState, output: Path) -> Path:

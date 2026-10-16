@@ -7,11 +7,11 @@ import pytest
 import yaml
 
 from data_pipeline.cli.main import main
-from data_pipeline.core.paths import ProjectPaths
 from data_pipeline.crawl.run import discovery as run_discovery
 from data_pipeline.crawl.run import full as run_full
 from data_pipeline.crawl.run import reextract as run_reextract
 from data_pipeline.crawl.run.reextract import ReextractSummary
+from data_pipeline.shared.domain.config import ProjectPaths
 
 
 def write_complete_config(directory: Path, name: str = "crawler.yaml") -> Path:

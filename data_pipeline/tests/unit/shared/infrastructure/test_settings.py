@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from data_pipeline.core.paths import ProjectPaths
-from data_pipeline.core.settings import load_api_keys, load_settings
+from data_pipeline.shared.domain.config import ProjectPaths
+from data_pipeline.shared.infrastructure.settings import load_api_keys, load_settings
 
 
 def test_settings_read_pipeline_yaml_and_resolve_data_dirs(tmp_path: Path) -> None:
