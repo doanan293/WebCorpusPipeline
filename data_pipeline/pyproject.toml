@@ -103,6 +103,8 @@ python-interpreter-path = ".venv/bin/python"
 paths = ["src"]
 min_confidence = 60
 ignore_names = [
+  # Crawl unit of work: declared before its SQLite implementation lands (removed then).
+  "CrawlUnitOfWork", "families",
   "_load_project_env", "verify", "import_mongo", "prune_mongo", "pull", "discover", "download",
   "extract", "reconcile_job", "extraction", "outgoing",
   "from_crawler", "process_request", "process_response", "process_exception", "dont_filter",

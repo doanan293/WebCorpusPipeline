@@ -7,7 +7,13 @@ from data_pipeline.application.crawl import ports as crawl_ports
 from data_pipeline.application.enrich import ports
 from data_pipeline.application.hosts import ports as hosts_ports
 from tests.fakes.corpus import FakeCorpusDatabase, FakePublisher
-from tests.fakes.crawl import FakeCrawlState, FakeEngine, FakeHtmlStore, FakeRefreshStore
+from tests.fakes.crawl import (
+    FakeCrawlState,
+    FakeCrawlUnitOfWork,
+    FakeEngine,
+    FakeHtmlStore,
+    FakeRefreshStore,
+)
 from tests.fakes.enrich import (
     FakeArticleSource,
     FakeCloudParser,
@@ -67,3 +73,39 @@ def test_crawl_fakes_satisfy_their_ports() -> None:
     _check(refresh, crawl_ports.RefreshStorePort)
     _check(html, crawl_ports.RawHtmlStore)
     _check(engine, crawl_ports.CrawlEngine)
+
+
+def test_crawl_repository_fakes_satisfy_their_ports() -> None:
+    uow: crawl_ports.CrawlUnitOfWork = FakeCrawlUnitOfWork()
+    urls: crawl_ports.UrlRecords = uow.urls
+    articles: crawl_ports.Articles = uow.articles
+    owners: crawl_ports.ContentOwners = uow.owners
+    assets: crawl_ports.Assets = uow.assets
+    families: crawl_ports.RouteFamilies = uow.families
+    hosts: crawl_ports.HostDiscovery = uow.hosts
+    refresh: crawl_ports.RefreshRuns = uow.refresh
+    html: crawl_ports.RawHtml = uow.html
+    run: crawl_ports.CrawlRun = uow.run
+    for fake, port in (
+        (uow, crawl_ports.CrawlUnitOfWork),
+        (urls, crawl_ports.UrlRecords),
+        (articles, crawl_ports.Articles),
+        (owners, crawl_ports.ContentOwners),
+        (assets, crawl_ports.Assets),
+        (families, crawl_ports.RouteFamilies),
+        (hosts, crawl_ports.HostDiscovery),
+        (refresh, crawl_ports.RefreshRuns),
+        (html, crawl_ports.RawHtml),
+        (run, crawl_ports.CrawlRun),
+    ):
+        _check(fake, port)
+
+
+def test_fake_repositories_share_one_memory() -> None:
+    uow = FakeCrawlUnitOfWork()
+    uow.urls.complete_url(
+        {"url": "https://a.test/", "status": "extracted"},
+        article={"url": "https://a.test/", "text": "t"},
+    )
+    assert uow.articles.article("https://a.test/") == {"url": "https://a.test/", "text": "t"}
+    assert uow.urls.is_finished("https://a.test/")

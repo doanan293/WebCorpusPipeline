@@ -15,7 +15,7 @@ from data_pipeline.domain.crawl.seeds import SeedSet
 from data_pipeline.domain.crawl.tuning import RuntimeTuning
 
 
-class RawHtmlStore(Protocol):
+class RawHtml(Protocol):
     """Fetched HTML bodies kept for offline re-extraction."""
 
     def put(
@@ -32,7 +32,7 @@ class RawHtmlStore(Protocol):
     def get(self, url: str) -> RawPage | None: ...
 
 
-class RefreshStorePort(Protocol):
+class RefreshRuns(Protocol):
     """Refresh runs, their targets and the changes they found."""
 
     def start_run(self, run_id: str) -> None: ...
@@ -64,6 +64,202 @@ class RefreshStorePort(Protocol):
     def target_summary(self, run_id: str) -> dict[str, dict[str, int]]: ...
 
     def failure_counts(self, run_id: str, truncation_reasons: Iterable[str]) -> tuple[int, int]: ...
+
+
+class UrlRecords(Protocol):
+    """The crawl's URL records: what was scheduled, fetched, skipped or failed."""
+
+    def merge_url(
+        self,
+        record: Mapping[str, object],
+        *,
+        completed: bool = False,
+        keep_scheduled: bool = False,
+    ) -> dict[str, object]: ...
+
+    def complete_url(
+        self,
+        disposition: Mapping[str, object],
+        *,
+        article: Mapping[str, object] | None = None,
+        file: Mapping[str, object] | None = None,
+        error: Mapping[str, object] | None = None,
+    ) -> None: ...
+
+    def upsert_url(self, record: Mapping[str, object], *, completed: bool = False) -> None: ...
+
+    def insert_url_if_absent(self, record: Mapping[str, object]) -> None: ...
+
+    def put_error(self, record: Mapping[str, object]) -> None: ...
+
+    def is_finished(self, url: str) -> bool: ...
+
+    def is_complete(self, url: str) -> bool: ...
+
+    def checkpoint(self, url: str) -> None: ...
+
+    def url_record(self, url: str) -> dict[str, object] | None: ...
+
+    def url_status(self, url: str) -> str | None: ...
+
+    def update_url_fields(self, url: str, fields: Mapping[str, object]) -> None: ...
+
+    def mark_absent(self, url: str) -> None: ...
+
+    def iter_url_records(self) -> Iterator[dict[str, object]]: ...
+
+    def iter_pending_scheduled_records(self) -> Iterator[dict[str, object]]: ...
+
+    def parsed_probes(self) -> list[tuple[str, str]]: ...
+
+    def pagination_members(self) -> list[tuple[str, str, str | None]]: ...
+
+    def failed_records(self) -> list[tuple[str, dict[str, object], dict[str, object]]]: ...
+
+    def skipped_records(self) -> list[tuple[str, dict[str, object]]]: ...
+
+    def requeue(self, records: list[tuple[str, dict[str, object]]]) -> int: ...
+
+
+class Articles(Protocol):
+    """Extracted articles, and the views over them refresh and reextract use."""
+
+    def article(self, url: str) -> dict[str, object] | None: ...
+
+    def set_article_payload(self, url: str, article: Mapping[str, object]) -> None: ...
+
+    def reextract_candidates(self) -> list[tuple[str, object]]: ...
+
+    def navigation_pages(self) -> list[str]: ...
+
+    def recent_content_candidates(self) -> list[tuple[str, object, object, object]]: ...
+
+    def iter_final_articles(
+        self, urls: Iterable[str] | None = None
+    ) -> Iterator[tuple[str, str]]: ...
+
+
+class ContentOwners(Protocol):
+    """Which URL owns each piece of content; the others are duplicates of it."""
+
+    def claim_content(self, content_id: str, url: str) -> str: ...
+
+    def release_content_owner(self, url: str, content_id: str) -> None: ...
+
+    def content_owners(self) -> dict[str, str]: ...
+
+    def replace_content_owners(self, urls: Iterable[str], owners: Mapping[str, str]) -> None: ...
+
+
+class Assets(Protocol):
+    """Downloaded files and the pages that reference them."""
+
+    def file_record(self, url: str) -> dict[str, object] | None: ...
+
+    def add_asset_referrer(self, url: str, page_url: str, role: AssetRole) -> None: ...
+
+    def asset_referrers(self, url: str) -> tuple[str, ...]: ...
+
+
+class RouteFamilies(Protocol):
+    """Pagination families and what the frontier learned about them."""
+
+    def route_families(self) -> Iterator[RouteFamilyState]: ...
+
+    def put_route_family(self, family: RouteFamilyState) -> None: ...
+
+
+class HostDiscovery(Protocol):
+    """Sitemap discovery per host, and the targets a discovery run found."""
+
+    def host_discovery(self) -> Iterator[dict[str, object]]: ...
+
+    def upsert_host_discovery(self, record: Mapping[str, object]) -> None: ...
+
+    def host_completion(self, hostnames: frozenset[str]) -> dict[str, dict[str, object]]: ...
+
+    def put_target(self, record: Mapping[str, object]) -> None: ...
+
+
+class CrawlRun(Protocol):
+    """One run of the crawl: its manifest, counts, finish record and published outputs."""
+
+    root: Path
+
+    manifest: dict[str, Any]
+
+    refresh_run_id: str | None
+
+    @property
+    def crawl_id(self) -> str: ...
+
+    def write_manifest(self, value: dict[str, Any]) -> None: ...
+
+    def backup_to(self, destination: Path) -> None: ...
+
+    def counts(self) -> dict[str, int]: ...
+
+    def reason_counts(self, reasons: frozenset[str] | None = None) -> dict[str, int]: ...
+
+    def finish(  # noqa: PLR0913 -- mirrors the adapter's manifest fields
+        self,
+        status: str,
+        exit_code: int,
+        counts: dict[str, int],
+        metrics: Mapping[str, object],
+        truncation: Mapping[str, object] | None = None,
+        *,
+        discovery: Mapping[str, object] | None = None,
+        frontier: Mapping[str, object] | None = None,
+        host_completion: Mapping[str, Mapping[str, object]] | None = None,
+        public_output: Path | None = None,
+    ) -> None: ...
+
+    def export_crawl(self, output: Path) -> None: ...
+
+    def export_discovery(self, output: Path) -> None: ...
+
+    def export_final(self, output: Path) -> None: ...
+
+
+class CrawlUnitOfWork(Protocol):
+    """One open crawl state: its repositories share one connection and one transaction."""
+
+    @property
+    def urls(self) -> UrlRecords: ...
+
+    @property
+    def articles(self) -> Articles: ...
+
+    @property
+    def owners(self) -> ContentOwners: ...
+
+    @property
+    def assets(self) -> Assets: ...
+
+    @property
+    def families(self) -> RouteFamilies: ...
+
+    @property
+    def hosts(self) -> HostDiscovery: ...
+
+    @property
+    def refresh(self) -> RefreshRuns: ...
+
+    @property
+    def html(self) -> RawHtml: ...
+
+    @property
+    def run(self) -> CrawlRun: ...
+
+    def transaction(self) -> AbstractContextManager[None]: ...
+
+    def close(self) -> None: ...
+
+
+# Old names, removed once every caller uses the unit of work.
+RawHtmlStore = RawHtml
+RefreshStorePort = RefreshRuns
 
 
 class CrawlStateStore(Protocol):
