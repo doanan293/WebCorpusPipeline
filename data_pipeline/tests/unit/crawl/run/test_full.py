@@ -430,8 +430,8 @@ def test_crawl_runner_resume_restores_frontier_and_coordinator(
             "sitemaps_succeeded": 1,
             "sitemaps_failed": 0,
             "sitemaps_absent": 0,
-            "sitemap_targets": ["https://a.test/page1"],
-            "html_targets": [],
+            "sitemap_targets": 1,
+            "html_targets": 0,
         },
     )
     state.close()

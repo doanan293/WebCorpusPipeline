@@ -23,9 +23,12 @@ class HostDiscoveryState:
     sitemaps_succeeded: int = 0
     sitemaps_failed: int = 0
     sitemaps_absent: int = 0
-    sitemap_targets: set[str] = field(default_factory=set)
-    html_targets: set[str] = field(default_factory=set)
+    sitemap_target_count: int = 0
+    html_target_count: int = 0
     mode: HostMode = "pending"
+    # Seen in this run only, to count each URL once; url_records holds the URLs themselves.
+    seen_sitemap_targets: set[str] = field(default_factory=set)
+    seen_html_targets: set[str] = field(default_factory=set)
 
     def to_record(self) -> dict[str, object]:
         return {
@@ -36,8 +39,8 @@ class HostDiscoveryState:
             "sitemaps_succeeded": self.sitemaps_succeeded,
             "sitemaps_failed": self.sitemaps_failed,
             "sitemaps_absent": self.sitemaps_absent,
-            "sitemap_targets": sorted(self.sitemap_targets),
-            "html_targets": sorted(self.html_targets),
+            "sitemap_targets": self.sitemap_target_count,
+            "html_targets": self.html_target_count,
             "mode": self.mode,
         }
 
@@ -51,8 +54,8 @@ class HostDiscoveryState:
             sitemaps_succeeded=int(data.get("sitemaps_succeeded", 0)),
             sitemaps_failed=int(data.get("sitemaps_failed", 0)),
             sitemaps_absent=int(data.get("sitemaps_absent", 0)),
-            sitemap_targets=set(data.get("sitemap_targets", ())),
-            html_targets=set(data.get("html_targets", ())),
+            sitemap_target_count=int(data.get("sitemap_targets", 0)),
+            html_target_count=int(data.get("html_targets", 0)),
             mode=cast(HostMode, data.get("mode", "pending")),
         )
 
@@ -66,8 +69,8 @@ class HostDiscoveryState:
             "sitemaps_succeeded": self.sitemaps_succeeded,
             "sitemaps_failed": self.sitemaps_failed,
             "sitemaps_absent": self.sitemaps_absent,
-            "sitemap_targets": len(self.sitemap_targets),
-            "html_targets": len(self.html_targets),
+            "sitemap_targets": self.sitemap_target_count,
+            "html_targets": self.html_target_count,
         }
 
 
@@ -103,7 +106,7 @@ class SitemapDiscoveryCoordinator:
     def _recompute_mode(self, host: HostDiscoveryState) -> None:
         if host.mode == "exact":
             return
-        if host.sitemap_targets:
+        if host.sitemap_target_count:
             host.mode = "sitemap_partial" if host.sitemaps_failed else "sitemap"
         elif host.robots_complete and not host.pending_sitemaps:
             host.mode = "no_sitemap"
@@ -158,16 +161,25 @@ class SitemapDiscoveryCoordinator:
         self._notify(hostname)
 
     def record_sitemap_target(self, hostname: str, url: str) -> None:
+        """Count a URL a sitemap listed; persisted only when it changes the host's mode."""
         clean = self._clean_url(url)
         host = self._get_or_create_host(hostname)
-        host.sitemap_targets.add(clean)
+        if clean in host.seen_sitemap_targets:
+            return
+        host.seen_sitemap_targets.add(clean)
+        host.sitemap_target_count += 1
+        mode = host.mode
         self._recompute_mode(host)
-        self._notify(hostname)
+        if host.mode != mode:
+            self._notify(hostname)
 
     def record_html_target(self, hostname: str, url: str) -> None:
+        """Count a URL found through HTML; persisted with the host's next real change."""
         host = self._get_or_create_host(hostname)
-        host.html_targets.add(self._clean_url(url))
-        self._notify(hostname)
+        clean = self._clean_url(url)
+        if clean not in host.seen_html_targets:
+            host.seen_html_targets.add(clean)
+            host.html_target_count += 1
 
     def snapshot(self) -> dict[str, Any]:
         return {

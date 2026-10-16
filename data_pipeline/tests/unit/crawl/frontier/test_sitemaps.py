@@ -125,3 +125,32 @@ def test_html_target_count_is_unique() -> None:
     coordinator.record_html_target("a.test", "https://a.test/news")
     coordinator.record_html_target("a.test", "https://a.test/news#top")
     assert coordinator.snapshot()["hosts"]["a.test"]["html_targets"] == 1
+
+
+def test_recording_many_targets_persists_counts_not_urls_and_rarely() -> None:
+    writes: list[dict[str, object]] = []
+    coordinator = SitemapDiscoveryCoordinator(strategy="hybrid-unified", on_change=writes.append)
+    coordinator.register_sitemap("a.test", "https://a.test/sitemap.xml", required=False)
+    before = len(writes)
+
+    for n in range(2000):
+        coordinator.record_sitemap_target("a.test", f"https://a.test/post-{n}")
+        coordinator.record_html_target("a.test", f"https://a.test/page-{n}")
+    coordinator.complete_sitemap("a.test", "https://a.test/sitemap.xml", result="success")
+
+    assert len(writes) - before <= 2  # the mode change and the sitemap completion
+    assert writes[-1]["sitemap_targets"] == 2000
+    assert writes[-1]["html_targets"] == 2000
+
+
+def test_restored_host_keeps_its_target_counts() -> None:
+    writes: list[dict[str, object]] = []
+    first = SitemapDiscoveryCoordinator(strategy="hybrid-unified", on_change=writes.append)
+    first.record_sitemap_target("a.test", "https://a.test/post-1")
+    first.complete_robots("a.test")
+
+    resumed = SitemapDiscoveryCoordinator(strategy="hybrid-unified")
+    resumed.restore([writes[-1]])
+
+    host = resumed.snapshot()["hosts"]["a.test"]
+    assert (host["mode"], host["sitemap_targets"]) == ("sitemap", 1)

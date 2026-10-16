@@ -50,7 +50,7 @@ def test_host_discovery_state_round_trip(tmp_path: Path) -> None:
         "sitemaps_succeeded": 1,
         "sitemaps_failed": 0,
         "sitemaps_absent": 0,
-        "sitemap_targets": ["https://a.test/page1"],
+        "sitemap_targets": 1,
         "mode": "sitemap",
     }
     upsert_host_discovery(state, record)
