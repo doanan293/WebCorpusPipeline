@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from data_pipeline.cli import wiring
 from data_pipeline.cli.main import main
 from data_pipeline.corpus.application import graph, kaggle, mongo, package, query
 from data_pipeline.corpus.infrastructure import mongo as mongo_adapter
@@ -103,7 +104,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> FakeClient:
     def connect(settings: Settings) -> FakeClient:
         return fake
 
-    monkeypatch.setattr(mongo_adapter, "connect", connect)
+    monkeypatch.setattr(wiring, "connect", connect)
     return fake
 
 

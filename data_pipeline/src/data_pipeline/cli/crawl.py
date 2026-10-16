@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 import typer
 
-from data_pipeline.cli import context, errors
+from data_pipeline.cli import context, errors, wiring
 
 app = typer.Typer(help="Crawl the HUST websites.", no_args_is_help=True)
 
@@ -86,11 +86,9 @@ def run(
     from data_pipeline.crawl.application import run_crawl as run_full
     from data_pipeline.crawl.domain.options import crawl_options_from_config
     from data_pipeline.crawl.domain.tuning import resolve_runtime_tuning
-    from data_pipeline.crawl.infrastructure.config_file import load_crawler_config
-    from data_pipeline.crawl.infrastructure.scrapy.runner import ScrapyEngine
-    from data_pipeline.crawl.infrastructure.seeds_file import parse_seed_file
-    from data_pipeline.crawl.infrastructure.sqlite.storage import SqliteCrawlStorage
 
+    # Built first: without the 'crawl' extra this fails before any input is read.
+    engine, storage = wiring.crawl_engine(), wiring.crawl_storage()
     run_full.validate_mode_flags(
         resume=resume,
         retry_failed=retry_failed,
@@ -105,13 +103,13 @@ def run(
         return errors.fail(f"input file not found: {input_path}")
 
     try:
-        seeds = parse_seed_file(input_path)
+        seeds = wiring.seed_file(input_path)
     except Exception as exc:  # noqa: BLE001 -- any unreadable seed file or configuration is a usage error
         return errors.fail(f"reading seed file: {exc}")
 
     config_path = context.pick(config, context.current_paths().crawler_config)
     try:
-        crawler_config = load_crawler_config(config_path, hostnames=seeds.allowed_hostnames)
+        crawler_config = wiring.crawler_config(config_path, hostnames=seeds.allowed_hostnames)
     except Exception as exc:  # noqa: BLE001 -- any unreadable seed file or configuration is a usage error
         return errors.fail(f"loading configuration: {exc}")
 
@@ -145,8 +143,8 @@ def run(
         retry_access_gates=retry_access_gates,
         reuse_content_from=reuse_content_from,
         refresh=refresh,
-        engine=ScrapyEngine(),
-        storage=SqliteCrawlStorage(),
+        engine=engine,
+        storage=storage,
     )
 
 
@@ -165,21 +163,19 @@ def discover(
     """Sitemap-only URL discovery for mixed hostname and exact URL seeds."""
     from data_pipeline.crawl.application import run_discovery
     from data_pipeline.crawl.domain.tuning import resolve_runtime_tuning
-    from data_pipeline.crawl.infrastructure.config_file import load_crawler_config
-    from data_pipeline.crawl.infrastructure.scrapy.runner import ScrapyEngine
-    from data_pipeline.crawl.infrastructure.seeds_file import parse_seed_file
-    from data_pipeline.crawl.infrastructure.sqlite.storage import SqliteCrawlStorage
 
+    # Built first: without the 'crawl' extra this fails before any input is read.
+    engine, storage = wiring.crawl_engine(), wiring.crawl_storage()
     if not input_path.is_file():
         return errors.fail(f"input file not found: {input_path}")
     try:
-        seeds = parse_seed_file(input_path)
+        seeds = wiring.seed_file(input_path)
     except ValueError as exc:
         return errors.fail(f"reading seeds: {exc}")
 
     config_path = context.pick(config, context.current_paths().crawler_config)
     try:
-        crawler_config = load_crawler_config(config_path, hostnames=seeds.allowed_hostnames)
+        crawler_config = wiring.crawler_config(config_path, hostnames=seeds.allowed_hostnames)
     except Exception as exc:  # noqa: BLE001 -- any unreadable seed file or configuration is a usage error
         return errors.fail(f"loading configuration: {exc}")
 
@@ -196,8 +192,8 @@ def discover(
         seeds=seeds,
         tuning=tuning,
         resume=resume,
-        engine=ScrapyEngine(),
-        storage=SqliteCrawlStorage(),
+        engine=engine,
+        storage=storage,
     )
 
 
@@ -209,9 +205,8 @@ def reextract(
 ) -> int:
     """Re-run extraction on the stored raw HTML of a finished crawl and rebuild final/ (offline)."""
     from data_pipeline.crawl.application import reextract as run_reextract
-    from data_pipeline.crawl.infrastructure.sqlite.storage import SqliteCrawlStorage
 
-    summary = run_reextract.reextract(output, SqliteCrawlStorage())
+    summary = run_reextract.reextract(output, wiring.crawl_storage())
     print(
         f"reextract: pages={summary.pages} changed={summary.changed} "
         f"duplicates={summary.duplicates}"

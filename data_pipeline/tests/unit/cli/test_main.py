@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 from pymongo.errors import ServerSelectionTimeoutError
 
+from data_pipeline.cli import wiring
 from data_pipeline.cli.main import main
 from data_pipeline.corpus.application import package
-from data_pipeline.corpus.infrastructure import mongo as mongo_adapter
 from data_pipeline.crawl.infrastructure import scrapy as crawl_scrapy
 from data_pipeline.enrich.application import download as downloader
 from data_pipeline.enrich.application import session as enrich_session
@@ -157,7 +157,7 @@ def test_mongo_error_is_one_line(
         msg = "localhost:27017: [Errno 111] Connection refused"
         raise ServerSelectionTimeoutError(msg)
 
-    monkeypatch.setattr(mongo_adapter, "connect", unreachable)
+    monkeypatch.setattr(wiring, "connect", unreachable)
 
     assert main(["corpus", "prune-mongo", "--keep", "s"]) == 1
     err = capsys.readouterr().err.strip()
@@ -172,7 +172,7 @@ def test_called_process_error_shows_stderr(
     def failing(*args: object, **kwargs: object) -> object:
         raise subprocess.CalledProcessError(2, ["soffice"], "", "source file could not be loaded")
 
-    monkeypatch.setattr(mongo_adapter, "connect", failing)
+    monkeypatch.setattr(wiring, "connect", failing)
 
     assert main(["corpus", "prune-mongo", "--keep", "s"]) == 1
     assert "source file could not be loaded" in capsys.readouterr().err

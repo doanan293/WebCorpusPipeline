@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
-from contextlib import contextmanager
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
 import typer
 
-from data_pipeline.cli import context
+from data_pipeline.cli import context, wiring
 from data_pipeline.cli.context import RebindOption, SourceOption, WorkDirOption
 
 app = typer.Typer(
@@ -32,12 +30,10 @@ def build_graph(
 ) -> int:
     """Build the page/link graph from the crawl output alone."""
     from data_pipeline.corpus.application import graph
-    from data_pipeline.corpus.infrastructure.files.corpus_files import LocalCorpusFiles
-    from data_pipeline.corpus.infrastructure.graph_index import open_edge_index
 
-    files = LocalCorpusFiles()
+    files = wiring.corpus_files()
     articles = files.articles_path(context.build_settings(source, None).source_path)
-    graph.build_graph(files.read_jsonl(articles), output, open_edge_index)
+    graph.build_graph(files.read_jsonl(articles), output, wiring.edge_index())
     return 0
 
 
@@ -50,26 +46,16 @@ def package(
 ) -> int:
     """Package articles, documents, images and links into a versioned corpus."""
     from data_pipeline.corpus.application import package as corpus_package
-    from data_pipeline.corpus.infrastructure.files.corpus_files import LocalCorpusFiles
-    from data_pipeline.corpus.infrastructure.graph_index import open_edge_index
-    from data_pipeline.enrich.application import session
-    from data_pipeline.enrich.application.export import export_enrichment
-    from data_pipeline.enrich.infrastructure.sqlite.work_state import SqliteWorkState
 
     settings = context.build_settings(source, work_dir)
-    with session.open_work_state(
-        settings,
-        rebind=rebind_source,
-        crawl_id=context.source_crawl_id(settings),
-        opener=SqliteWorkState.open,
-    ) as state:
+    with wiring.work_state(settings, rebind=rebind_source) as state:
         corpus_package.package_corpus(
             settings.source_path,
             state,
             output,
-            export_documents=lambda folder: export_enrichment(state, folder),
-            files=LocalCorpusFiles(),
-            open_index=open_edge_index,
+            export_documents=wiring.export_documents(state),
+            files=wiring.corpus_files(),
+            open_index=wiring.edge_index(),
         )
     return 0
 
@@ -78,23 +64,10 @@ def package(
 def verify(corpus: CorpusOption) -> int:
     """Verify the files and checksums of a packaged corpus."""
     from data_pipeline.corpus.application import package as corpus_package
-    from data_pipeline.corpus.infrastructure.files.corpus_files import LocalCorpusFiles
 
-    report = corpus_package.verify_corpus(corpus, LocalCorpusFiles())
+    report = corpus_package.verify_corpus(corpus, wiring.corpus_files())
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["valid"] else 3
-
-
-@contextmanager
-def _mongo_database() -> Iterator[Any]:
-    from data_pipeline.corpus.infrastructure import mongo as mongo_adapter
-
-    settings = context.build_settings(None, None)
-    client = mongo_adapter.connect(settings)
-    try:
-        yield mongo_adapter.MongoCorpusDatabase(client[settings.mongo_database])
-    finally:
-        client.close()
 
 
 @app.command("import-mongo")
@@ -106,10 +79,9 @@ def import_mongo(
 ) -> int:
     """Import a packaged corpus into MongoDB."""
     from data_pipeline.corpus.application import mongo
-    from data_pipeline.corpus.infrastructure.files.corpus_files import LocalCorpusFiles
 
-    with _mongo_database() as db:
-        result = mongo.import_corpus(corpus, db, LocalCorpusFiles(), force=force)
+    with wiring.mongo_database(context.build_settings(None, None)) as db:
+        result = mongo.import_corpus(corpus, db, wiring.corpus_files(), force=force)
         print(json.dumps(result, indent=2))
     return 0
 
@@ -126,7 +98,7 @@ def query(
     """Query the link graph of a ready snapshot in MongoDB."""
     from data_pipeline.corpus.application import query as corpus_query
 
-    with _mongo_database() as db:
+    with wiring.mongo_database(context.build_settings(None, None)) as db:
         result = corpus_query.query_links(
             db,
             snapshot,
@@ -145,7 +117,7 @@ def prune_mongo(
     """Delete every MongoDB snapshot except the one to keep."""
     from data_pipeline.corpus.application import mongo
 
-    with _mongo_database() as db:
+    with wiring.mongo_database(context.build_settings(None, None)) as db:
         print(json.dumps(mongo.prune_snapshots(db, keep), indent=2))
     return 0
 
@@ -164,12 +136,15 @@ def publish(
 ) -> int:
     """Publish the corpus to Kaggle."""
     from data_pipeline.corpus.application import kaggle
-    from data_pipeline.corpus.infrastructure.files.corpus_files import LocalCorpusFiles
-    from data_pipeline.corpus.infrastructure.kaggle_cli import KaggleCli
 
     config_path = context.pick(config, context.current_paths().kaggle_config)
     result = kaggle.publish_corpus(
-        corpus, config_path, KaggleCli(), LocalCorpusFiles(), update=update, message=message
+        corpus,
+        config_path,
+        wiring.dataset_publisher(),
+        wiring.corpus_files(),
+        update=update,
+        message=message,
     )
     print(json.dumps(result, indent=2))
     return 0
@@ -186,16 +161,14 @@ def pull(
 ) -> int:
     """Download the locked corpus snapshot from Kaggle."""
     from data_pipeline.corpus.application import kaggle
-    from data_pipeline.corpus.infrastructure.files.corpus_files import LocalCorpusFiles
-    from data_pipeline.corpus.infrastructure.kaggle_cli import KaggleCli
 
     paths = context.current_paths()
     print(
         kaggle.pull_corpus(
             context.pick(lock, paths.corpus_lock),
             context.pick(destination, paths.corpus_pulled),
-            KaggleCli(),
-            LocalCorpusFiles(),
+            wiring.dataset_publisher(),
+            wiring.corpus_files(),
         )
     )
     return 0

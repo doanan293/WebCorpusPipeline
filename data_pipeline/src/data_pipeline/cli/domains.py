@@ -7,7 +7,7 @@ from typing import Annotated
 
 import typer
 
-from data_pipeline.cli import context, errors
+from data_pipeline.cli import context, errors, wiring
 
 app = typer.Typer(help="Check which HUST hostnames are alive.", no_args_is_help=True)
 
@@ -40,27 +40,20 @@ def audit(
         return errors.fail("workers and timeouts must be positive; retries cannot be negative")
 
     from data_pipeline.domains.application import audit as domain_audit
-    from data_pipeline.domains.application.ports import BrowserProber
-    from data_pipeline.domains.infrastructure.http_probe import HttpHostProber
-    from data_pipeline.domains.infrastructure.report_files import FileAuditReports
 
     paths = context.current_paths()
     report_path = context.pick(report, paths.domains_status)
-    browser: BrowserProber | None = None
-    if not no_browser:
-        # Imported only when needed, so --no-browser works without the 'crawl' extra.
-        from data_pipeline.domains.infrastructure.browser_probe import PlaywrightBrowserProber
-
-        browser = PlaywrightBrowserProber(timeout=browser_timeout, workers=browser_workers)
     results = domain_audit.run_audit(
-        FileAuditReports(
+        wiring.audit_reports(
             context.pick(all_domains, paths.domains_all),
             context.pick(active_domains, paths.domains_active),
             report_path,
         ),
         workers=workers,
-        prober=HttpHostProber(timeout=timeout, attempts=retries + 1),
-        browser=browser,
+        prober=wiring.host_prober(timeout=timeout, attempts=retries + 1),
+        browser=wiring.browser_prober(
+            enabled=not no_browser, timeout=browser_timeout, workers=browser_workers
+        ),
         progress=_print_progress,
     )
     summary = domain_audit.summarize(results, str(report_path))
