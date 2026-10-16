@@ -6,8 +6,8 @@ from typing import Any, override
 
 import pytest
 
-from data_pipeline.domains import probe as domain_probe
-from data_pipeline.domains.probe import (
+from data_pipeline.domains.infrastructure import http_probe as domain_probe
+from data_pipeline.domains.infrastructure.http_probe import (
     ProbeAttempt,
     ProbeResult,
     classify_http_status,

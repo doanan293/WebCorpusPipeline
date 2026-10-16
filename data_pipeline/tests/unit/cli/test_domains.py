@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from data_pipeline.cli.main import main
-from data_pipeline.domains import audit as domain_audit
-from data_pipeline.domains.probe import ProbeAttempt
+from data_pipeline.domains.application import audit as domain_audit
+from data_pipeline.domains.infrastructure.http_probe import ProbeAttempt
 from data_pipeline.shared.domain.config import ProjectPaths
 
 

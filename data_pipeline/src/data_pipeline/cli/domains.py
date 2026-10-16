@@ -39,7 +39,7 @@ def audit(
     if workers <= 0 or browser_workers <= 0 or timeout <= 0 or browser_timeout <= 0 or retries < 0:
         return errors.fail("workers and timeouts must be positive; retries cannot be negative")
 
-    from data_pipeline.domains import audit as domain_audit
+    from data_pipeline.domains.application import audit as domain_audit
 
     paths = context.current_paths()
     summary = domain_audit.audit_domains(

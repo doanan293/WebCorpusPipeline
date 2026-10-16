@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 
 from data_pipeline.cli import domains as cli_domains
-from data_pipeline.domains.audit import AuditOptions, run_audit
-from data_pipeline.domains.probe import (
+from data_pipeline.domains.application.audit import AuditOptions, run_audit
+from data_pipeline.domains.infrastructure.http_probe import (
     ProbeAttempt,
     ProbeResult,
 )
@@ -224,9 +224,12 @@ def test_no_browser_works_without_playwright(
 ) -> None:
     for name in ("playwright", "playwright.async_api"):
         monkeypatch.setitem(sys.modules, name, None)
-    for name in ("data_pipeline.domains.browser", "data_pipeline.domains.audit"):
+    for name in (
+        "data_pipeline.domains.infrastructure.browser_probe",
+        "data_pipeline.domains.application.audit",
+    ):
         monkeypatch.delitem(sys.modules, name, raising=False)
-    fresh = importlib.import_module("data_pipeline.domains.audit")
+    fresh = importlib.import_module("data_pipeline.domains.application.audit")
     all_path = tmp_path / "all.txt"
     all_path.write_text("a.hust.edu.vn\n", encoding="utf-8")
 

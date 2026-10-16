@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from data_pipeline.domains.probe import (
+from data_pipeline.domains.infrastructure.http_probe import (
     ProbeResult,
 )
-from data_pipeline.domains.report import (
+from data_pipeline.domains.infrastructure.report_files import (
     load_candidate_hostnames,
     render_active_domains,
     render_report,

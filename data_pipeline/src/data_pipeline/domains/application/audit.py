@@ -7,7 +7,7 @@ from functools import partial
 from pathlib import Path
 from urllib.parse import urlparse
 
-from data_pipeline.domains.probe import (
+from data_pipeline.domains.infrastructure.http_probe import (
     ProbeAttempt,
     ProbeResult,
     classify_response,
@@ -17,7 +17,7 @@ from data_pipeline.domains.probe import (
     is_target_hostname,
     probe_host,
 )
-from data_pipeline.domains.report import (
+from data_pipeline.domains.infrastructure.report_files import (
     load_candidate_hostnames,
     render_active_domains,
     render_report,
@@ -214,7 +214,7 @@ def audit_domains(
     browser_probe = None
     if options.browser:
         # Imported only when needed, so --no-browser works without the 'crawl' extra.
-        from data_pipeline.domains.browser import browser_probe_results  # noqa: PLC0415
+        from data_pipeline.domains.infrastructure.browser_probe import browser_probe_results  # noqa: PLC0415
 
         browser_probe = partial(
             browser_probe_results,

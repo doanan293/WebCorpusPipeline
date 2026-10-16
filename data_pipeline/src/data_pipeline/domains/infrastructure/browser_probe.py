@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 from playwright.async_api import Route, WebSocketRoute
 
-from data_pipeline.domains.probe import (
+from data_pipeline.domains.infrastructure.http_probe import (
     ProbeAttempt,
     ProbeResult,
     classify_response,

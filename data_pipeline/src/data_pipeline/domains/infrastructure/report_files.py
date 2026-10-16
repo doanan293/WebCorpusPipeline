@@ -4,7 +4,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from data_pipeline.domains.probe import ProbeResult
+from data_pipeline.domains.infrastructure.http_probe import ProbeResult
 from data_pipeline.shared.infrastructure.files import load_hostnames
 
 

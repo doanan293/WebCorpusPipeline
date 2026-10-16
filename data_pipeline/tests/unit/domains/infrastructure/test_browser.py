@@ -3,8 +3,8 @@ from typing import Any, cast
 
 import pytest
 
-from data_pipeline.domains import browser as domain_browser
-from data_pipeline.domains.probe import (
+from data_pipeline.domains.infrastructure import browser_probe as domain_browser
+from data_pipeline.domains.infrastructure.http_probe import (
     ProbeAttempt,
 )
 from data_pipeline.shared.infrastructure.network import NonPublicAddressError
