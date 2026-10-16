@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from http import HTTPStatus
-from typing import Literal
+from typing import Any, Literal
 
 import lxml.html as lxml_html
 from lxml import etree
@@ -39,6 +40,40 @@ _CAPTCHA_GATE_MARKERS = (
     "human-verification",
     "verify-human",
 )
+
+
+_HIDDEN_TEXT_TAGS = frozenset({"script", "style", "noscript", "template"})
+_NON_FORM_TEXT_TAGS = frozenset({"form", "script", "style", "noscript"})
+
+
+def _text_outside(container: lxml_html.HtmlElement, excluded: frozenset[str]) -> Iterator[str]:
+    """Text nodes under ``container`` in document order, skipping those inside ``excluded`` tags.
+
+    Same result as the XPath ``.//text()[not(ancestor::x) and ...]``, in one linear pass: libxml2
+    evaluates that predicate quadratically on wide documents (a 22k-comment page took hours).
+    """
+
+    def hides(element: lxml_html.HtmlElement, *, parent_hidden: bool) -> bool:
+        return parent_hidden or (isinstance(element.tag, str) and element.tag in excluded)
+
+    container_hidden = hides(container, parent_hidden=False)
+    if isinstance(container.tag, str) and not container_hidden and container.text:
+        yield container.text
+    # (remaining children, inside an excluded tag, the element whose tail follows them)
+    stack: list[tuple[Iterator[Any], bool, Any]] = [(iter(container), container_hidden, None)]
+    while stack:
+        children, hidden, owner = stack[-1]
+        child = next(children, None)
+        if child is None:
+            stack.pop()
+            # A tail is text of the parent: it is visible when the parent's context is.
+            if owner is not None and stack and not stack[-1][1] and owner.tail:
+                yield owner.tail
+            continue
+        child_hidden = hides(child, parent_hidden=hidden)
+        if isinstance(child.tag, str) and not child_hidden and child.text:
+            yield child.text
+        stack.append((iter(child), child_hidden, child))
 
 
 def _is_comment_scoped(element: lxml_html.HtmlElement) -> bool:
@@ -78,12 +113,7 @@ def _is_embedded_in_public_form(
     ):
         return False
     public_text = " ".join(
-        str(value).strip()
-        for value in root.xpath(
-            ".//text()[not(ancestor::form) and not(ancestor::script) "
-            "and not(ancestor::style) and not(ancestor::noscript)]"
-        )
-        if str(value).strip()
+        value.strip() for value in _text_outside(root, _NON_FORM_TEXT_TAGS) if value.strip()
     )
     return len(" ".join(public_text.split())) >= _MIN_VISIBLE_CHARS
 
@@ -104,11 +134,8 @@ def _visible_body_text(html: str) -> str:
         return ""
     bodies = root.xpath("//body")
     container = bodies[0] if bodies else root
-    values = container.xpath(
-        ".//text()[not(ancestor::script) and not(ancestor::style) "
-        "and not(ancestor::noscript) and not(ancestor::template)]"
-    )
-    return " ".join(" ".join(str(value).split()) for value in values if str(value).strip())
+    values = _text_outside(container, _HIDDEN_TEXT_TAGS)
+    return " ".join(" ".join(value.split()) for value in values if value.strip())
 
 
 def _has_page_level_captcha(html: str, *, rate_limited: bool = False) -> bool:

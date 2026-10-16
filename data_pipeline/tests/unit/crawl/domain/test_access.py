@@ -1,6 +1,13 @@
+import time
+
 import pytest
 
-from data_pipeline.crawl.domain.access import classify_access, classify_page_gate
+from data_pipeline.crawl.domain.access import (
+    _parse_html,
+    _visible_body_text,
+    classify_access,
+    classify_page_gate,
+)
 
 
 @pytest.mark.parametrize(
@@ -217,3 +224,59 @@ def test_whitespace_html_is_empty_not_error(html: str) -> None:
 
     assert gate.reason == "empty"
     assert access.outcome == "public"
+
+
+def _comment_list_page(comments: int) -> str:
+    """A WordPress-like page whose comment list holds many items, each followed by an HTML comment."""
+    item = (
+        '<li class="comment"><article><div class="flex-row"><div class="flex-col">'
+        '<cite><a href="#">name {i}</a></cite> <span>says</span></div>'
+        '<div class="comment-content"><p>spam text {i}</p></div></div></article></li>'
+        "<!-- #comment-## -->"
+    )
+    return (
+        "<html><body><main><p>Article body text here.</p><ol class='comment-list'>"
+        + "".join(item.format(i=i) for i in range(comments))
+        + "</ol></main></body></html>"
+    )
+
+
+def test_page_gate_stays_linear_on_a_huge_comment_list() -> None:
+    # libxml2 evaluates `text()[not(ancestor::x)]` quadratically on this shape: 8000 comments
+    # took ~9 s and the 22k-comment page that stalled the live crawl did not finish in hours.
+    html = _comment_list_page(8000)
+
+    started = time.monotonic()
+    decision = classify_page_gate(
+        status=200, url="https://a.test/post/", html=html, text="Article body text here."
+    )
+
+    assert time.monotonic() - started < 3
+    assert decision.expandable
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        "<html><body><p>a <b>b</b> tail</p><script>x()</script>after<style>p{}</style></body></html>",
+        "<html><body><noscript>no</noscript><template><p>t</p></template> kept <!-- c --> tail</body></html>",
+        "<div>no body <span>inner</span> out</div>",
+        "<html><body><form><p>in form</p></form> outside <!--x--><i>i</i></body></html>",
+        _comment_list_page(3),
+        "",
+        "   ",
+    ],
+)
+def test_visible_text_matches_the_xpath_definition(html: str) -> None:
+    root = _parse_html(html)
+    expected = ""
+    if root is not None:
+        bodies = root.xpath("//body")
+        container = bodies[0] if bodies else root
+        values = container.xpath(
+            ".//text()[not(ancestor::script) and not(ancestor::style) "
+            "and not(ancestor::noscript) and not(ancestor::template)]"
+        )
+        expected = " ".join(" ".join(str(v).split()) for v in values if str(v).strip())
+
+    assert _visible_body_text(html) == expected
