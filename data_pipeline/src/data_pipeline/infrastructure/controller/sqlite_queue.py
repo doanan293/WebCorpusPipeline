@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import sqlite3
 from collections.abc import Iterable, Sequence
 from itertools import islice
 from pathlib import Path
 
 from data_pipeline.application.controller.ports import QueueCounts
 from data_pipeline.domain.controller.models import QueuedUrl, UrlKind
+from data_pipeline.infrastructure.shared.sqlite import connect, transaction
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS urls (
@@ -29,9 +29,7 @@ class SqliteUrlQueue:
     """The ``UrlQueue`` port over one SQLite file; every write commits at once."""
 
     def __init__(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path, isolation_level=None)
-        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db = connect(path)
         self.db.executescript(_SCHEMA)
 
     def close(self) -> None:
@@ -39,7 +37,7 @@ class SqliteUrlQueue:
 
     def add(self, items: Sequence[tuple[str, str, UrlKind]], now: float) -> int:
         before = self.db.total_changes
-        with self.db:
+        with transaction(self.db):
             self.db.executemany(
                 "INSERT OR IGNORE INTO urls (url, host, kind, next_due_at) VALUES (?, ?, ?, ?)",
                 [(url, host, kind, now) for url, host, kind in items],
@@ -60,7 +58,7 @@ class SqliteUrlQueue:
         return QueuedUrl(*row) if row else None
 
     def mark_sent(self, url: str, now: float, next_due_at: float | None) -> None:
-        with self.db:
+        with transaction(self.db):
             self.db.execute(
                 "UPDATE urls SET last_sent_at = ?, next_due_at = ?, attempts = 0 WHERE url = ?",
                 (now, next_due_at, url),
@@ -88,7 +86,7 @@ class SqliteUrlQueue:
         before = self.db.total_changes
         iterator = iter(rows)
         while batch := list(islice(iterator, 10_000)):
-            with self.db:
+            with transaction(self.db):
                 self.db.executemany(
                     "INSERT OR IGNORE INTO urls VALUES (?, ?, ?, ?, ?, ?)",
                     [
