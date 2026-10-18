@@ -47,12 +47,17 @@ def test_controller_counts_and_due_now(
         and rows["https://h.hust.edu.vn/next"][1] <= time.time()
     )
     assert rows["https://h.hust.edu.vn/next"][1] >= before - 1
+    # Pages already fetched are not crawled again now: the first check comes after a full period.
+    after = time.time()
     home = rows["https://h.hust.edu.vn/"]
     fetched = 1_792_120_471.0  # 2026-10-16T03:14:31+00:00
     assert home[0] == "hub" and home[2] == fetched
-    assert fetched <= (home[1] or 0) < fetched + DAY
+    assert before + DAY <= (home[1] or 0) < after + 2 * DAY
     page = rows["https://h.hust.edu.vn/a"]
-    assert page[2] == FINISHED_AT and FINISHED_AT <= (page[1] or 0) < FINISHED_AT + 7 * DAY
+    assert page[2] == FINISHED_AT
+    assert before + 7 * DAY <= (page[1] or 0) < after + 14 * DAY
+    document = rows["https://h.hust.edu.vn/qd.pdf"]
+    assert before + 30 * DAY <= (document[1] or 0) < after + 60 * DAY
     assert rows["https://h.hust.edu.vn/qd.pdf"][0] == "document"
 
 

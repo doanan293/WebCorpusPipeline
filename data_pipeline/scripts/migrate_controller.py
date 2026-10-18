@@ -32,6 +32,13 @@ def _period(kind: UrlKind) -> float:
     return DEFAULT_RECRAWL_DAYS[kind] * DAY_SECONDS
 
 
+def first_check(url: str, kind: UrlKind, now: float) -> float:
+    """No page the batch crawl already has is fetched again now: its first check comes after one
+    full period, spread over the following period so the checks do not all fall at once."""
+    period = _period(kind)
+    return spread_due(url, now + period, period)
+
+
 def plan(crawl: Path, now: float) -> Iterator[tuple[str, QueuedUrl | None]]:
     """``(category, row)`` per URL record; row ``None`` for records left out."""
     finished_at = float(json.loads((crawl / "manifest.json").read_text())["finished_at"])
@@ -51,12 +58,12 @@ def plan(crawl: Path, now: float) -> Iterator[tuple[str, QueuedUrl | None]]:
                 sent = fetched.get(url, finished_at)
                 yield (
                     "extracted",
-                    QueuedUrl(url, host, kind, spread_due(url, sent, _period(kind)), sent, 0),
+                    QueuedUrl(url, host, kind, first_check(url, kind, now), sent, 0),
                 )
             elif status in {"scheduled", "failed"}:
                 yield status, QueuedUrl(url, host, url_kind(url), now, None, 0)
             elif status == "discovered_not_downloaded" and recognizable_asset(url) == "document":
-                due = spread_due(url, finished_at, _period("document"))
+                due = first_check(url, "document", now)
                 yield "documents", QueuedUrl(url, host, "document", due, finished_at, 0)
             else:
                 yield "ignored", None
