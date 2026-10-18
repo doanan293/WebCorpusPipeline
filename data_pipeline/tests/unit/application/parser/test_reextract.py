@@ -4,9 +4,11 @@ import asyncio
 import gzip
 import hashlib
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
 
 from data_pipeline.application.parser.reextract import reextract
+from data_pipeline.domain.parser.models import StoredPage
 from data_pipeline.infrastructure.parser.raw_pages import SqliteRawPages
 from tests.fakes.parser import FakeAggregatorClient
 
@@ -42,3 +44,15 @@ def test_reextract_sends_records(tmp_path: Path) -> None:
     assert sent == 2
     assert sorted(record["title"] for record in aggregator.records) == ["A", "B"]
     assert {record["url"] for record in aggregator.records} == {"https://h/A", "https://h/B"}
+
+
+class _Pages:
+    def iter(self) -> Iterator[StoredPage]:
+        body = PAGE.format(t="C").encode()
+        yield StoredPage("http://h/old", "https://h/new", "text/html", body)
+
+
+def test_reextract_uses_final_url() -> None:
+    aggregator = FakeAggregatorClient()
+    asyncio.run(reextract(_Pages(), aggregator))
+    assert [record["url"] for record in aggregator.records] == ["https://h/new"]

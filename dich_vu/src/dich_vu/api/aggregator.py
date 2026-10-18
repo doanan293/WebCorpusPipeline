@@ -17,7 +17,7 @@ from data_pipeline.application.aggregator.runtime import AggregatorRuntime
 from data_pipeline.domain.aggregator.config import AggregatorConfig
 from data_pipeline.domain.aggregator.seeds import Seeds
 from data_pipeline.domain.shared.protocol import validate_record
-from dich_vu.api.common import Stats, error, json_object, stats_loop
+from dich_vu.api.common import Stats, error, json_object, json_response, stats_loop
 
 log = logging.getLogger(__name__)
 
@@ -32,13 +32,13 @@ def create_app(
     async def add(request: web.Request) -> web.Response:
         body = await json_object(request)
         if not body:
-            return web.json_response({"status": "ok"})
+            return json_response({"status": "ok"})
         record = validate_record(body)
         if isinstance(record, str):
             return error(400, record)
         counters.incr("received")
         await handle(record)
-        return web.json_response({"status": "ok"})
+        return json_response({"status": "ok"})
 
     app = web.Application(client_max_size=64 * 1024 * 1024)
     app.router.add_post("/add", add)

@@ -102,3 +102,14 @@ def test_work_crash_returns_to_idle() -> None:
             return status
 
     assert asyncio.run(scenario()) == {"status": "đang chờ"}
+
+
+def test_ping_body_is_plain_utf8() -> None:
+    async def work(_: str) -> FetchOutcome:
+        return "forwarded"
+
+    async def scenario() -> str:
+        async with TestClient(TestServer(create_app(work))) as client:
+            return await (await client.get("/ping")).text()
+
+    assert '"đang chờ"' in asyncio.run(scenario())

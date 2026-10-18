@@ -11,7 +11,7 @@ from aiohttp import web
 from data_pipeline.application.fetcher.fetch import FetchOutcome, fetch_and_forward
 from data_pipeline.application.fetcher.ports import PageGetter, ParserClient, Renderer
 from data_pipeline.domain.shared.protocol import ACCEPTED, BUSY, IDLE
-from dich_vu.api.common import Stats, error, json_object, stats_loop
+from dich_vu.api.common import Stats, error, json_object, json_response, stats_loop
 
 log = logging.getLogger(__name__)
 
@@ -40,17 +40,17 @@ def create_app(
         if not isinstance(url, str) or not url:
             return error(400, "url must be a non-empty string")
         if state["busy"]:
-            return web.json_response({"status": BUSY}, status=409)
+            return json_response({"status": BUSY}, status=409)
         # Set before any await, so a second /load in flight sees the node as busy.
         state["busy"] = True
         counters.incr("received")
         task = asyncio.create_task(run(url))
         tasks.add(task)
         task.add_done_callback(tasks.discard)
-        return web.json_response({"status": ACCEPTED}, status=202)
+        return json_response({"status": ACCEPTED}, status=202)
 
     async def ping(_: web.Request) -> web.Response:
-        return web.json_response({"status": BUSY if state["busy"] else IDLE})
+        return json_response({"status": BUSY if state["busy"] else IDLE})
 
     app = web.Application()
     app.router.add_post("/load", load)

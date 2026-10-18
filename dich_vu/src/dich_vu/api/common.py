@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import json
 import logging
 import signal
@@ -14,8 +15,16 @@ from aiohttp import web
 log = logging.getLogger(__name__)
 
 
+_dumps = functools.partial(json.dumps, ensure_ascii=False)
+
+
+def json_response(data: object, status: int = 200) -> web.Response:
+    """A JSON answer with Vietnamese as written ("đang chờ"), not as ``\\u`` escapes."""
+    return web.json_response(data, status=status, dumps=_dumps)
+
+
 def error(status: int, reason: str) -> web.Response:
-    return web.json_response({"error": reason}, status=status)
+    return json_response({"error": reason}, status=status)
 
 
 async def json_object(request: web.Request) -> dict[str, Any]:

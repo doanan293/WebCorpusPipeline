@@ -1,8 +1,9 @@
 # The blocks of the slide, each its own container (one image), plus MongoDB.
 # The project keeps the name data_pipeline so the existing volumes (Mongo above all) are reused.
 name: data_pipeline
-# Start order follows the data downstream-first: the controller pings live fetchers and the
-# aggregator sends its start pages to a live controller.
+# Start order follows the data downstream-first (storage, aggregator, parser, fetchers, controller),
+# so no block sends to one that is not up yet. The aggregator's start pages wait in its outbox
+# until the controller is up.
 x-service: &service
   build:
     context: ..
@@ -48,6 +49,8 @@ services:
     ports: ["6600:6600"]
     environment:
       AGGREGATOR_URL: http://aggregator:3300
+    depends_on:
+      aggregator: {condition: service_healthy}
     env_file:
       - path: ../data_pipeline/.env
         required: false
@@ -114,7 +117,6 @@ services:
       - ../data_pipeline/data/state:/app/data_pipeline/data/state
     depends_on:
       storage: {condition: service_healthy}
-      controller: {condition: service_healthy}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen(u.Request('http://127.0.0.1:3300/add', data=b'{}', headers={'Content-Type': 'application/json'}), timeout=3)"]
       interval: 10s

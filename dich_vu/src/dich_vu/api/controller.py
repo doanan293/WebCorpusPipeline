@@ -13,7 +13,7 @@ from data_pipeline.application.controller.add_urls import add_urls
 from data_pipeline.application.controller.dispatch import Dispatcher, run_dispatch
 from data_pipeline.application.controller.ports import Clock, Downloader, UrlQueue
 from data_pipeline.domain.controller.models import ControllerConfig
-from dich_vu.api.common import error, json_object
+from dich_vu.api.common import error, json_object, json_response
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def create_app(queue: UrlQueue, clock: Clock) -> web.Application:
         if not isinstance(urls, list) or not all(isinstance(url, str) for url in urls):
             return error(400, "urls must be a list of strings")
         result = add_urls(queue, urls, clock)
-        return web.json_response(
+        return json_response(
             {
                 "accepted": result.accepted,
                 "duplicates": result.duplicates,

@@ -11,7 +11,7 @@ from aiohttp import web
 from data_pipeline.application.parser.parse import DocumentReaders, parse_payload
 from data_pipeline.application.parser.ports import AggregatorClient
 from data_pipeline.domain.shared.protocol import ACCEPTED
-from dich_vu.api.common import Stats, error, stats_loop
+from dich_vu.api.common import Stats, error, json_response, stats_loop
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ def create_app(
             task = asyncio.create_task(run(url, fmt, request.headers.get("Content-Type", ""), body))
             tasks.add(task)
             task.add_done_callback(tasks.discard)
-        return web.json_response({"status": ACCEPTED}, status=202)
+        return json_response({"status": ACCEPTED}, status=202)
 
     app = web.Application(client_max_size=max_body)
     app.router.add_post("/parse", parse)

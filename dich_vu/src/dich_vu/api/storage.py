@@ -15,7 +15,7 @@ from data_pipeline.application.storage.ports import (
 )
 from data_pipeline.application.storage.store import store_record
 from data_pipeline.domain.shared.protocol import validate_record
-from dich_vu.api.common import Stats, error, json_object, stats_loop
+from dich_vu.api.common import Stats, error, json_object, json_response, stats_loop
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def create_app(
     async def add(request: web.Request) -> web.Response:
         body = await json_object(request)
         if not body:
-            return web.json_response({"status": "ok"})
+            return json_response({"status": "ok"})
         record = validate_record(body)
         if isinstance(record, str):
             return error(400, record)
@@ -42,7 +42,7 @@ def create_app(
             log.warning("refused %s: %s", record["url"], exc)
             return error(422, str(exc))
         counters.incr("stored")
-        return web.json_response({"status": "ok"})
+        return json_response({"status": "ok"})
 
     app = web.Application(client_max_size=64 * 1024 * 1024)
     app.router.add_post("/add", add)
