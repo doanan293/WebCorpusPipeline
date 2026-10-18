@@ -40,12 +40,15 @@ if TYPE_CHECKING:
     )
     from data_pipeline.application.fetcher.ports import Renderer
     from data_pipeline.application.hosts.ports import AuditReports, BrowserProber, HostProber
+    from data_pipeline.application.parser.parse import DocumentReaders
     from data_pipeline.domain.controller.models import ControllerConfig
     from data_pipeline.domain.crawl.config import CrawlerConfig
     from data_pipeline.domain.crawl.seeds import SeedSet
     from data_pipeline.domain.fetcher.models import FetcherConfig
+    from data_pipeline.domain.parser.config import ParserConfig
     from data_pipeline.infrastructure.fetcher.http_getter import AiohttpPageGetter
     from data_pipeline.infrastructure.fetcher.parser_client import HttpParserClient
+    from data_pipeline.infrastructure.parser.aggregator_client import HttpAggregatorClient
 
 # -- configuration ----------------------------------------------------------------------------
 
@@ -312,3 +315,51 @@ def parser_client(parser_url: str) -> HttpParserClient:
     from data_pipeline.infrastructure.fetcher.parser_client import HttpParserClient
 
     return HttpParserClient(parser_url)
+
+
+# -- parser -----------------------------------------------------------------------------------
+
+
+def parser_config(path: Path) -> ParserConfig:
+    from data_pipeline.infrastructure.parser.config_file import load_parser_config
+
+    return load_parser_config(path)
+
+
+def aggregator_client(aggregator_url: str) -> HttpAggregatorClient:
+    from data_pipeline.infrastructure.parser.aggregator_client import HttpAggregatorClient
+
+    return HttpAggregatorClient(aggregator_url)
+
+
+def document_readers(config: ParserConfig, paths: ProjectPaths) -> DocumentReaders:
+    """Local parsers, the LlamaParse cache, and LlamaParse itself when enabled and keyed."""
+    import logging
+    import tempfile
+
+    from data_pipeline.application.parser.parse import DocumentReaders
+    from data_pipeline.infrastructure.parser.cache import FileParseCache
+    from data_pipeline.infrastructure.parser.job_log import LoggedCloudJobs
+    from data_pipeline.infrastructure.parser.llamaparse import LlamaParseCloud
+    from data_pipeline.infrastructure.parser.parsers.dispatch import LocalParserAdapter
+
+    cloud = None
+    if config.llamaparse:
+        keys = api_keys(paths)
+        if keys:
+            cloud = LlamaParseCloud(
+                LoggedCloudJobs(),
+                Settings(
+                    project_root=paths.root,
+                    cloud_poll_seconds=config.cloud_poll_seconds,
+                    cloud_timeout_seconds=config.cloud_timeout_seconds,
+                ),
+                keys,
+            )
+        else:
+            logging.getLogger(__name__).warning("llamaparse is on but .env has no LLAMAPARSE_KEY")
+    cache_dir = (
+        config.cache_dir if config.cache_dir.is_absolute() else paths.root / config.cache_dir
+    )
+    scratch = Path(tempfile.gettempdir()) / "data-pipeline-parse"
+    return DocumentReaders(LocalParserAdapter(), cloud, FileParseCache(cache_dir), scratch)

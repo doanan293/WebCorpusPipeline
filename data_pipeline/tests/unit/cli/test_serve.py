@@ -59,3 +59,25 @@ def test_serve_fetcher_uses_port_option(
     )
     assert ("GET", "/ping") in paths
     assert ("POST", "/load") in paths
+
+
+def test_serve_parser_runs_parse(
+    project: ProjectPaths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    served: list[tuple[web.Application, int]] = []
+
+    def fake_run(app: web.Application, port: int, background: object = ()) -> None:
+        served.append((app, port))
+
+    monkeypatch.setattr(common, "run", fake_run)
+    config = tmp_path / "parser.yaml"
+    config.write_text(f"port: 6600\ncache_dir: {tmp_path / 'cache'}\n", encoding="utf-8")
+    assert main(["serve", "parser", "--config", str(config)]) == 0
+    ((app, port),) = served
+    assert port == 6600
+    assert app._client_max_size > 100 * 1024 * 1024
+    assert [
+        route.method
+        for route in app.router.routes()
+        if route.resource and route.resource.canonical == "/parse"
+    ] == ["POST"]

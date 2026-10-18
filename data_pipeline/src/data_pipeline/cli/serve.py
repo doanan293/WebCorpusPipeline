@@ -58,3 +58,24 @@ def fetcher(
     )
     common.run(app_, port if port is not None else settings.port)
     return 0
+
+
+@app.command()
+def parser(
+    config: Annotated[
+        Path | None, typer.Option(help="Parser settings (default: config/parser.yaml).")
+    ] = None,
+) -> int:
+    """Đọc nội dung: POST /parse; sends records to AGGREGATOR_URL/add."""
+    from data_pipeline.api import common
+    from data_pipeline.api import parser as service
+
+    paths = context.current_paths()
+    settings = bootstrap.parser_config(_config_path(config, "parser.yaml"))
+    aggregator = bootstrap.aggregator_client(
+        os.environ.get("AGGREGATOR_URL", "http://aggregator:3300")
+    )
+    readers = bootstrap.document_readers(settings, paths)
+    app_ = service.create_service(readers, aggregator, closers=(aggregator.close,))
+    common.run(app_, settings.port)
+    return 0
