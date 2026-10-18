@@ -1,3 +1,13 @@
+# The blocks of the slide, each its own container (one image), plus MongoDB.
+# Start order follows the data downstream-first: the controller pings live fetchers and the
+# aggregator sends its start pages to a live controller.
+x-service: &service
+  build: .
+  image: data-pipeline:latest
+  restart: unless-stopped
+  volumes:
+    - ./config:/app/config:ro
+
 services:
   mongodb:
     image: mongo:8.0
@@ -11,5 +21,101 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+
+  storage:  # Lưu trữ (5)
+    <<: *service
+    command: ["serve", "storage", "--port", "2200"]
+    ports: ["2200:2200"]
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017
+    depends_on:
+      mongodb: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen(u.Request('http://127.0.0.1:2200/add', data=b'{}', headers={'Content-Type': 'application/json'}), timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  parser:  # Đọc nội dung (1)
+    <<: *service
+    command: ["serve", "parser"]
+    ports: ["6600:6600"]
+    environment:
+      AGGREGATOR_URL: http://aggregator:3300
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./config:/app/config:ro
+      - ./data/enrichment/cache:/app/data/enrichment/cache
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen(u.Request('http://127.0.0.1:6600/parse', data=b'', headers={'X-Url': 'http://health/', 'X-Format': 'html'}), timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  fetcher-1:  # Tải về (2)
+    <<: *service
+    command: ["serve", "fetcher", "--port", "8800"]
+    ports: ["8800:8800"]
+    environment:
+      PARSER_URL: http://parser:6600
+    depends_on:
+      parser: {condition: service_healthy}
+    healthcheck: &ping
+      test: ["CMD", "python", "-c", "import urllib.request as u, sys; sys.exit(0 if u.urlopen('http://127.0.0.1:' + sys.argv[1] + '/ping', timeout=3).status == 200 else 1)", "8800"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  fetcher-2:  # Tải về (2), second node
+    <<: *service
+    command: ["serve", "fetcher", "--port", "8801"]
+    ports: ["8801:8801"]
+    environment:
+      PARSER_URL: http://parser:6600
+    depends_on:
+      parser: {condition: service_healthy}
+    healthcheck:
+      <<: *ping
+      test: ["CMD", "python", "-c", "import urllib.request as u, sys; sys.exit(0 if u.urlopen('http://127.0.0.1:' + sys.argv[1] + '/ping', timeout=3).status == 200 else 1)", "8801"]
+
+  controller:  # Điều khiển (3)
+    <<: *service
+    command: ["serve", "controller"]
+    ports: ["5200:5200"]
+    volumes:
+      - ./config:/app/config:ro
+      - controller_state:/state
+    depends_on:
+      fetcher-1: {condition: service_healthy}
+      fetcher-2: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen(u.Request('http://127.0.0.1:5200/add', data=b'{\"urls\": []}', headers={'Content-Type': 'application/json'}), timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  aggregator:  # Tổng hợp dữ liệu (4)
+    <<: *service
+    command: ["serve", "aggregator"]
+    ports: ["3300:3300"]
+    environment:
+      STORAGE_URL: http://storage:2200
+      CONTROLLER_URL: http://controller:5200
+    volumes:
+      - ./config:/app/config:ro
+      - aggregator_state:/state
+    depends_on:
+      storage: {condition: service_healthy}
+      controller: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen(u.Request('http://127.0.0.1:3300/add', data=b'{}', headers={'Content-Type': 'application/json'}), timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
 volumes:
   mongodb_data:
+  controller_state:
+  aggregator_state:
