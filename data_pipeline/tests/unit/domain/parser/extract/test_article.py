@@ -1,3 +1,5 @@
+import pytest
+
 from data_pipeline.domain.parser.extract.article import ArticleAnalysis, analyze_article
 from data_pipeline.domain.parser.extract.assets import ArticleAsset
 
@@ -340,3 +342,11 @@ def test_asset_metadata_is_mode_independent_and_role_dedup_is_stable() -> None:
             "external": False,
         }
     ]
+
+
+@pytest.mark.parametrize("attribute", [b'a\x0bb="1"', b'\x01="1"', b'\xef\xbf\xbe="1"'])
+def test_attribute_name_xml_cannot_hold_is_dropped_not_fatal(attribute: bytes) -> None:
+    page = b"<html><head><title>T</title></head><body><article><h1>T</h1><p " + attribute
+    page += b">Noi dung bai viet day du.</p></article></body></html>"
+    analysis = analyze_article(page, "https://h/a", "utf-8")
+    assert "Noi dung bai viet day du." in analysis.article["text"]

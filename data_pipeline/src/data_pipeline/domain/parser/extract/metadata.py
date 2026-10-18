@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import re
 
 from lxml import etree
@@ -25,8 +26,17 @@ def parse_article_html(source: bytes | str, encoding: str | None = None) -> etre
             element.text = _XML_INCOMPATIBLE_CHARACTERS.sub(" ", element.text)
         if element.tail:
             element.tail = _XML_INCOMPATIBLE_CHARACTERS.sub(" ", element.tail)
-        for key, value in element.attrib.items():
-            element.attrib[key] = _XML_INCOMPATIBLE_CHARACTERS.sub(" ", value)
+        attributes = [
+            (key, _XML_INCOMPATIBLE_CHARACTERS.sub(" ", value))
+            for key, value in element.attrib.items()
+        ]
+        element.attrib.clear()
+        for key, value in attributes:
+            # A broken attribute name (a control character in it) cannot be written back, nor even
+            # deleted by name; it never carries content, so it is left out rather than losing the
+            # page.
+            with contextlib.suppress(ValueError):
+                element.attrib[key] = value
     return root
 
 

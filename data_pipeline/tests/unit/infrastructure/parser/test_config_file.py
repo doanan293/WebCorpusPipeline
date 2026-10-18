@@ -11,7 +11,7 @@ from data_pipeline.infrastructure.parser.config_file import load_parser_config
 def test_parser_config_reads_repo_file() -> None:
     config = load_parser_config(Path("config/parser.yaml"))
     assert config.port == 6600
-    assert config.llamaparse is False
+    assert config.llamaparse is True
     assert config.cache_dir == Path("data/enrichment/cache")
 
 
