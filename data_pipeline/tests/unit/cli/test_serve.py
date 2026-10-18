@@ -101,3 +101,24 @@ def test_serve_storage_runs_add_on_2200(
         for route in app.router.routes()
         if route.resource and route.resource.canonical == "/add"
     ] == ["POST"]
+
+
+def test_serve_aggregator_runs_add_on_3300(
+    project: ProjectPaths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    served: list[tuple[web.Application, int]] = []
+
+    def fake_run(app: web.Application, port: int, background: object = ()) -> None:
+        served.append((app, port))
+
+    monkeypatch.setattr(common, "run", fake_run)
+    hosts = tmp_path / "active.txt"
+    hosts.write_text("hust.edu.vn\n", encoding="utf-8")
+    config = tmp_path / "aggregator.yaml"
+    config.write_text(
+        f"hosts_file: {hosts}\ndatabase: {tmp_path / 'a.sqlite3'}\noutbox: {tmp_path / 'o.jsonl'}\n",
+        encoding="utf-8",
+    )
+    assert main(["serve", "aggregator", "--config", str(config)]) == 0
+    ((_app, port),) = served
+    assert port == 3300

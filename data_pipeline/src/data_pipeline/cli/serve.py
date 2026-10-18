@@ -96,3 +96,37 @@ def storage(
     )
     common.run(service.create_service(store, bootstrap.utc_now_iso), port)
     return 0
+
+
+@app.command()
+def aggregator(
+    config: Annotated[
+        Path | None, typer.Option(help="Aggregator settings (default: config/aggregator.yaml).")
+    ] = None,
+) -> int:
+    """Tổng hợp dữ liệu: POST /add; records to STORAGE_URL, new URLs to CONTROLLER_URL."""
+    from data_pipeline.api import aggregator as service
+    from data_pipeline.api import common
+    from data_pipeline.application.aggregator.seeds import seed_payload
+
+    paths = context.current_paths()
+    settings = bootstrap.aggregator_config(_config_path(config, "aggregator.yaml"))
+    hosts_file = settings.hosts_file
+    hosts = sorted(
+        bootstrap.hostnames(hosts_file if hosts_file.is_absolute() else paths.root / hosts_file)
+    )
+    client = bootstrap.service_client(
+        os.environ.get("STORAGE_URL", "http://storage:2200"),
+        os.environ.get("CONTROLLER_URL", "http://controller:5200"),
+    )
+    app_ = service.create_service(
+        settings,
+        bootstrap.aggregator_state(settings.database),
+        bootstrap.outbox(settings.outbox),
+        client,
+        seed_urls=seed_payload(hosts)["urls"],
+        allowed_hosts=frozenset(hosts),
+        closers=(client.close,),
+    )
+    common.run(app_, settings.port)
+    return 0

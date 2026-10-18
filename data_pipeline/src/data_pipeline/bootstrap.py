@@ -17,6 +17,7 @@ from data_pipeline.infrastructure.corpus.mongo import MongoCorpusDatabase, conne
 from data_pipeline.infrastructure.shared import env, settings
 
 if TYPE_CHECKING:
+    from data_pipeline.application.aggregator.ports import AggregatorState, Outbox
     from data_pipeline.application.controller.ports import Clock, Downloader, UrlQueue
     from data_pipeline.application.corpus.ports import (
         CorpusDatabase,
@@ -42,11 +43,13 @@ if TYPE_CHECKING:
     from data_pipeline.application.hosts.ports import AuditReports, BrowserProber, HostProber
     from data_pipeline.application.parser.parse import DocumentReaders
     from data_pipeline.application.storage.ports import CorpusStore
+    from data_pipeline.domain.aggregator.config import AggregatorConfig
     from data_pipeline.domain.controller.models import ControllerConfig
     from data_pipeline.domain.crawl.config import CrawlerConfig
     from data_pipeline.domain.crawl.seeds import SeedSet
     from data_pipeline.domain.fetcher.models import FetcherConfig
     from data_pipeline.domain.parser.config import ParserConfig
+    from data_pipeline.infrastructure.aggregator.service_client import HttpServiceClient
     from data_pipeline.infrastructure.fetcher.http_getter import AiohttpPageGetter
     from data_pipeline.infrastructure.fetcher.parser_client import HttpParserClient
     from data_pipeline.infrastructure.parser.aggregator_client import HttpAggregatorClient
@@ -380,3 +383,36 @@ def utc_now_iso() -> str:
     from datetime import UTC, datetime
 
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+# -- aggregator -------------------------------------------------------------------------------
+
+
+def aggregator_config(path: Path) -> AggregatorConfig:
+    from data_pipeline.infrastructure.aggregator.config_file import load_aggregator_config
+
+    return load_aggregator_config(path)
+
+
+def hostnames(path: Path) -> frozenset[str]:
+    from data_pipeline.infrastructure.shared.files import load_hostnames
+
+    return load_hostnames(path)
+
+
+def aggregator_state(path: Path) -> AggregatorState:
+    from data_pipeline.infrastructure.aggregator.sqlite_state import SqliteAggregatorState
+
+    return SqliteAggregatorState(path)
+
+
+def outbox(path: Path) -> Outbox:
+    from data_pipeline.infrastructure.aggregator.outbox import JsonlOutbox
+
+    return JsonlOutbox(path)
+
+
+def service_client(storage_url: str, controller_url: str) -> HttpServiceClient:
+    from data_pipeline.infrastructure.aggregator.service_client import HttpServiceClient
+
+    return HttpServiceClient(storage_url, controller_url)

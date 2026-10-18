@@ -38,3 +38,7 @@ class ServiceClient(Protocol):
     async def send(self, target: Target, payload: dict[str, Any]) -> bool:
         """``POST /add`` to the storage or controller block; ``True`` when it was accepted."""
         ...
+
+
+class AggregatorState(SeenUrls, ContentOwners, Protocol):
+    """Both memories of the aggregator, kept by one store."""
