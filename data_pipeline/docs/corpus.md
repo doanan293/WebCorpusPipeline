@@ -36,6 +36,6 @@ uv run data-pipeline corpus pull --no-load  # chỉ tải
 ```
 
 `pull` tải đúng phiên bản đã ghim, tự chuyển sang tải từng file khi endpoint gói không dùng được cho dataset lớn,
-kiểm tra khớp `snapshot_id` của lock, rồi upsert `html`/`other` theo `url` và `graph` theo (`src`, `dest`). Phiên
+kiểm tra khớp `snapshot_id` của lock, rồi upsert `html`/`other` theo `url` và `graph` theo (`src`, `dest`, `text`). Phiên
 bản đang ghim là định dạng cũ (trước khi tách khối) nên chưa có `html/other/graph.jsonl`: cần công bố phiên bản
 mới và cập nhật lock.

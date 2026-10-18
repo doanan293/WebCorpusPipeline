@@ -22,10 +22,12 @@ def test_load_iter_and_find_edges() -> None:
         page = {"url": "https://h/a", "format": "html", "title": "A", "content": "a", "intro": ""}
         assert db.load("html", [page, {**page, "title": "A2"}]) == 2
         edges = [{"src": "https://h/a", "dest": "https://h/b", "text": "B"}] * 2
+        # Same page and target, another sentence: a second link, as storage keeps it.
+        edges.append({"src": "https://h/a", "dest": "https://h/b", "text": "Xem B tại đây."})
         db.load("graph", edges)
         assert [doc["title"] for doc in db.iter_collection("html")] == ["A2"]
-        assert db.find_edges(src="https://h/a", dest=None, limit=10) == [
-            {"src": "https://h/a", "dest": "https://h/b", "text": "B"}
-        ]
+        assert sorted(
+            edge["text"] for edge in db.find_edges(src="https://h/a", dest=None, limit=10)
+        ) == ["B", "Xem B tại đây."]
     finally:
         client.drop_database(name)

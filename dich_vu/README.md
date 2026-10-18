@@ -70,7 +70,9 @@ gốc). Trả `202`, bóc tách ở nền rồi gửi bản ghi sang Tổng hợ
 }
 ```
 
-- 5 trường trên là bắt buộc. `out-links` là danh sách cặp `[url đi ra, văn bản liên kết]`.
+- 5 trường trên là bắt buộc. `out-links` là danh sách cặp `[url đi ra, văn bản liên kết]`: chỉ liên kết (thẻ
+  `a`, `area`, `link rel=next`), không gồm ảnh; văn bản là câu hoàn chỉnh chứa thẻ `a` (slide: "câu hoàn thiện chứa
+  thẻ a"), hoặc chữ của thẻ khi nó đứng riêng như mục menu, số trang.
 - `format`: `html`, hoặc đuôi tài liệu (`pdf`, `docx`, ...) cho loại "other".
 - Trường thêm, tuỳ chọn: `intro`, `published_at`, `modified_at`, `author`, `language`, `headings`,
   `content_blocks`, `images`, `content_id`, `duplicate_of`. Trường lạ bị bỏ qua.
@@ -89,7 +91,8 @@ gốc). Trả `202`, bóc tách ở nền rồi gửi bản ghi sang Tổng hợ
    chủ 1 ngày, trang 7 ngày, tài liệu 30 ngày (`recrawl_days`).
 3. Tải về gửi dữ liệu sang Đọc nội dung; Đọc nội dung gửi bản ghi sang Tổng hợp.
 4. Tổng hợp gửi bản ghi sang Lưu trữ (trang trùng nội dung với trang khác chỉ gửi bản ghi rút gọn có
-   `duplicate_of`), lọc `out-links` trong các host mầm, bỏ bẫy URL và URL đã biết, gom URL mới (500 URL hoặc
+   `duplicate_of`; link của trang trùng không được crawl tiếp, để phân trang bỏ qua `?page` không sinh trang vô
+   hạn), lọc `out-links` trong các host mầm, bỏ bẫy URL và URL đã biết, gom URL mới (500 URL hoặc
    1 giây) gửi sang Điều khiển.
 5. Lưu trữ upsert `html`/`other` theo `url` và thay toàn bộ cạnh `graph` của trang đó.
 

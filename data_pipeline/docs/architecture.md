@@ -99,7 +99,7 @@ vụ trên cổng ngẫu nhiên và thu thập cùng website đó. Cả hai so v
 | Y1 | Thuật toán tìm khối nội dung | `domain/parser/extract/`, báo cáo `data-pipeline eval extraction` | |
 | Y2 | Trang: tiêu đề, ngày đăng, tác giả, nội dung | khối Đọc nội dung, bản ghi `html` | `html` |
 | Y3 | Tài liệu: nội dung văn bản | khối Đọc nội dung (parser cục bộ, LlamaParse) | `other` |
-| Y4, Y6 | Đồ thị nguồn → đích kèm văn bản liên kết | `out-links` của bản ghi, khối Lưu trữ | `graph` |
+| Y4, Y6 | Đồ thị nguồn → đích kèm văn bản liên kết (câu hoàn chỉnh chứa thẻ `a`) | `out-links` của bản ghi (`domain/parser/extract/links.py` `anchor_sentence`), khối Lưu trữ | `graph` |
 | Y5 | Ảnh của trang | trường `images` của bản ghi `html` | `html` |
 | Y7 | MongoDB theo lược đồ của slide | khối Lưu trữ, [data-schema.md](data-schema.md) | `html`, `other`, `graph` |
 | Y8 | Chia sẻ dữ liệu của project | `corpus package/publish/pull`, `config/corpus.lock.json` ([corpus.md](corpus.md)) | |

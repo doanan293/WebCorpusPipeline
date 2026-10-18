@@ -78,7 +78,7 @@ uv run playwright install chromium     # trình duyệt cho trang JavaScript
 |---|---|
 | `crawl run [--seeds FILE] [--forever]` | crawl bằng năm khối trong một tiến trình |
 | `seeds add HOST_HOẶC_URL...` | thêm mầm (host vào phạm vi, URL vào hàng đợi) mà không crawl |
-| `reextract` | chạy lại bộ trích xuất trên HTML của bản crawl cũ, gửi kết quả vào Tổng hợp |
+| `reextract [--aggregator URL]` | chạy lại bộ trích xuất trên HTML của bản crawl cũ và lưu lại (trong một tiến trình, giữ khoá như `crawl run`; với `--aggregator` thì gửi sang dịch vụ Tổng hợp). Dùng khi đổi thuật toán trích xuất, không tải lại trang |
 | `corpus package\|verify\|query\|publish\|pull` | đóng gói MongoDB thành corpus, truy vấn đồ thị, Kaggle ([docs/corpus.md](docs/corpus.md)) |
 | `domains audit` | kiểm tra host nào còn trả nội dung ([docs/domains.md](docs/domains.md)) |
 | `eval extraction` | chấm điểm thuật toán trích xuất nội dung |

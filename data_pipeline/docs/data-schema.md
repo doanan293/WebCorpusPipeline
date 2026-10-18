@@ -52,13 +52,16 @@ Mỗi tài liệu (pdf, docx, xlsx, pptx, ...) một document, khoá duy nhất 
 
 ### `graph`
 
-Mỗi liên kết một document. Khi một trang được ghi lại, mọi cạnh có `src` là trang đó được thay mới.
+Mỗi liên kết (thẻ `a`, `area`, `link rel=next/alternate`) một document; ảnh và tài nguyên nhúng không phải
+liên kết, chúng nằm ở `html.images`. Một trang có mỗi cặp (`dest`, `text`) một lần. Khi trang được ghi lại, cạnh
+mới được ghi trước rồi các cạnh cũ khác của nó mới bị xoá (dừng giữa chừng chỉ để thừa cạnh, không bao giờ mất hết).
+Trang trùng nội dung (`duplicate_of`) vẫn có cạnh, nhưng link của nó không được crawl tiếp.
 
 | Trường | Kiểu | Ý nghĩa |
 |---|---|---|
 | **`src`** | string | trang chứa liên kết |
 | **`dest`** | string | đích của liên kết (trang, tài liệu, hoặc ngoài miền) |
-| `text` | string | văn bản liên kết |
+| `text` | string | văn bản liên kết theo slide: **câu hoàn chỉnh chứa thẻ `a`** khi liên kết nằm trong đoạn văn (`p`, `li`, `td`, tiêu đề, ...); chữ của chính thẻ `a` khi nó đứng riêng (menu, số trang) hoặc khối quá dài (trên 400 ký tự) |
 
 Index: `url` (unique) trên `html` và `other`; `src` và `dest` trên `graph`.
 
@@ -99,6 +102,6 @@ Bản crawl trước khi tách khối vẫn nằm trên đĩa, chỉ đọc:
 
 | Thư mục | Dùng cho |
 |---|---|
-| `data/crawl/state/index.sqlite3`, `data/crawl/html/` | `data-pipeline reextract` (bóc lại từ HTML đã lưu, gửi vào Tổng hợp) |
+| `data/crawl/state/index.sqlite3`, `data/crawl/html/` | `data-pipeline reextract` (bóc lại từ HTML đã lưu rồi lưu lại qua các khối trong một tiến trình; `--aggregator URL` để gửi sang dịch vụ Tổng hợp) |
 | `data/enrichment/cache/` | cache LlamaParse của khối Đọc nội dung |
 | `data/crawl/` còn lại, `data/enrichment/state.sqlite3`, `data/corpus/latest/` (định dạng cũ) | đã chuyển sang các khối bằng script một lần; có thể xoá khi không cần đối chiếu nữa |
