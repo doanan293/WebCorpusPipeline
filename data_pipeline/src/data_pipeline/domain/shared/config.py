@@ -15,10 +15,6 @@ class ProjectPaths:
         return self.root / ".env"
 
     @property
-    def crawler_config(self) -> Path:
-        return self.root / "config/crawler.yaml"
-
-    @property
     def pipeline_config(self) -> Path:
         return self.root / "config/pipeline.yaml"
 
@@ -43,14 +39,6 @@ class ProjectPaths:
         return self.root / "config/domains/status.jsonl"
 
     @property
-    def crawl_final(self) -> Path:
-        return self.root / "data/crawl/final"
-
-    @property
-    def enrichment(self) -> Path:
-        return self.root / "data/enrichment"
-
-    @property
     def corpus_pulled(self) -> Path:
         return self.root / "data/corpus/pulled"
 
@@ -58,8 +46,6 @@ class ProjectPaths:
 @dataclass(frozen=True)
 class Settings:
     project_root: Path
-    work_dir: Path | None = None
-    source: Path | None = None
     concurrency: int = 64
     per_host: int = 2
     host_delay_seconds: float = 0.25
@@ -75,13 +61,3 @@ class Settings:
     cloud_timeout_seconds: float = 1800
     mongo_uri: str = "mongodb://127.0.0.1:27017"
     mongo_database: str = "information_retrieval"
-
-    @property
-    def source_path(self) -> Path:
-        """``source``, or the project's ``data/crawl/final``."""
-        return self.source or ProjectPaths(self.project_root).crawl_final
-
-    @property
-    def work_path(self) -> Path:
-        """``work_dir``, or the project's ``data/enrichment``."""
-        return self.work_dir or ProjectPaths(self.project_root).enrichment

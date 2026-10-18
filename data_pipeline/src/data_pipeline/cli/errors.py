@@ -6,21 +6,6 @@ import sys
 
 from data_pipeline.domain.shared.errors import ExternalFailure
 
-_EXTRA_FOR_MODULE = {
-    "scrapy": "crawl",
-    "scrapy_playwright": "crawl",
-    "playwright": "crawl",
-    "lxml": "crawl",
-    "aiohttp": "enrich",
-    "fitz": "enrich",
-    "pymupdf": "enrich",
-    "docx": "enrich",
-    "openpyxl": "enrich",
-    "xlrd": "enrich",
-    "pptx": "enrich",
-    "llama_cloud": "enrich",
-}
-
 
 def fail(message: str, *, exit_code: int = 2) -> int:
     """Print ``Error: <message>`` and return ``exit_code`` (2: usage error, 1: external failure)."""
@@ -44,15 +29,3 @@ def external_failure_message(exc: Exception) -> str | None:
         first_line = (str(exc).splitlines() or [""])[0]
         return f"{type(exc).__name__}: {first_line}"
     return None
-
-
-def missing_extra_message(exc: ModuleNotFoundError) -> str | None:
-    """Explain which optional dependency group provides the module that failed to import."""
-    module = (exc.name or "").split(".")[0]
-    extra = _EXTRA_FOR_MODULE.get(module)
-    if extra is None:
-        return None
-    return (
-        f"this command needs the '{extra}' extra ({module} is not installed); "
-        f"run: uv sync --extra {extra}"
-    )

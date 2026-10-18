@@ -9,7 +9,7 @@ from data_pipeline.domain.shared.config import ProjectPaths
 from data_pipeline.infrastructure.shared.settings import load_api_keys, load_settings
 
 
-def test_settings_read_pipeline_yaml_and_resolve_data_dirs(tmp_path: Path) -> None:
+def test_settings_read_pipeline_yaml(tmp_path: Path) -> None:
     (tmp_path / "config").mkdir()
     (tmp_path / "config/pipeline.yaml").write_text("download:\n  concurrency: 8\n  per_host: 2\n")
 
@@ -17,18 +17,6 @@ def test_settings_read_pipeline_yaml_and_resolve_data_dirs(tmp_path: Path) -> No
 
     assert settings.concurrency == 8
     assert settings.project_root == tmp_path
-    assert settings.source_path == tmp_path / "data/crawl/final"
-    assert settings.work_path == tmp_path / "data/enrichment"
-
-
-def test_pipeline_paths_keep_absolute_overrides(tmp_path: Path) -> None:
-    source = tmp_path / "external-source"
-    work = tmp_path / "external-work"
-
-    settings = load_settings(ProjectPaths(tmp_path), {"source": source, "work_dir": work})
-
-    assert settings.source_path == source
-    assert settings.work_path == work
 
 
 def test_keys_are_read_from_the_project_env_file_only(

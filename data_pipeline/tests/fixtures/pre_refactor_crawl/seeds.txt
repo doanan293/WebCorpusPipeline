@@ -1,4 +1,0 @@
-map.test
-html-only.test
-a.test
-https://b.test/explicit

@@ -1,26 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
-
-import typer
 
 from data_pipeline import bootstrap
 from data_pipeline.domain.shared.config import ProjectPaths, Settings
-
-SourceOption = Annotated[
-    Path | None, typer.Option(help="Crawl output to read (default: data/crawl/final).")
-]
-WorkDirOption = Annotated[
-    Path | None, typer.Option(help="Enrichment work directory (default: data/enrichment).")
-]
-JsonOption = Annotated[bool, typer.Option("--json", help="Print the summary as JSON.")]
-RebindOption = Annotated[
-    bool,
-    typer.Option(
-        "--rebind-source", help="move the work directory to the crawl the source belongs to"
-    ),
-]
 
 
 def current_paths() -> ProjectPaths:
@@ -33,15 +16,6 @@ def pick(value: Path | None, default: Path) -> Path:
     return value if value is not None else default
 
 
-def build_settings(source: Path | None, work_dir: Path | None) -> Settings:
-    """Load pipeline settings, applying ``--source`` / ``--work-dir`` overrides.
-
-    Paths typed by the user are resolved against the working directory; the defaults
-    stay inside the project no matter where the command runs.
-    """
-    overrides: dict[str, object] = {}
-    if source is not None:
-        overrides["source"] = source.resolve()
-    if work_dir is not None:
-        overrides["work_dir"] = work_dir.resolve()
-    return bootstrap.load_settings(current_paths(), overrides)
+def build_settings() -> Settings:
+    """``config/pipeline.yaml`` and the environment, for commands that need MongoDB."""
+    return bootstrap.load_settings(current_paths())

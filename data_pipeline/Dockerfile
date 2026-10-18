@@ -18,9 +18,9 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --extra enrich --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project
 COPY src ./src
-RUN uv sync --frozen --no-dev --extra enrich
+RUN uv sync --frozen --no-dev
 # Chromium for the Playwright fallback of Tải về.
 RUN playwright install --with-deps chromium && rm -rf /var/lib/apt/lists/*
 

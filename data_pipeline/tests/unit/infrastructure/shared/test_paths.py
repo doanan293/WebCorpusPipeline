@@ -10,15 +10,13 @@ def test_default_root_is_the_pipeline_directory() -> None:
     paths = project_paths()
 
     assert (paths.root / "pyproject.toml").is_file()
-    assert paths.crawl_final == paths.root / "data/crawl/final"
-    assert paths.enrichment == paths.root / "data/enrichment"
+    assert paths.corpus_pulled == paths.root / "data/corpus/pulled"
 
 
 def test_paths_are_derived_from_the_given_root(tmp_path: Path) -> None:
     paths = ProjectPaths(tmp_path)
 
     assert paths.env_file == tmp_path / ".env"
-    assert paths.crawler_config == tmp_path / "config/crawler.yaml"
     assert paths.pipeline_config == tmp_path / "config/pipeline.yaml"
     assert paths.kaggle_config == tmp_path / "config/kaggle-dataset.json"
     assert paths.corpus_lock == tmp_path / "config/corpus.lock.json"

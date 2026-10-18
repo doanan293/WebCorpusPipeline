@@ -4,7 +4,7 @@ Kho mã này gồm hai dự án độc lập:
 
 | Thư mục | Dự án | Công cụ |
 | --- | --- | --- |
-| [`data_pipeline/`](data_pipeline/README.md) | Thu thập, tải tài liệu, bóc tách văn bản, lưu trữ và chia sẻ corpus | Python 3.13, `uv` |
+| [`data_pipeline/`](data_pipeline/README.md) | Hệ thống thu thập theo kiến trúc dịch vụ nhỏ (Điều khiển, Tải về, Đọc nội dung, Tổng hợp, Lưu trữ, Mongo) | Python 3.13, `uv`, Docker |
 | [`lucene/`](lucene/README.md) | Lập chỉ mục và tìm kiếm tài liệu với Apache Lucene | JDK 17+, Maven 3.9+ |
 
 Chạy lệnh trong thư mục của từng dự án để các đường dẫn tương đối, cấu hình và dữ liệu đầu ra hoạt động đúng.
@@ -18,13 +18,12 @@ uv run pytest -q
 uv run data-pipeline --help
 ```
 
-Xem [hướng dẫn data pipeline](data_pipeline/README.md) để cài đặt, cấu hình và chạy từng giai đoạn
-(crawl, tải và bóc tách tài liệu, đóng gói corpus, MongoDB, Kaggle). `lucene/` hiện chưa đọc corpus này; dự kiến
+Xem [hướng dẫn data pipeline](data_pipeline/README.md) để chạy các khối bằng Docker, cấu hình và chia sẻ corpus
+(MongoDB, Kaggle). `lucene/` hiện chưa đọc corpus này; dự kiến
 sau này `lucene/` sẽ nhận corpus đã xử lý để lập chỉ mục và tìm kiếm.
 
-`data_pipeline/` là một package Python (`src/data_pipeline`) với một lệnh `data-pipeline`, một `pyproject.toml`
-và một `uv.lock`. Extra `crawl` cài crawler, `enrich` thêm công cụ bóc tách tài liệu; nhóm `dev` đã gồm cả hai để
-chạy bộ test.
+`data_pipeline/` là một package Python (`src/data_pipeline`) với một lệnh `data-pipeline` (`data-pipeline serve
+<khối>` chạy một khối), một `pyproject.toml`, một `uv.lock`, và `compose.yaml` dựng cả năm khối cùng MongoDB.
 
 ### Kiểm tra mã và pre-commit
 

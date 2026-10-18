@@ -30,7 +30,7 @@ def package(
     """Export the html, other and graph collections of MongoDB into a versioned corpus."""
     from data_pipeline.application.corpus import package as corpus_package
 
-    with bootstrap.mongo_database(context.build_settings(None, None)) as db:
+    with bootstrap.mongo_database(context.build_settings()) as db:
         print(corpus_package.package_corpus(db, bootstrap.corpus_files(), output))
     return 0
 
@@ -56,7 +56,7 @@ def query(
     """Query the link graph in MongoDB."""
     from data_pipeline.application.corpus import query as corpus_query
 
-    with bootstrap.mongo_database(context.build_settings(None, None)) as db:
+    with bootstrap.mongo_database(context.build_settings()) as db:
         result = corpus_query.query_links(
             db,
             url,
@@ -120,6 +120,6 @@ def pull(
     )
     print(pulled)
     if not no_load:
-        with bootstrap.mongo_database(context.build_settings(None, None)) as db:
+        with bootstrap.mongo_database(context.build_settings()) as db:
             print(json.dumps(load.load_corpus(pulled, db, files), indent=2))
     return 0

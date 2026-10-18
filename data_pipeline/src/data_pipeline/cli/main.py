@@ -10,9 +10,7 @@ from data_pipeline import bootstrap
 from data_pipeline.cli import (
     context,
     corpus,
-    crawl,
     domains,
-    enrich,
     errors,
     eval,
     reextract,
@@ -21,12 +19,10 @@ from data_pipeline.cli import (
 
 app = typer.Typer(
     name="data-pipeline",
-    help="Crawl, enrich, package and publish the HUST document corpus.",
+    help="The blocks of the HUST crawler as services, plus corpus and domain tools.",
     no_args_is_help=True,
     add_completion=False,
 )
-app.add_typer(crawl.app, name="crawl")
-app.add_typer(enrich.app, name="enrich")
 app.add_typer(corpus.app, name="corpus")
 app.add_typer(domains.app, name="domains")
 app.add_typer(eval.app, name="eval")
@@ -56,11 +52,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         return exc.exit_code
     except (typer.Abort, KeyboardInterrupt):
         return 130
-    except ModuleNotFoundError as exc:
-        message = errors.missing_extra_message(exc)
-        if message is None:
-            raise
-        return errors.fail(message)
     except (FileNotFoundError, FileExistsError, ValueError, RuntimeError) as exc:
         return errors.fail(str(exc))
     except Exception as exc:

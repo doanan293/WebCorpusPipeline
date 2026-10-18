@@ -1,14 +1,14 @@
 """The composition root: builds the adapters each command hands to its use case.
 
-Adapters that need an optional extra (Scrapy, Playwright, aiohttp, the parsers) are imported
-inside their function, so a command only needs the extras it actually uses.
+Adapters are imported inside their function, so a command loads only what it uses (one block's
+service does not import Playwright, LibreOffice parsers or pymongo of another block).
 """
 
 from __future__ import annotations
 
 import time
 from collections.abc import Iterator, Mapping
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -24,17 +24,6 @@ if TYPE_CHECKING:
         CorpusFiles,
         DatasetPublisher,
     )
-    from data_pipeline.application.crawl.ports import CrawlEngine, CrawlStorage
-    from data_pipeline.application.enrich.ports import (
-        ArticleSource,
-        CloudParser,
-        DownloadFiles,
-        EnrichUnitOfWork,
-        LocalParser,
-        ParseCache,
-        Parses,
-        TransportFactory,
-    )
     from data_pipeline.application.fetcher.ports import Renderer
     from data_pipeline.application.hosts.ports import AuditReports, BrowserProber, HostProber
     from data_pipeline.application.parser.parse import DocumentReaders
@@ -42,8 +31,6 @@ if TYPE_CHECKING:
     from data_pipeline.application.storage.ports import CorpusStore
     from data_pipeline.domain.aggregator.config import AggregatorConfig
     from data_pipeline.domain.controller.models import ControllerConfig
-    from data_pipeline.domain.crawl.config import CrawlerConfig
-    from data_pipeline.domain.crawl.seeds import SeedSet
     from data_pipeline.domain.fetcher.models import FetcherConfig
     from data_pipeline.domain.parser.config import ParserConfig
     from data_pipeline.infrastructure.aggregator.service_client import HttpServiceClient
@@ -69,107 +56,13 @@ def load_env(paths: ProjectPaths) -> None:
     env.load_env(paths)
 
 
-# -- crawl ------------------------------------------------------------------------------------
-
-
-def crawl_engine() -> CrawlEngine:
-    from data_pipeline.infrastructure.crawl.scrapy.runner import ScrapyEngine
-
-    return ScrapyEngine()
-
-
-def crawl_storage() -> CrawlStorage:
-    from data_pipeline.infrastructure.crawl.sqlite.storage import SqliteCrawlStorage
-
-    return SqliteCrawlStorage()
-
-
-def crawler_config(path: Path, *, hostnames: frozenset[str]) -> CrawlerConfig:
-    from data_pipeline.infrastructure.crawl.config_file import load_crawler_config
-
-    return load_crawler_config(path, hostnames=hostnames)
-
-
-def seed_file(path: Path) -> SeedSet:
-    from data_pipeline.infrastructure.crawl.seeds_file import parse_seed_file
-
-    return parse_seed_file(path)
-
-
-# -- enrich -----------------------------------------------------------------------------------
-
-
-def article_source(path: Path) -> ArticleSource:
-    from data_pipeline.infrastructure.enrich.files.articles import JsonlArticleSource
-
-    return JsonlArticleSource(path)
-
-
-def inventory_key(path: Path) -> str:
-    """The key the work state files the inventory of ``path`` under."""
-    from data_pipeline.infrastructure.enrich.files.articles import source_key
-
-    return source_key(path)
-
-
-def source_crawl_id(settings: Settings) -> str | None:
-    """The crawl id recorded next to the crawl output enrichment reads."""
-    return article_source(settings.source_path).crawl_id()
-
-
-def work_state(settings: Settings, *, rebind: bool) -> AbstractContextManager[EnrichUnitOfWork]:
-    """Open the work directory bound to the crawl that produced the source."""
-    from data_pipeline.application.enrich import session
-    from data_pipeline.infrastructure.enrich.sqlite.unit_of_work import SqliteEnrichUnitOfWork
-
-    return session.open_work_state(
-        settings,
-        rebind=rebind,
-        crawl_id=source_crawl_id(settings),
-        opener=SqliteEnrichUnitOfWork.open,
-    )
-
-
-def cloud_job_status(work_path: Path, request_id: str, job_id: str) -> str | None:
-    from data_pipeline.infrastructure.enrich.sqlite.unit_of_work import read_cloud_job_status
-
-    return read_cloud_job_status(work_path, request_id, job_id)
-
-
-def download_files() -> DownloadFiles:
-    from data_pipeline.infrastructure.enrich.files.download_files import LocalDownloadFiles
-
-    return LocalDownloadFiles()
-
-
-def http_transport_factory() -> TransportFactory:
-    from data_pipeline.infrastructure.enrich.http.aiohttp_transport import PublicTransport
-
-    return PublicTransport
+# -- parser keys -----------------------------------------------------------------------------
 
 
 def api_keys(paths: ProjectPaths) -> list[tuple[str, str]]:
     from data_pipeline.infrastructure.shared.settings import load_api_keys
 
     return load_api_keys(paths.env_file)
-
-
-def local_parser() -> LocalParser:
-    from data_pipeline.infrastructure.parser.parsers.dispatch import LocalParserAdapter
-
-    return LocalParserAdapter()
-
-
-def cloud_parser(parses: Parses, settings: Settings, keys: list[tuple[str, str]]) -> CloudParser:
-    from data_pipeline.infrastructure.parser.llamaparse import LlamaParseCloud
-
-    return LlamaParseCloud(parses, settings, keys)
-
-
-def parse_cache(root: Path) -> ParseCache:
-    from data_pipeline.infrastructure.parser.cache import FileParseCache
-
-    return FileParseCache(root / "cache")
 
 
 # -- corpus -----------------------------------------------------------------------------------

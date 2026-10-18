@@ -11,18 +11,13 @@ PACKAGE = SRC / "data_pipeline"
 LAYERS = ("domain", "application", "infrastructure")
 RANK = {layer: index for index, layer in enumerate(LAYERS)}
 BLOCKS = frozenset({"controller", "fetcher", "parser", "aggregator", "storage"})
-CONTEXTS = frozenset({"crawl", "enrich", "corpus", "hosts", *BLOCKS})
-# Batch crawl and enrich are being moved into the blocks; until they are deleted they may use them.
-LEGACY = frozenset({"crawl", "enrich"})
+CONTEXTS = frozenset({"corpus", "hosts", *BLOCKS})
 SHARED = "shared"
 OUTER = frozenset({"cli", "api"})  # entry points; bootstrap.py is the composition root
 BOOTSTRAP = "bootstrap"
 IO_MODULES = frozenset(
     {
         "sqlite3",
-        "scrapy",
-        "scrapy_playwright",
-        "twisted",
         "aiohttp",
         "pymongo",
         "playwright",
@@ -56,7 +51,7 @@ def imported_modules(path: Path) -> set[str]:
 
 
 def placement(module: str) -> tuple[str | None, str | None]:
-    """(layer, context): ('domain', 'crawl'), ('cli', None), ('bootstrap', None)."""
+    """(layer, context): ('domain', 'parser'), ('cli', None), ('bootstrap', None)."""
     parts = module.split(".")
     layer = parts[1] if len(parts) > 1 else None
     context = parts[2] if len(parts) > 2 and layer in RANK else None
@@ -87,11 +82,7 @@ def allowed(importer: str, imported: str) -> bool:
     if layer not in RANK or target_layer not in RANK:
         return False
     # Contexts never import each other; every context may use shared, shared uses only itself.
-    if (
-        target_context is not None
-        and target_context not in {context, SHARED}
-        and not (context in LEGACY and target_context in BLOCKS)
-    ):
+    if target_context is not None and target_context not in {context, SHARED}:
         return False
     if context == SHARED and target_context not in {SHARED, None}:
         return False
@@ -156,7 +147,7 @@ def test_a_module_outside_the_layers_is_a_stray() -> None:
         "data_pipeline",
         "data_pipeline.bootstrap",
         "data_pipeline.domain",
-        "data_pipeline.domain.crawl",
+        "data_pipeline.domain.controller",
         "data_pipeline.infrastructure.shared.files",
         "data_pipeline.cli.main",
         "data_pipeline.api.routes",
@@ -166,53 +157,56 @@ def test_a_module_outside_the_layers_is_a_stray() -> None:
 
 def test_entry_points_do_not_build_adapters() -> None:
     assert not allowed(
-        "data_pipeline.cli.crawl", "data_pipeline.infrastructure.crawl.scrapy.runner"
+        "data_pipeline.cli.serve", "data_pipeline.infrastructure.controller.sqlite_queue"
     )
-    assert allowed("data_pipeline.cli.crawl", "data_pipeline.bootstrap")
-    assert allowed("data_pipeline.cli.crawl", "data_pipeline.application.crawl.run_crawl")
-    assert allowed("data_pipeline.bootstrap", "data_pipeline.infrastructure.crawl.scrapy.runner")
-    assert not allowed("data_pipeline.application.crawl.run_crawl", "data_pipeline.bootstrap")
+    assert allowed("data_pipeline.cli.serve", "data_pipeline.bootstrap")
+    assert allowed("data_pipeline.cli.serve", "data_pipeline.application.controller.add_urls")
+    assert allowed(
+        "data_pipeline.bootstrap", "data_pipeline.infrastructure.controller.sqlite_queue"
+    )
+    assert not allowed("data_pipeline.application.controller.add_urls", "data_pipeline.bootstrap")
     # The composition root serves the entry points; it never reaches back into them.
     assert not allowed("data_pipeline.bootstrap", "data_pipeline.cli.context")
 
 
 def test_layers_point_inwards() -> None:
-    assert allowed("data_pipeline.application.crawl.run_crawl", "data_pipeline.domain.crawl.seeds")
-    assert not allowed(
-        "data_pipeline.domain.crawl.seeds", "data_pipeline.application.crawl.run_crawl"
+    assert allowed(
+        "data_pipeline.application.controller.dispatch", "data_pipeline.domain.controller.rotation"
     )
     assert not allowed(
-        "data_pipeline.application.enrich.download",
-        "data_pipeline.infrastructure.enrich.files.download_files",
+        "data_pipeline.domain.controller.rotation", "data_pipeline.application.controller.dispatch"
+    )
+    assert not allowed(
+        "data_pipeline.application.parser.parse", "data_pipeline.infrastructure.parser.cache"
     )
 
 
 def test_infrastructure_may_import_only_ports_from_application() -> None:
-    infra = "data_pipeline.infrastructure.enrich.files.cache"
-    assert allowed(infra, "data_pipeline.application.enrich.ports")
-    assert not allowed(infra, "data_pipeline.application.enrich.download")
-    assert not allowed(infra, "data_pipeline.application.crawl.ports")
+    infra = "data_pipeline.infrastructure.parser.cache"
+    assert allowed(infra, "data_pipeline.application.parser.ports")
+    assert not allowed(infra, "data_pipeline.application.parser.parse")
+    assert not allowed(infra, "data_pipeline.application.fetcher.ports")
     # Only the ports module itself, not a sibling that happens to share the prefix.
-    assert not allowed(infra, "data_pipeline.application.enrich.ports_extra")
+    assert not allowed(infra, "data_pipeline.application.parser.ports_extra")
 
 
 def test_contexts_never_import_each_other() -> None:
     assert not allowed(
-        "data_pipeline.application.corpus.package", "data_pipeline.domain.enrich.models"
+        "data_pipeline.application.corpus.package", "data_pipeline.domain.parser.models"
     )
     assert allowed("data_pipeline.application.corpus.package", "data_pipeline.domain.shared.url")
     assert not allowed("data_pipeline.domain.shared.url", "data_pipeline.domain.fetcher.access")
     assert allowed(
         "data_pipeline.bootstrap",
-        "data_pipeline.infrastructure.crawl.sqlite.unit_of_work",
+        "data_pipeline.infrastructure.controller.sqlite_queue",
     )
 
 
 def test_only_infrastructure_uses_shared_infrastructure() -> None:
     files = "data_pipeline.infrastructure.shared.files"
-    assert not allowed("data_pipeline.domain.enrich.models", files)
-    assert not allowed("data_pipeline.application.enrich.download", files)
-    assert allowed("data_pipeline.infrastructure.enrich.files.cache", files)
+    assert not allowed("data_pipeline.domain.parser.models", files)
+    assert not allowed("data_pipeline.application.parser.parse", files)
+    assert allowed("data_pipeline.infrastructure.parser.cache", files)
 
 
 def test_blocks_do_not_import_each_other() -> None:
@@ -226,14 +220,6 @@ def test_blocks_do_not_import_each_other() -> None:
     assert allowed(
         "data_pipeline.application.fetcher.fetch", "data_pipeline.domain.shared.protocol"
     )
-
-
-def test_legacy_contexts_may_use_blocks_until_removed() -> None:
-    assert allowed(
-        "data_pipeline.application.crawl.page_pipeline",
-        "data_pipeline.domain.parser.extract.article",
-    )
-    assert not allowed("data_pipeline.domain.parser.records", "data_pipeline.domain.crawl.models")
 
 
 def test_api_module_uses_only_its_block() -> None:

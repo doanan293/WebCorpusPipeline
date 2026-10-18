@@ -10,7 +10,6 @@ import pytest
 from data_pipeline.domain.parser.key_pool import KeyPool
 from data_pipeline.domain.parser.models import ExtractedPart, LocalResult
 from data_pipeline.domain.shared.config import Settings
-from data_pipeline.infrastructure.enrich.sqlite.unit_of_work import SqliteEnrichUnitOfWork
 from data_pipeline.infrastructure.parser.llamaparse import parse_cloud_subset
 
 DOC = "https://a.test/report.pdf"
@@ -64,14 +63,24 @@ def cloud(monkeypatch: pytest.MonkeyPatch) -> type[FakeCloud]:
     return FakeCloud
 
 
+class _JobLog:
+    """A ``CloudJobLog`` keeping the latest fields of each request."""
+
+    def __init__(self) -> None:
+        self.jobs: dict[str, dict[str, Any]] = {}
+
+    def save_cloud_job(self, request_id: str, url: str, **fields: str | None) -> None:
+        job = self.jobs.setdefault(request_id, {"url": url})
+        job.update({key: value for key, value in fields.items() if value is not None})
+
+
 def run_subset(tmp_path: Path, pool: KeyPool) -> tuple[Any, list[dict[str, Any]]]:
     local = LocalResult("sha", [ExtractedPart(1, "page", "", True, "pymupdf")], [], "pymupdf")
-    with SqliteEnrichUnitOfWork.open(tmp_path / "work", "c1") as state:
-        result = parse_cloud_subset(
-            DOC, tmp_path / "subset.pdf", local, {1: 1}, state.parses, Settings(tmp_path), pool
-        )
-        jobs = [dict(row) for row in state.conn.execute("SELECT * FROM cloud_jobs")]
-    return result, jobs
+    log = _JobLog()
+    result = parse_cloud_subset(
+        DOC, tmp_path / "subset.pdf", local, {1: 1}, log, Settings(tmp_path), pool
+    )
+    return result, list(log.jobs.values())
 
 
 def test_cloud_job_records_document_url(tmp_path: Path, cloud: type[FakeCloud]) -> None:

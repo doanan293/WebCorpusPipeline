@@ -9,7 +9,6 @@ from openpyxl import Workbook
 from pptx import Presentation
 from pptx.util import Inches
 
-from data_pipeline.domain.enrich.download_rules import extension_for
 from data_pipeline.domain.parser.cloud_pages import cloud_part_indices
 from data_pipeline.domain.parser.models import DownloadedFile
 from data_pipeline.infrastructure.parser.parsers import dispatch
@@ -74,17 +73,6 @@ def test_powerpoint_reads_text_and_marks_image_only_slide(tmp_path: Path) -> Non
     result = parse_local(_file(path))
     assert result.parts[0].text == "Hello"
     assert result.parts[1].text == ""
-
-
-def test_download_extension_uses_mime_for_dynamic_document_urls() -> None:
-    assert extension_for("application/pdf", "https://example.test/download.aspx?id=7") == ".pdf"
-    assert (
-        extension_for(
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "https://example.test/file?id=8",
-        )
-        == ".docx"
-    )
 
 
 PNG = base64.b64decode(

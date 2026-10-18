@@ -1,16 +1,12 @@
 # Domains: danh sách host
 
-`config/domains/` giữ danh sách host làm đầu vào cho crawler:
+`config/domains/` giữ danh sách host làm đầu vào cho hệ thống thu thập:
 
 | File | Nội dung |
 |---|---|
 | `all.txt` | mọi hostname ứng viên (một dòng một host) |
-| `active.txt` | host còn trả nội dung công khai; file seed thường dùng cho `crawl run -i` |
+| `active.txt` | host còn trả nội dung công khai; Tổng hợp dữ liệu lấy trang chủ của chúng làm URL mầm (`hosts_file` trong `config/aggregator.yaml`) và chỉ coi chúng cùng `*.hust.edu.vn` là trong miền |
 | `status.jsonl` | báo cáo thăm dò từng host (`active`, `reason`, `status`, `final_url`, `title`, `error`, …) |
-
-`crawl run` và `crawl discover` không có input mặc định: luôn phải truyền `--input` (vd.
-`-i config/domains/active.txt`). Hash nội dung của file input được ghi vào state của crawl (`input_sha256`); resume
-chỉ chấp nhận đúng nội dung này.
 
 ```bash
 uv run data-pipeline domains audit            # thăm dò DNS/HTTP, ghi lại all.txt, active.txt và status.jsonl
@@ -25,8 +21,7 @@ Playwright (bỏ bằng `--no-browser`). Trang trùng nội dung được gộp,
   `active.txt` và `status.jsonl`. Mỗi file được ghi qua tệp tạm rồi `rename`.
 - **Đầu ra:** tiến độ (`checked N/M; active K`) in ra stderr; stdout chỉ có một dòng JSON tóm tắt
   (`active`, `checked`, `report`).
-- **Trình duyệt:** Playwright chỉ được import khi dùng trình duyệt, nên `--no-browser` chạy được mà không cần extra
-  `crawl`. Nếu trình duyệt không khởi động được, kết quả HTTP vẫn được giữ và mỗi host vỏ JavaScript ghi
+- **Trình duyệt:** Playwright chỉ được import khi dùng trình duyệt. Nếu trình duyệt không khởi động được, kết quả HTTP vẫn được giữ và mỗi host vỏ JavaScript ghi
   `error: "browser_error: ..."`.
 - **Mã thoát:** 0 khi xong; 2 khi tham số không hợp lệ (`--workers`, timeout ≤ 0 hoặc `--retries` < 0).
 
