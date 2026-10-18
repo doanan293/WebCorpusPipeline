@@ -1,13 +1,13 @@
 # Schema dữ liệu
 
 Nơi duy nhất mô tả dữ liệu mà các khối lưu lại. Bản ghi các khối gửi nhau (`POST /add`, `/parse`, ...) mô tả ở
-[services.md](services.md#giao-diện).
+[dich_vu/README.md](../../dich_vu/README.md#giao-diện).
 
 | Nơi lưu | Khối ghi | Nội dung |
 |---|---|---|
 | MongoDB `html`, `other`, `graph` | Lưu trữ | [collection](#mongodb) |
-| `/state/controller.sqlite3` (volume `controller_state`) | Điều khiển | [hàng đợi và lịch crawl lại](#điều-khiển-controllersqlite3) |
-| `/state/aggregator.sqlite3`, `/state/outbox.jsonl` (volume `aggregator_state`) | Tổng hợp | [URL đã biết, chủ nội dung, outbox](#tổng-hợp-aggregatorsqlite3-outboxjsonl) |
+| `data/state/controller.sqlite3` | Điều khiển | [hàng đợi và lịch crawl lại](#điều-khiển-controllersqlite3) |
+| `data/state/aggregator.sqlite3`, `data/state/outbox.jsonl` | Tổng hợp | [URL đã biết, chủ nội dung, outbox](#tổng-hợp-aggregatorsqlite3-outboxjsonl) |
 | `data/enrichment/cache/` | Đọc nội dung | kết quả LlamaParse đã trả tiền, khoá theo `sha256` tệp, trang và phiên bản parser |
 | `data/corpus/<phiên bản>/` | `corpus package` | [gói corpus](#gói-corpus) |
 
@@ -67,15 +67,19 @@ Index: `url` (unique) trên `html` và `other`; `src` và `dest` trên `graph`.
 | Bảng | Cột |
 |---|---|
 | `urls` | `url` (khoá, đã chuẩn hoá), `host`, `kind` (`hub` \| `page` \| `document`), `next_due_at` (epoch giây; `NULL` = không gửi lại), `last_sent_at`, `attempts` |
-| `hosts` | `host` (khoá), `last_sent_at` (lần gửi gần nhất vào host đó, cho thời gian chờ) |
+| `hosts` | `host` (khoá), `last_sent_at` (lần gửi gần nhất vào host đó; khoảng chờ hiện tính trong bộ nhớ) |
+| `lease` | người đang ghi trạng thái (`dich-vu controller@...` hoặc `data-pipeline crawl@...`) và nhịp tim |
 
 ## Tổng hợp (`aggregator.sqlite3`, `outbox.jsonl`)
 
 | Nơi | Nội dung |
 |---|---|
 | bảng `seen_urls` | `url`: mọi URL đã biết (đã gửi sang Điều khiển hoặc đã nhận bản ghi) |
-| bảng `content_owners` | `content_id` (khoá), `url`: trang đầu tiên có văn bản đó |
+| bảng `content_owners` | `content_id` (khoá), `url`: trang đầu tiên có văn bản đó (theo URL cuối sau redirect) |
+| bảng `scope_hosts` | `host`: các host được lan (host của mọi mầm, cộng host của crawl cũ nạp một lần) |
+| bảng `lease` | người đang ghi trạng thái và nhịp tim |
 | `outbox.jsonl` | mỗi dòng `{"id", "target": "storage" \| "controller", "payload"}`: request chưa gửi được |
+| `outbox.dead.jsonl` | request khối kia từ chối hẳn (`4xx`), giữ lại để xem, không gửi lại |
 
 ## Gói corpus
 

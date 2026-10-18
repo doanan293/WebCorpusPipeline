@@ -115,7 +115,10 @@ def run(
                 if close is not None:
                     await close()
 
-        summary = asyncio.run(go())
+        try:
+            summary = asyncio.run(go())
+        finally:
+            parts.store.close()
     print(
         f"fetched {summary.sent}, stored {summary.stored}, failed {summary.failed}, "
         f"{summary.queued_due} urls still due"
@@ -143,7 +146,10 @@ def add(
         bootstrap.state_lease(aggregator.database, "data-pipeline seeds"),
     ):
         parts = _parts(paths, aggregator, database)
-        new = asyncio.run(runner.add_seeds(parts, seeds))
+        try:
+            new = asyncio.run(runner.add_seeds(parts, seeds))
+        finally:
+            parts.store.close()
     known = len(seeds.urls) - new
-    print(f"{new} new urls queued, {known} already known; {len(seeds.hosts)} hosts in the scope")
+    print(f"{new} new urls queued, {known} already known; seeds cover {len(seeds.hosts)} hosts")
     return 0

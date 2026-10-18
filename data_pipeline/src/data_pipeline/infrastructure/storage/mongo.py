@@ -68,6 +68,9 @@ class MongoCorpusStore:
 
         self._guard(replace)
 
+    def close(self) -> None:
+        self.db.client.close()
+
     def ensure_indexes(self) -> None:
         def create() -> None:
             for collection in ("html", "other"):

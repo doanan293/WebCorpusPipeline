@@ -78,30 +78,43 @@ gốc). Trả `202`, bóc tách ở nền rồi gửi bản ghi sang Tổng hợ
 
 ## Luồng dữ liệu
 
-1. Tổng hợp khởi động, gửi trang chủ của mỗi host trong `config/domains/active.txt` sang Điều khiển.
-2. Điều khiển giữ hàng đợi SQLite. Mỗi bước: lấy URL đến hạn mà host đã hết thời gian chờ
-   (`host_delay_seconds`), chọn node Tải về tiếp theo đang `"đang chờ"` (xoay vòng), gửi `/load`.
-   Gửi được thì đặt lịch crawl lại: trang chủ 1 ngày, trang 7 ngày, tài liệu 30 ngày (`recrawl_days`).
+1. Tổng hợp khởi động, nạp **tập url mầm** từ `seeds_file` (mặc định `config/domains/active.txt`): mỗi dòng một
+   host (bắt đầu từ trang chủ) hoặc một URL (bắt đầu từ chính nó), rồi gửi sang Điều khiển. Host của các mầm là
+   **phạm vi lan**: link chỉ được theo trong đúng các host đó.
+2. Điều khiển giữ hàng đợi SQLite. Mỗi bước: lấy URL đến hạn của một host còn được gửi, chọn node Tải về tiếp
+   theo đang `"đang chờ"` (xoay vòng), gửi `/load`. Một host có tối đa `per_host_concurrency` URL đang tải, và
+   hai lần gửi cách nhau một khoảng chờ: tối thiểu `host_delay_seconds`, tự giãn (AutoThrottle, tới 5 giây) khi
+   host trả lời chậm. Độ chậm đo bằng thời gian từ lúc node nhận `/load` tới lúc `/ping` trả lại `"đang chờ"`,
+   không cần endpoint nào thêm. Node trả `409` thì URL được gửi node kế. Gửi được thì đặt lịch crawl lại: trang
+   chủ 1 ngày, trang 7 ngày, tài liệu 30 ngày (`recrawl_days`).
 3. Tải về gửi dữ liệu sang Đọc nội dung; Đọc nội dung gửi bản ghi sang Tổng hợp.
 4. Tổng hợp gửi bản ghi sang Lưu trữ (trang trùng nội dung với trang khác chỉ gửi bản ghi rút gọn có
-   `duplicate_of`), lọc `out-links` trong miền hust, bỏ bẫy URL và URL đã biết, gom URL mới (500 URL hoặc
+   `duplicate_of`), lọc `out-links` trong các host mầm, bỏ bẫy URL và URL đã biết, gom URL mới (500 URL hoặc
    1 giây) gửi sang Điều khiển.
 5. Lưu trữ upsert `html`/`other` theo `url` và thay toàn bộ cạnh `graph` của trang đó.
 
 Gửi giữa các khối thử lại 3 lần (chờ 1, 2, 4 giây) khi lỗi kết nối hoặc `5xx`. Chặng Tổng hợp → Lưu trữ và
-Tổng hợp → Điều khiển còn có outbox (`/state/outbox.jsonl`): request gửi không được nằm lại đó và được gửi
-lại mỗi 30 giây.
+Tổng hợp → Điều khiển còn có outbox (`data/state/outbox.jsonl`): request gửi không được nằm lại đó và được gửi
+lại mỗi 30 giây, riêng cho từng khối (Lưu trữ tắt không chặn URL gửi sang Điều khiển). Request bị khối kia từ
+chối hẳn (`4xx`, ví dụ tài liệu lớn hơn 16 MB Mongo không nhận, Lưu trữ trả `422`) vào `outbox.dead.jsonl`
+thay vì chặn hàng. Khi Tổng hợp tắt, URL mới đang chờ gom lô được ghi vào outbox.
 
 ## Chạy
 
 ```bash
+cd dich_vu
 docker compose up -d --build        # 5 khối + MongoDB
 docker compose logs -f controller   # theo dõi
 curl -X POST localhost:5200/add -d '{"urls": ["https://ctsv.hust.edu.vn/"]}'
 ```
 
-Thứ tự khởi động đi ngược chiều dữ liệu (Lưu trữ, Đọc nội dung, Tải về, Điều khiển, rồi Tổng hợp), vì
-Điều khiển cần node Tải về sống và Tổng hợp gửi URL mầm ngay khi khởi động.
+Thứ tự khởi động đi ngược chiều dữ liệu (Lưu trữ, Tổng hợp, Đọc nội dung, Tải về, rồi Điều khiển), để không
+khối nào gửi sang một khối chưa chạy; URL mầm của Tổng hợp chờ trong outbox tới khi Điều khiển lên.
+
+**Dữ liệu dùng chung với CLI.** Các container gắn `../data_pipeline/data/state` (hàng đợi, URL đã biết, outbox) và
+dùng volume Mongo `data_pipeline_mongodb_data` (project compose vẫn tên `data_pipeline`), chạy với user của máy
+(`UID`/`GID`, mặc định 1000). Vì vậy `docker compose up` tiếp tục đúng chỗ `data-pipeline crawl run` dừng và
+ngược lại. Trong lúc các dịch vụ chạy, `crawl run` báo trạng thái đang được dùng và thoát (và ngược lại).
 
 Không có Docker: chạy từng khối bằng `uv run dich-vu serve <khối>` (trong `dich_vu/`) với biến môi trường trỏ tới khối
 kề bên (mặc định là tên service trong compose):
@@ -126,9 +139,11 @@ Mỗi khối chỉ biết địa chỉ khối kề bên. Muốn dùng Đọc n�
 
 | Tệp | Khối | Nội dung chính |
 |---|---|---|
-| `config/controller.yaml` | Điều khiển | `downloaders`, `host_delay_seconds`, timeout, `node_cooldown_seconds`, `max_attempts`, `recrawl_days`, `database` |
-| `config/fetcher.yaml` | Tải về | user agent, timeout, redirect, giới hạn kích thước |
-| `config/parser.yaml` | Đọc nội dung | `llamaparse` (bật OCR đám mây, khoá trong `.env`), `cache_dir` |
-| `config/aggregator.yaml` | Tổng hợp | `hosts_file`, `allowed_suffixes`, kích thước lô, chu kỳ outbox, `database`, `outbox` |
+| `config/controller.yaml` | Điều khiển | `downloaders`, `host_delay_seconds`, `per_host_concurrency`, `autothrottle*`, timeout, `node_cooldown_seconds`, `max_attempts`, `recrawl_days`, `database` |
+| `config/fetcher.yaml` | Tải về | user agent, timeout, redirect, giới hạn kích thước, `retries`, `browser_pages` |
+| `config/parser.yaml` | Đọc nội dung | `llamaparse` (bật OCR đám mây, khoá trong `.env`), `cache_dir`, `document_workers` |
+| `config/aggregator.yaml` | Tổng hợp | `seeds_file`, `initial_scope_file`, kích thước lô, chu kỳ outbox, `database`, `outbox` |
+
+Các tệp này nằm trong `data_pipeline/config/` và dùng chung với `data-pipeline crawl run`.
 
 Cấu hình sai thì khối báo lỗi rõ và không khởi động.

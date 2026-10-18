@@ -31,3 +31,6 @@ class FakeCorpusStore:
 
     def ensure_indexes(self) -> None:
         return None
+
+    def close(self) -> None:
+        return None

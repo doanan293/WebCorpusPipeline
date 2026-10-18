@@ -2,9 +2,15 @@
 
 ## 1. Các khối dịch vụ
 
-`data_pipeline` cài đặt kiến trúc dịch vụ nhỏ trong slide của thầy: Điều khiển, Tải về, Đọc nội dung, Tổng
-hợp dữ liệu, Lưu trữ và Mongo, mỗi khối một service HTTP/JSON. Giao diện, luồng dữ liệu, cách chạy và cách
-thay khối bằng khối của nhóm khác nằm ở [services.md](services.md).
+`data_pipeline` chứa năm khối trong slide của thầy (Điều khiển, Tải về, Đọc nội dung, Tổng hợp dữ liệu, Lưu
+trữ, cùng Mongo) và hai cách chạy chúng trên cùng một code và cùng một bộ dữ liệu:
+
+- **Một tiến trình** (`data-pipeline crawl run`, tầng `runner/` của package này): các khối gọi nhau bằng hàm.
+- **Năm dịch vụ HTTP/JSON** (package `dich_vu` ở [`../../dich_vu/`](../../dich_vu/README.md)): đúng endpoint và
+  cổng của slide. Giao diện, luồng dữ liệu và cách thay khối bằng khối của nhóm khác nằm ở README đó.
+
+Hai cách chạy dùng chung use case và luật của từng khối; chỉ cách nối các khối khác nhau (lời gọi hàm hay
+HTTP client), nên lọc link, lập lịch, AutoThrottle và schema Mongo luôn giống nhau.
 
 ## 2. Cấu trúc package
 
@@ -15,7 +21,7 @@ Một package `data_pipeline` (trong `src/`) với một lệnh `data-pipeline`,
 
 ```mermaid
 flowchart TB
-    PRES["cli/ và api/<br/>lệnh Typer, service aiohttp"]
+    PRES["cli/ và runner/<br/>lệnh Typer, năm khối trong một tiến trình<br/>(dich_vu: service aiohttp)"]
     BOOT["bootstrap.py<br/>dựng adapter cho mọi cửa vào"]
     INFRA["infrastructure/<br/>SQLite, aiohttp, Playwright, parser tài liệu, LlamaParse, MongoDB, Kaggle<br/>(cài đặt các port)"]
     APP["application/<br/>use case + ports.py (Protocol)"]
@@ -32,12 +38,14 @@ flowchart TB
 Quy tắc phụ thuộc (kiểm tra tự động bằng `tests/unit/test_architecture.py`):
 
 1. **Lớp chỉ trỏ vào trong:** `domain` không import lớp nào khác; `application` chỉ dùng `domain`;
-   `infrastructure` dùng `domain` và chỉ `application/<nghiệp vụ>/ports.py`. `cli/` và `api/` gọi use case và
-   `bootstrap.py`, không import `infrastructure`; `cli/` được khởi chạy `api/` (lệnh `serve`). `domain` không
+   `infrastructure` dùng `domain` và chỉ `application/<nghiệp vụ>/ports.py`. `cli/` và `runner/` gọi use case
+   và `bootstrap.py`, không import `infrastructure`; `cli/` được khởi chạy `runner/` (lệnh `crawl run`). `domain` không
    import module I/O (`sqlite3`, `aiohttp`, `pymongo`, `playwright`, `llama_cloud`, `subprocess`, `os`, ...).
 2. **Các khối không import lẫn nhau:** năm khối, `corpus` và `hosts` chỉ dùng phần của chính nó và `shared`.
-   Các khối chỉ nói chuyện với nhau qua HTTP. `api/<khối>.py` chỉ dùng nghiệp vụ của khối đó.
-3. Mọi module nằm trong `<lớp>/<nghiệp vụ>/`, `cli/`, `api/` hoặc là `bootstrap.py`. Use case nhận adapter qua
+   Chỉ `runner/` được dùng nhiều khối cùng lúc: nó cài port của khối này bằng use case của khối kia
+   (`LocalNodes`, `DirectParserClient`, `DirectAggregatorClient`, `DirectServiceClient`). Trong `dich_vu`,
+   `api/<khối>.py` chỉ dùng nghiệp vụ của khối đó (kiểm tra bằng `dich_vu/service_tests/test_architecture.py`).
+3. Mọi module nằm trong `<lớp>/<nghiệp vụ>/`, `cli/`, `runner/` hoặc là `bootstrap.py`. Use case nhận adapter qua
    tham số; `bootstrap.py` là nơi duy nhất dựng adapter.
 
 ```text
@@ -45,16 +53,16 @@ src/data_pipeline/
   domain/
     shared/        url, links (normalize_url), assets (nhận diện tài liệu), protocol (chuỗi và bản ghi /add),
                    hostnames, refs, errors, config
-    controller/    models, kinds, scheduling, rotation
+    controller/    models, kinds, scheduling, rotation, throttle (giới hạn mỗi host, AutoThrottle)
     fetcher/       access (cổng đăng nhập/CAPTCHA/soft 404), formats, models
     parser/        extract/ (thuật toán tìm khối nội dung), records, models, merge, cache_key, cloud_pages, key_pool
-    aggregator/    link_policy, links, batching, records, content, config
+    aggregator/    link_policy, links, seeds, batching, records, content, config
     storage/       documents
     corpus/        manifest, records, kaggle_metadata
     hosts/         classify, canonical, models
   application/<nghiệp vụ>/   use case + ports.py
   infrastructure/
-    shared/        settings, env, network, files, http_client
+    shared/        settings, env, network, files, http_client, sqlite, lease (một người ghi trạng thái)
     controller/    sqlite_queue, http_downloader, config_file
     fetcher/       http_getter, browser, playwright_driver, parser_client, config_file
     parser/        parsers/, llamaparse, cache, job_log, aggregator_client, raw_pages, config_file
@@ -62,25 +70,27 @@ src/data_pipeline/
     storage/       mongo
     corpus/        files/corpus_files, mongo, kaggle_cli
     hosts/         http_probe, browser_probe, report_files
-  api/             common, controller, fetcher, parser, aggregator, storage
-  cli/             main, serve, reextract, corpus, domains, eval, context, errors
+  runner/          adapters (port bằng lời gọi hàm), crawl (vòng chạy của crawl run)
+  cli/             main, crawl (crawl run, seeds add), reextract, corpus, domains, eval, context, errors
   bootstrap.py
 ```
 
 | Nghiệp vụ | Port (trong `application/<nghiệp vụ>/ports.py`) | Adapter |
 |---|---|---|
-| `controller` | `UrlQueue`, `Downloader`, `Clock` | `SqliteUrlQueue`, `HttpDownloader` |
+| `controller` | `UrlQueue`, `Downloader`, `Clock` | `SqliteUrlQueue`, `HttpDownloader` (dịch vụ), `LocalNodes` (một tiến trình) |
 | `fetcher` | `PageGetter`, `Renderer`, `ParserClient` | `AiohttpPageGetter`, `PlaywrightRenderer`, `HttpParserClient` |
 | `parser` | `LocalParser`, `CloudParser`, `ParseCache`, `CloudJobLog`, `AggregatorClient`, `RawPages` | `LocalParserAdapter`, `LlamaParseCloud`, `FileParseCache`, `LoggedCloudJobs`, `HttpAggregatorClient`, `SqliteRawPages` |
-| `aggregator` | `SeenUrls`, `ContentOwners` (`AggregatorState`), `Outbox`, `ServiceClient` | `SqliteAggregatorState`, `JsonlOutbox`, `HttpServiceClient` |
+| `aggregator` | `SeenUrls`, `ContentOwners`, `ScopeHosts` (`AggregatorState`), `Outbox`, `ServiceClient` | `SqliteAggregatorState`, `JsonlOutbox`, `HttpServiceClient` (dịch vụ), `DirectServiceClient` (một tiến trình) |
 | `storage` | `CorpusStore` | `MongoCorpusStore` |
 | `corpus` | `CorpusFiles`, `CorpusDatabase`, `DatasetPublisher` | `LocalCorpusFiles`, `MongoCorpusDatabase`, `KaggleCli` |
 | `hosts` | `HostProber`, `BrowserProber`, `AuditReports` | `HttpHostProber`, `PlaywrightBrowserProber`, `FileAuditReports` |
 
 Test có cùng cấu trúc (`tests/unit/<lớp>/<nghiệp vụ>/`) và dùng bản giả trong `tests/fakes/`;
 `tests/fakes/test_fakes_satisfy_ports.py` kiểm tra mỗi bản giả vẫn khớp port của nó.
-`tests/integration/services/test_end_to_end.py` dựng cả năm khối trên cổng ngẫu nhiên và cho chúng thu thập
-một website giả lập cục bộ.
+`tests/integration/test_crawl_run.py` cho `crawl run` thu thập một website giả lập cục bộ
+(`tests/integration/services/site.py`); `dich_vu/service_tests/integration/test_end_to_end.py` dựng năm dịch
+vụ trên cổng ngẫu nhiên và thu thập cùng website đó. Cả hai so với cùng kết quả mong đợi (`EXPECTED_*` trong
+`site.py`), nên hai cách chạy không thể lệch nhau.
 
 ## 3. Yêu cầu của thầy và nơi đáp ứng
 

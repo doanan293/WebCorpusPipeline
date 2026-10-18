@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import time
+from typing import override
 
 import pytest
 
+from data_pipeline import bootstrap
 from data_pipeline.cli.main import main
 from data_pipeline.domain.aggregator.seeds import Seeds
 from data_pipeline.domain.controller.models import CrawlConfig
@@ -13,6 +15,7 @@ from data_pipeline.infrastructure.controller.sqlite_queue import SqliteUrlQueue
 from data_pipeline.infrastructure.shared.lease import SqliteLease
 from data_pipeline.runner import crawl as runner
 from tests.fakes.controller import FakeClock
+from tests.fakes.storage import FakeCorpusStore
 
 
 def _project(project: ProjectPaths) -> ProjectPaths:
@@ -93,3 +96,26 @@ def test_seeds_add_reports_bad_entries(
     _project(project)
     assert main(["seeds", "add", "ftp://x.hust.edu.vn/"]) == 2
     assert "ftp://x.hust.edu.vn/" in capsys.readouterr().err
+
+
+def test_crawl_run_closes_the_store(project: ProjectPaths, monkeypatch: pytest.MonkeyPatch) -> None:
+    _project(project)
+    closed: list[bool] = []
+
+    class _Store(FakeCorpusStore):
+        @override
+        def close(self) -> None:
+            closed.append(True)
+
+    def store(uri: str, database: str) -> _Store:
+        return _Store()
+
+    async def fake_crawl(
+        config: CrawlConfig, parts: runner.CrawlParts, **kwargs: object
+    ) -> runner.CrawlSummary:
+        return runner.CrawlSummary(sent=0, stored=0, failed=0, queued_due=0)
+
+    monkeypatch.setattr(bootstrap, "corpus_store", store)
+    monkeypatch.setattr(runner, "crawl", fake_crawl)
+    assert main(["crawl", "run"]) == 0
+    assert closed == [True]
