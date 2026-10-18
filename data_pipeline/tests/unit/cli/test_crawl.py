@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 import time
 from typing import override
 
@@ -126,3 +127,24 @@ def test_seeds_add_first_keeps_the_initial_scope(project: ProjectPaths) -> None:
     assert main(["seeds", "add", "soict.hust.edu.vn"]) == 0
     state = SqliteAggregatorState(project.root / "data/state/aggregator.sqlite3")
     assert state.scope_hosts() == {"soict.hust.edu.vn", "ctsv.hust.edu.vn"}
+
+
+def test_crawl_run_closes_the_state_files(
+    project: ProjectPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _project(project)
+    seen: list[runner.CrawlParts] = []
+
+    async def fake_crawl(
+        config: CrawlConfig, parts: runner.CrawlParts, **kwargs: object
+    ) -> runner.CrawlSummary:
+        seen.append(parts)
+        return runner.CrawlSummary(sent=0, stored=0, failed=0, queued_due=0)
+
+    monkeypatch.setattr(runner, "crawl", fake_crawl)
+    assert main(["crawl", "run"]) == 0
+    (parts,) = seen
+    with pytest.raises(sqlite3.ProgrammingError):
+        parts.queue.has_due(0.0)
+    with pytest.raises(sqlite3.ProgrammingError):
+        parts.state.scope_hosts()

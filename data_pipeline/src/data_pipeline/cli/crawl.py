@@ -56,6 +56,12 @@ def _parts(paths: ProjectPaths, aggregator: AggregatorConfig, database: Path) ->
     )
 
 
+def _close(parts: runner.CrawlParts) -> None:
+    parts.store.close()
+    parts.queue.close()
+    parts.state.close()
+
+
 def _initial_scope(aggregator: AggregatorConfig) -> frozenset[str]:
     path = aggregator.initial_scope_file
     return bootstrap.hostnames(path) if path.exists() else frozenset()
@@ -122,7 +128,7 @@ def run(
         try:
             summary = asyncio.run(go())
         finally:
-            parts.store.close()
+            _close(parts)
     print(
         f"fetched {summary.sent}, stored {summary.stored}, failed {summary.failed}, "
         f"{summary.queued_due} urls still due"
@@ -153,7 +159,7 @@ def add(
         try:
             new = asyncio.run(runner.add_seeds(parts, seeds, _initial_scope(aggregator)))
         finally:
-            parts.store.close()
+            _close(parts)
     known = len(seeds.urls) - new
     print(f"{new} new urls queued, {known} already known; seeds cover {len(seeds.hosts)} hosts")
     return 0

@@ -51,6 +51,12 @@ class FakeUrlQueue:
     def mark_failed(self, url: str, attempts: int, next_due_at: float | None) -> None:
         self.rows[url] = replace(self.rows[url], next_due_at=next_due_at, attempts=attempts)
 
+    def has_due(self, now: float) -> bool:
+        return self.counts(now).due > 0
+
+    def close(self) -> None:
+        return None
+
     def counts(self, now: float) -> QueueCounts:
         due = sum(
             1

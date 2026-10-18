@@ -5,6 +5,7 @@ import time
 from collections import Counter
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 
 from aiohttp.test_utils import TestServer
@@ -177,3 +178,30 @@ def test_interrupt_requeues_in_flight_urls(tmp_path: Path) -> None:
     queue = SqliteUrlQueue(tmp_path / "controller.sqlite3")
     (due,) = queue.db.execute("SELECT next_due_at FROM urls WHERE url = ?", (url,)).fetchone()
     assert due <= time.time()
+
+
+def test_crawl_does_not_wait_out_whole_ticks(tmp_path: Path) -> None:
+    """A node finishing or a host's wait ending wakes the loop; the tick is only an upper bound."""
+    store = FakeCorpusStore()
+    slow_tick = replace(_config(), controller=replace(_config().controller, tick_seconds=1.0))
+
+    async def scenario() -> float:
+        async with _site() as (site, port):
+            parts, getter, _ = _parts(tmp_path, store)
+            start = time.monotonic()
+            try:
+                await crawl(
+                    slow_tick,
+                    parts,
+                    seeds=parse_seeds([f"{site}/"], frozenset({port})),
+                    allowed_ports=frozenset({port}),
+                    forever=False,
+                    stop=asyncio.Event(),
+                )
+            finally:
+                await getter.close()
+            return time.monotonic() - start
+
+    seconds = asyncio.run(scenario())
+    assert len(store.collections["html"]) == len(EXPECTED_HTML_PATHS)
+    assert seconds < 2.0

@@ -41,3 +41,11 @@ def test_sqlite_never_due_and_failures(tmp_path: Path) -> None:
     queue.mark_sent("https://a/1", 6.0, None)
     assert queue.next_due(1e12, ()) is None
     assert queue.counts(1e12).due == 0
+
+
+def test_has_due(tmp_path: Path) -> None:
+    queue = SqliteUrlQueue(tmp_path / "q.sqlite3")
+    assert not queue.has_due(10.0)
+    queue.add([("https://a/1", "a", "page")], 5.0)
+    assert not queue.has_due(4.0)
+    assert queue.has_due(5.0)

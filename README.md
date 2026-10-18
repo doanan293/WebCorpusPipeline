@@ -31,9 +31,10 @@ khối cùng MongoDB.
 
 ### Kiểm tra mã và pre-commit
 
-Cấu hình ruff, pyrefly (strict) và pytest nằm trong `data_pipeline/pyproject.toml`. Hook pre-commit nằm ở thư
-mục gốc repo, bỏ qua `lucene/` và `data_pipeline/data/`; ruff, pyrefly, uv-lock và pytest (pytest chỉ khi push) chỉ
-chạy cho thay đổi trong `data_pipeline/`:
+Mỗi package Python (`data_pipeline/`, `dich_vu/`, `dieu_khien/`) có cấu hình ruff, pyrefly (strict) và pytest
+trong `pyproject.toml` của nó. Hook pre-commit nằm ở thư mục gốc repo, bỏ qua `lucene/` và `data_pipeline/data/`;
+ruff, pyrefly, uv-lock và pytest (pytest chỉ khi push) chạy cho package có thay đổi. `dich_vu/` dùng lõi của
+`data_pipeline/`, nên thay đổi trong `data_pipeline/` cũng chạy kiểm tra của `dich_vu/`:
 
 ```bash
 uv run --directory data_pipeline pre-commit install

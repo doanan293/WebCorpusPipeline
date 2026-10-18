@@ -115,3 +115,39 @@ def test_renderer_follows_allowed_redirect() -> None:
     assert final_url.endswith("/")
     assert "/hop" not in final_url
     assert b"public page" in body
+
+
+def test_renderer_opens_no_websockets() -> None:
+    """No socket at all, even where addresses are allowed: page script cannot reach any service."""
+    seen: list[str] = []
+
+    async def page(request: web.Request) -> web.Response:
+        port = request.url.port
+        body = (
+            "<html><body><p>public page</p>"
+            f"<script>new WebSocket('ws://127.0.0.1:{port}/ws');</script></body></html>"
+        )
+        return web.Response(text=body, content_type="text/html")
+
+    async def socket(request: web.Request) -> web.WebSocketResponse:
+        seen.append(request.path)
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        await ws.close()
+        return ws
+
+    app = web.Application()
+    app.router.add_get("/", page)
+    app.router.add_get("/ws", socket)
+
+    async def scenario() -> None:
+        async with TestServer(app, host="127.0.0.1") as server:
+            renderer = PlaywrightRenderer(FetcherConfig(allow_private_addresses=True))
+            try:
+                await renderer.render(f"http://localhost:{server.port}/")
+                await asyncio.sleep(0.5)
+            finally:
+                await renderer.close()
+
+    asyncio.run(scenario())
+    assert seen == []

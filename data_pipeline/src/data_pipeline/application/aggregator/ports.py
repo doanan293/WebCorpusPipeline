@@ -58,3 +58,5 @@ class ScopeHosts(Protocol):
 
 class AggregatorState(SeenUrls, ContentOwners, ScopeHosts, Protocol):
     """The memories of the aggregator, kept by one store."""
+
+    def close(self) -> None: ...

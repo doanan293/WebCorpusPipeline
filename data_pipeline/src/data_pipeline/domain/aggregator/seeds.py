@@ -38,7 +38,7 @@ def parse_seeds(lines: Iterable[str], allowed_ports: frozenset[int] = frozenset(
             hosts.add(host)
             continue
         try:
-            host = normalize_hostname(value)
+            host = normalize_hostname(value.rstrip("/"))
         except ValueError:
             problems.append(f"line {number}: neither a hostname nor an http(s) URL: {value}")
             continue

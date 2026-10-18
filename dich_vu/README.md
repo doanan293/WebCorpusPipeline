@@ -113,7 +113,8 @@ khối nào gửi sang một khối chưa chạy; URL mầm của Tổng hợp c
 
 **Dữ liệu dùng chung với CLI.** Các container gắn `../data_pipeline/data/state` (hàng đợi, URL đã biết, outbox) và
 dùng volume Mongo `data_pipeline_mongodb_data` (project compose vẫn tên `data_pipeline`), chạy với user của máy
-(`UID`/`GID`, mặc định 1000). Vì vậy `docker compose up` tiếp tục đúng chỗ `data-pipeline crawl run` dừng và
+(`UID`/`GID`, mặc định 1000; bash không export hai biến này, nên nếu user của bạn không phải 1000 thì chạy
+`export UID GID=$(id -g)` trước `docker compose up -d`). Vì vậy `docker compose up` tiếp tục đúng chỗ `data-pipeline crawl run` dừng và
 ngược lại. Trong lúc các dịch vụ chạy, `crawl run` báo trạng thái đang được dùng và thoát (và ngược lại).
 
 Không có Docker: chạy từng khối bằng `uv run dich-vu serve <khối>` (trong `dich_vu/`; đường dẫn trong `config/*.yaml` tính từ `data_pipeline/`, nên vẫn dùng chung `data_pipeline/data/state`) với biến môi trường trỏ tới khối

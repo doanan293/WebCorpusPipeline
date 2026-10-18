@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import time
 from collections import Counter
@@ -34,6 +33,7 @@ log = logging.getLogger(__name__)
 # Rounds with nothing to do before a run that is not --forever ends.
 _IDLE_ROUNDS = 2
 _PROGRESS_SECONDS = 30.0
+_IDLE_CHECK_SECONDS = 0.05
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +119,7 @@ async def crawl(
     last_flush = last_progress = time.monotonic()
     try:
         while not stop.is_set():
+            nodes.finished.clear()
             sent = await dispatcher.step()
             await runtime.tick()
             now = time.monotonic()
@@ -131,13 +132,15 @@ async def crawl(
             if sent:
                 idle = 0
                 continue
-            busy = dispatcher.in_flight() or nodes.running or runtime.batcher.pending
-            due = parts.queue.counts(parts.clock.now()).due
+            busy = bool(dispatcher.in_flight() or nodes.running or runtime.batcher.pending)
+            due = parts.queue.has_due(parts.clock.now())
             idle = idle + 1 if not (forever or busy or due) else 0
             if idle >= _IDLE_ROUNDS:
                 break
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(stop.wait(), config.controller.tick_seconds)
+            seconds = _wait_seconds(config, parts, dispatcher, idle=idle > 0)
+            if runtime.batcher.pending:
+                seconds = min(seconds, parts.aggregator.batch_seconds)
+            await _wait(stop, nodes.finished, seconds)
     finally:
         cancelled = await nodes.stop()
         now = parts.clock.now()
@@ -153,6 +156,30 @@ async def crawl(
         failed=counts["failed"],
         queued_due=parts.queue.counts(parts.clock.now()).due,
     )
+
+
+def _wait_seconds(
+    config: CrawlConfig, parts: CrawlParts, dispatcher: Dispatcher, *, idle: bool
+) -> float:
+    """At most a tick; less when a host's wait ends sooner, or while confirming nothing is left."""
+    if idle:
+        return min(config.controller.tick_seconds, _IDLE_CHECK_SECONDS)
+    seconds = config.controller.tick_seconds
+    now = parts.clock.now()
+    wake = dispatcher.throttle.next_unblock(now)
+    if wake is not None:
+        seconds = min(seconds, max(0.0, wake - now))
+    return seconds
+
+
+async def _wait(stop: asyncio.Event, finished: asyncio.Event, seconds: float) -> None:
+    """Wait ``seconds``, or less if the run is stopped or a node finishes."""
+    waiters = [asyncio.create_task(stop.wait()), asyncio.create_task(finished.wait())]
+    try:
+        await asyncio.wait(waiters, timeout=seconds, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for waiter in waiters:
+            waiter.cancel()
 
 
 def _log_progress(counts: Counter[str], parts: CrawlParts, dispatcher: Dispatcher) -> None:

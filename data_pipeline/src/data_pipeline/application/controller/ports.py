@@ -30,6 +30,12 @@ class UrlQueue(Protocol):
 
     def counts(self, now: float) -> QueueCounts: ...
 
+    def has_due(self, now: float) -> bool:
+        """Whether any URL is due (cheaper than ``counts`` on a large queue)."""
+        ...
+
+    def close(self) -> None: ...
+
 
 class Downloader(Protocol):
     async def ping(self, node: str) -> str | None:

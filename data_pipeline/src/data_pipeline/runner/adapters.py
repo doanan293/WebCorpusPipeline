@@ -36,6 +36,7 @@ class LocalNodes:
         self.work = work
         self.names = list(names)
         self.running: dict[str, tuple[str, asyncio.Task[object]]] = {}
+        self.finished = asyncio.Event()  # set whenever a node is done, so the loop can wake
 
     async def ping(self, node: str) -> str | None:
         return BUSY if node in self.running else IDLE
@@ -45,8 +46,12 @@ class LocalNodes:
             return "busy"
         task = asyncio.create_task(self._run(url))
         self.running[node] = (url, task)
-        task.add_done_callback(lambda _: self.running.pop(node, None))
+        task.add_done_callback(lambda _: self._done(node))
         return "accepted"
+
+    def _done(self, node: str) -> None:
+        self.running.pop(node, None)
+        self.finished.set()
 
     async def _run(self, url: str) -> object:
         try:

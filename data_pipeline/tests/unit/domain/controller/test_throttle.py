@@ -82,3 +82,15 @@ def test_unknown_latency_keeps_delay() -> None:
     throttle.finished("a", None)
     assert throttle.delay("a") == 0.25
     assert "a" not in throttle.blocked(1.0)
+
+
+def test_next_unblock_is_the_earliest_wait_ending() -> None:
+    throttle = HostThrottle(_config(autothrottle=False, host_delay_seconds=1.0))
+    assert throttle.next_unblock(0.0) is None
+    throttle.started("a", 10.0)
+    throttle.finished("a", 0.1)
+    throttle.started("b", 10.5)
+    throttle.finished("b", 0.1)
+    assert throttle.next_unblock(10.6) == 11.0
+    assert throttle.next_unblock(11.2) == 11.5
+    assert throttle.next_unblock(12.0) is None

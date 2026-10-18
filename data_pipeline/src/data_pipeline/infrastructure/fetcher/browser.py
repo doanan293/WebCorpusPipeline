@@ -25,8 +25,9 @@ class PlaywrightRenderer:
     """The ``Renderer`` port: headless Chromium, started on first use, one page per render.
 
     Every request the page makes (the page, its redirects, images, scripts, ``fetch()``) passes
-    ``check`` first and is aborted when it fails, so a page cannot reach the blocks' own network or
-    other private addresses. At most ``browser_pages`` pages are open at once.
+    ``check`` first and is aborted when it fails, and WebSockets are refused, so a page cannot reach
+    the blocks' own network or other private addresses. At most ``browser_pages`` pages are open at
+    once.
     """
 
     def __init__(
@@ -108,6 +109,8 @@ class PlaywrightRenderer:
                 await route.abort("failed")
 
         await page.route("**/*", guard)
+        # A crawler needs no WebSocket, and a socket is not an HTTP request the guard sees.
+        await page.route_web_socket("**/*", lambda socket: socket.close())
         target = url
         for _ in range(self.config.max_redirects + 1):
             await self.check(target)

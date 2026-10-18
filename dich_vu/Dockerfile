@@ -31,8 +31,8 @@ RUN uv sync --frozen --no-dev --project dich_vu
 
 COPY data_pipeline/config data_pipeline/config
 RUN useradd --create-home --uid 1000 app \
-    && mkdir -p /state /app/data_pipeline/data/enrichment/cache /app/data_pipeline/data/state \
-    && chown -R app /state /app/data_pipeline/data
+    && mkdir -p /app/data_pipeline/data/enrichment/cache /app/data_pipeline/data/state \
+    && chown -R app /app/data_pipeline/data
 USER app
 
 # Paths in config/*.yaml are relative to the data_pipeline project, as on the host.

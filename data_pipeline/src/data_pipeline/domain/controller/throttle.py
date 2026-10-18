@@ -18,6 +18,10 @@ class HostThrottle:
     With AutoThrottle on, the time between sends follows how long the host takes to answer (as
     Scrapy's AutoThrottle does): a slow host is given more room, a fast one less, never below
     ``host_delay_seconds`` nor above ``autothrottle_max_delay_seconds``.
+
+    The latency is the whole time a node is busy with the URL (download, and for the in-process
+    crawl also reading and storing it), as that is all the slide lets the controller see. A slow
+    reader or an unreachable Mongo therefore also slows the hosts, up to the maximum delay.
     """
 
     def __init__(self, config: ControllerConfig) -> None:
@@ -45,6 +49,16 @@ class HostThrottle:
             if state.in_flight >= self.config.per_host_concurrency
             or now < state.last_sent + state.delay
         )
+
+    def next_unblock(self, now: float) -> float | None:
+        """When the earliest host now held back only by its wait may be sent to again."""
+        times = [
+            state.last_sent + state.delay
+            for state in self.hosts.values()
+            if state.in_flight < self.config.per_host_concurrency
+            and now < state.last_sent + state.delay
+        ]
+        return min(times, default=None)
 
     def started(self, host: str, now: float) -> None:
         state = self._host(host)

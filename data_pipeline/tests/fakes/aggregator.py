@@ -28,6 +28,9 @@ class MemoryAggregatorState:
     def scope_hosts(self) -> frozenset[str]:
         return frozenset(self.hosts)
 
+    def close(self) -> None:
+        return None
+
 
 class MemoryOutbox:
     def __init__(self) -> None:

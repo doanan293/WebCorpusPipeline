@@ -58,6 +58,10 @@ class SqliteUrlQueue:
         ).fetchone()
         return QueuedUrl(*row) if row else None
 
+    def has_due(self, now: float) -> bool:
+        row = self.db.execute("SELECT 1 FROM urls WHERE next_due_at <= ? LIMIT 1", (now,))
+        return row.fetchone() is not None
+
     def mark_sent(self, url: str, now: float, next_due_at: float | None) -> None:
         with transaction(self.db):
             self.db.execute(

@@ -29,3 +29,9 @@ def test_url_with_port_needs_allowed_port() -> None:
     allowed = parse_seeds(["http://127.0.0.1:5000/"], allowed_ports=frozenset({5000}))
     assert allowed.urls == ("http://127.0.0.1:5000/",)
     assert allowed.hosts == frozenset({"127.0.0.1"})
+
+
+def test_host_with_trailing_slash_is_a_host() -> None:
+    seeds = parse_seeds(["soict.hust.edu.vn/"])
+    assert seeds.urls == ("https://soict.hust.edu.vn/",)
+    assert seeds.problems == ()
