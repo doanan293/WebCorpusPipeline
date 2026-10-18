@@ -111,3 +111,27 @@ def test_failed_delivery_goes_to_outbox_and_flushes() -> None:
     assert asyncio.run(flush_outbox(client, outbox)) == 1
     assert outbox.pending() == []
     assert client.sent == [("storage", {"url": "u"})]
+
+
+def test_duplicate_page_does_not_spread() -> None:
+    """A page whose text another URL owns (node/1?page=2 echoing node/1) is a dead end: its links
+    (the next ?page=3, ...) are not followed, or a pager that ignores ?page never ends."""
+    run = _Run()
+    run.add(_record("https://hust.edu.vn/node/1", "same text", [("https://hust.edu.vn/a", "A")]))
+    run.batcher.due(1.0)
+    run.add(
+        _record(
+            "https://hust.edu.vn/node/1?page=2",
+            "same text",
+            [("https://hust.edu.vn/node/1?page=3", "3"), ("https://hust.edu.vn/b", "B")],
+        )
+    )
+    assert run.batcher.pending == []
+    assert run.to("storage")[-1]["duplicate_of"] == "https://hust.edu.vn/node/1"
+
+
+def test_page_without_text_still_spreads() -> None:
+    """A hub that extracts no article text (a JavaScript home page) is not a duplicate."""
+    run = _Run()
+    run.add(_record("https://hust.edu.vn/", "  ", [("https://hust.edu.vn/next", "N")]))
+    assert run.batcher.pending == ["https://hust.edu.vn/next"]

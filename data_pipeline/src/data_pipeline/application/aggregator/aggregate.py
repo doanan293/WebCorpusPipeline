@@ -29,7 +29,12 @@ async def aggregate(
     scope: Scope,
     now: float,
 ) -> None:
-    """Store one record (a stub when another URL owns its text) and queue its new links."""
+    """Store one record (a stub when another URL owns its text) and queue its new links.
+
+    A duplicate (its text owned by another URL) is a dead end, as in the batch crawler: otherwise a
+    pager that ignores ``?page`` (every ``?page=N`` echoing the same page and linking to more of
+    them) is followed without end. A page without text still spreads (a JavaScript hub page).
+    """
     url = record["url"]
     page_url = canonical_url(url, scope.allowed_ports)[0]
     if page_url is not None:
@@ -37,6 +42,8 @@ async def aggregate(
     key = content_key(record["content"])
     owner = owners.claim(key, url) if key is not None else url
     await deliver("storage", record if owner == url else duplicate_stub(record, owner))
+    if owner != url:
+        return
     links = candidate_urls(
         record["out-links"],
         source_url=url,
