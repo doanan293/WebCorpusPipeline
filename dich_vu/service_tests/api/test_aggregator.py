@@ -109,7 +109,7 @@ def test_seeds_already_known_are_duplicates(tmp_path: Path) -> None:
 
     asyncio.run(scenario())
     assert queue.counts(time.time()).total == 2
-    assert queue.next_due(time.time(), 0.0) is not None
+    assert queue.next_due(time.time(), ()) is not None
     row = queue.db.execute(
         "SELECT next_due_at FROM urls WHERE url = 'https://hust.edu.vn/'"
     ).fetchone()

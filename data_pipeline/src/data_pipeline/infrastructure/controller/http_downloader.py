@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from http import HTTPStatus
+
 import aiohttp
+
+from data_pipeline.application.controller.ports import LoadResult
 
 
 class HttpDownloader:
@@ -29,16 +33,18 @@ class HttpDownloader:
         status = body.get("status") if isinstance(body, dict) else None
         return status if isinstance(status, str) else None
 
-    async def load(self, node: str, url: str) -> bool:
+    async def load(self, node: str, url: str) -> LoadResult:
         try:
             async with self._session().post(
                 f"{node}/load",
                 json={"url": url},
                 timeout=aiohttp.ClientTimeout(total=self.load_timeout),
             ) as response:
-                return response.ok
+                if response.status == HTTPStatus.CONFLICT:
+                    return "busy"
+                return "accepted" if response.ok else "failed"
         except (aiohttp.ClientError, TimeoutError):
-            return False
+            return "failed"
 
     async def close(self) -> None:
         if self.session is not None:

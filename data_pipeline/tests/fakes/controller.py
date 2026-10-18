@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import replace
 
-from data_pipeline.application.controller.ports import QueueCounts
+from data_pipeline.application.controller.ports import LoadResult, QueueCounts
 from data_pipeline.domain.controller.models import QueuedUrl, UrlKind
+from data_pipeline.domain.shared.protocol import BUSY
 
 
 class FakeClock:
@@ -30,13 +31,13 @@ class FakeUrlQueue:
                 added += 1
         return added
 
-    def next_due(self, now: float, host_delay_seconds: float) -> QueuedUrl | None:
+    def next_due(self, now: float, exclude_hosts: Collection[str]) -> QueuedUrl | None:
         due = [
             row
             for row in self.rows.values()
             if row.next_due_at is not None
             and row.next_due_at <= now
-            and self.host_sent.get(row.host, float("-inf")) + host_delay_seconds <= now
+            and row.host not in exclude_hosts
         ]
         if not due:
             return None
@@ -60,13 +61,19 @@ class FakeUrlQueue:
 
 
 class FakeDownloader:
-    """``statuses`` answers ``ping`` (``None`` = unreachable); ``load_ok`` answers ``load``."""
+    """``statuses`` answers ``ping`` (``None`` = unreachable); ``load_results`` answers ``load``.
+
+    With ``busy_after_load`` a node that accepted a URL answers "đang bận" until the test resets it.
+    """
 
     def __init__(
-        self, statuses: dict[str, str | None], load_ok: dict[str, bool] | None = None
+        self,
+        statuses: dict[str, str | None],
+        load_results: dict[str, LoadResult] | None = None,
     ) -> None:
         self.statuses = statuses
-        self.load_ok = load_ok or {}
+        self.load_results = load_results or {}
+        self.busy_after_load = False
         self.loads: list[tuple[str, str]] = []
         self.pings: list[str] = []
 
@@ -74,11 +81,13 @@ class FakeDownloader:
         self.pings.append(node)
         return self.statuses.get(node)
 
-    async def load(self, node: str, url: str) -> bool:
-        ok = self.load_ok.get(node, True)
-        if ok:
+    async def load(self, node: str, url: str) -> LoadResult:
+        result = self.load_results.get(node, "accepted")
+        if result == "accepted":
             self.loads.append((node, url))
-        return ok
+            if self.busy_after_load:
+                self.statuses[node] = BUSY
+        return result
 
     async def close(self) -> None:
         return None

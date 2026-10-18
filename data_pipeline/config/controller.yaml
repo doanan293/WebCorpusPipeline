@@ -3,7 +3,12 @@ port: 5200
 downloaders:                       # node Tải về (khối 2); cổng theo slide là 8800
   - http://fetcher-1:8800
   - http://fetcher-2:8801
-host_delay_seconds: 1.0            # "thời gian chờ" giữa hai lần gửi vào cùng một host
+host_delay_seconds: 1.0            # "thời gian chờ" tối thiểu giữa hai lần gửi vào cùng một host
+per_host_concurrency: 2            # số URL của một host đang tải cùng lúc (mỗi node một URL)
+autothrottle: true                 # giãn khoảng chờ khi host trả lời chậm (đo bằng /ping)
+autothrottle_start_delay_seconds: 0.25
+autothrottle_max_delay_seconds: 5
+autothrottle_target_concurrency: 4
 ping_timeout_seconds: 2
 load_timeout_seconds: 10
 node_cooldown_seconds: 30          # node lỗi thì tạm bỏ qua chừng này giây

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from pathlib import Path
 
 from data_pipeline.application.controller.ports import QueueCounts
@@ -43,16 +43,18 @@ class SqliteUrlQueue:
             )
         return self.db.total_changes - before
 
-    def next_due(self, now: float, host_delay_seconds: float) -> QueuedUrl | None:
+    def next_due(self, now: float, exclude_hosts: Collection[str]) -> QueuedUrl | None:
+        excluded = sorted(exclude_hosts)
+        marks = ", ".join("?" * len(excluded))
         row = self.db.execute(
-            """
-            SELECT u.url, u.host, u.kind, u.next_due_at, u.last_sent_at, u.attempts
-            FROM urls u LEFT JOIN hosts h ON h.host = u.host
-            WHERE u.next_due_at <= ? AND (h.last_sent_at IS NULL OR h.last_sent_at + ? <= ?)
-            ORDER BY u.next_due_at
+            f"""
+            SELECT url, host, kind, next_due_at, last_sent_at, attempts
+            FROM urls
+            WHERE next_due_at <= ? {f"AND host NOT IN ({marks})" if excluded else ""}
+            ORDER BY next_due_at
             LIMIT 1
-            """,
-            (now, host_delay_seconds, now),
+            """,  # noqa: S608 -- only placeholders are formatted in
+            (now, *excluded),
         ).fetchone()
         return QueuedUrl(*row) if row else None
 

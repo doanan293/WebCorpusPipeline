@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator
 from aiohttp import web
 
 from data_pipeline.application.controller.add_urls import add_urls
-from data_pipeline.application.controller.dispatch import Dispatcher
+from data_pipeline.application.controller.dispatch import Dispatcher, run_dispatch
 from data_pipeline.application.controller.ports import Clock, Downloader, UrlQueue
 from data_pipeline.domain.controller.models import ControllerConfig
 from dich_vu.api.common import error, json_object
@@ -49,7 +49,7 @@ def create_service(
 
     async def background(_: web.Application) -> AsyncIterator[None]:
         tasks = [
-            asyncio.create_task(dispatch_loop(dispatcher, config.tick_seconds)),
+            asyncio.create_task(run_dispatch(dispatcher, config.tick_seconds)),
             asyncio.create_task(summary_loop(queue, dispatcher, clock)),
         ]
         yield
@@ -64,17 +64,6 @@ def create_service(
     return app
 
 
-async def dispatch_loop(dispatcher: Dispatcher, tick_seconds: float) -> None:
-    while True:
-        try:
-            sent = await dispatcher.step()
-        except Exception:
-            log.exception("dispatch step failed")
-            sent = False
-        if not sent:
-            await asyncio.sleep(tick_seconds)
-
-
 async def summary_loop(
     queue: UrlQueue, dispatcher: Dispatcher, clock: Clock, every: float = SUMMARY_SECONDS
 ) -> None:
@@ -85,9 +74,10 @@ async def summary_loop(
         nodes = len(dispatcher.config.downloaders)
         resting = nodes - len(dispatcher.rotation.order(now))
         log.info(
-            "controller: %d urls, %d due, %d/%d nodes resting",
+            "controller: %d urls, %d due, %d in flight, %d/%d nodes resting",
             counts.total,
             counts.due,
+            dispatcher.in_flight(),
             resting,
             nodes,
         )

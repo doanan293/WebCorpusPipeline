@@ -9,7 +9,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from data_pipeline.domain.controller.models import ControllerConfig
-from data_pipeline.domain.shared.protocol import ACCEPTED, IDLE
+from data_pipeline.domain.shared.protocol import ACCEPTED, BUSY, IDLE
 from data_pipeline.infrastructure.controller.http_downloader import HttpDownloader
 from data_pipeline.infrastructure.controller.sqlite_queue import SqliteUrlQueue
 from dich_vu.api.controller import create_service
@@ -75,3 +75,21 @@ def test_service_sends_added_urls_to_fake_nodes(tmp_path: Path) -> None:
     for host in ("a.hust", "b.hust"):
         times = [at for _, url, at in received if host in url]
         assert times[1] - times[0] >= 0.1 - 0.02
+
+
+def test_http_downloader_maps_409_to_busy() -> None:
+    async def load(request: web.Request) -> web.Response:
+        return web.json_response({"status": BUSY}, status=409)
+
+    app = web.Application()
+    app.router.add_post("/load", load)
+
+    async def scenario() -> str:
+        async with TestServer(app) as node:
+            downloader = HttpDownloader(ping_timeout=2.0, load_timeout=2.0)
+            try:
+                return await downloader.load(str(node.make_url("")).rstrip("/"), "https://a/")
+            finally:
+                await downloader.close()
+
+    assert asyncio.run(scenario()) == "busy"

@@ -25,7 +25,12 @@ class ControllerConfig:
     downloaders: tuple[str, ...]
     database: Path
     port: int = 5200
-    host_delay_seconds: float = 1.0
+    host_delay_seconds: float = 1.0  # the slide's "thời gian chờ": the least time between two sends
+    per_host_concurrency: int = 1
+    autothrottle: bool = True
+    autothrottle_start_delay_seconds: float = 0.25
+    autothrottle_max_delay_seconds: float = 5.0
+    autothrottle_target_concurrency: float = 4.0
     ping_timeout_seconds: float = 2.0
     load_timeout_seconds: float = 10.0
     node_cooldown_seconds: float = 30.0

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 from data_pipeline.domain.controller.models import QueuedUrl, UrlKind
+
+type LoadResult = Literal["accepted", "busy", "failed"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,8 +20,8 @@ class UrlQueue(Protocol):
         """Insert ``(url, host, kind)`` rows not yet known, due now; return how many were new."""
         ...
 
-    def next_due(self, now: float, host_delay_seconds: float) -> QueuedUrl | None:
-        """The earliest due URL whose host was last sent to at least ``host_delay_seconds`` ago."""
+    def next_due(self, now: float, exclude_hosts: Collection[str]) -> QueuedUrl | None:
+        """The earliest due URL whose host is not in ``exclude_hosts``."""
         ...
 
     def mark_sent(self, url: str, now: float, next_due_at: float | None) -> None: ...
@@ -34,8 +36,8 @@ class Downloader(Protocol):
         """The node's ``/ping`` status, or ``None`` when it cannot be reached."""
         ...
 
-    async def load(self, node: str, url: str) -> bool:
-        """Send one URL to the node's ``/load``; ``True`` on a 2xx answer."""
+    async def load(self, node: str, url: str) -> LoadResult:
+        """Send one URL to the node's ``/load``: 2xx accepted, 409 busy, anything else failed."""
         ...
 
     async def close(self) -> None: ...

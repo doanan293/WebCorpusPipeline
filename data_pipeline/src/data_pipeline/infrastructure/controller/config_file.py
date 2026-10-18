@@ -15,6 +15,9 @@ _NUMBERS = (
     "load_timeout_seconds",
     "node_cooldown_seconds",
     "tick_seconds",
+    "autothrottle_start_delay_seconds",
+    "autothrottle_max_delay_seconds",
+    "autothrottle_target_concurrency",
 )
 
 
@@ -51,6 +54,10 @@ def load_controller_config(path: Path) -> ControllerConfig:
         port=int(_non_negative("port", values.get("port", 5200))),
         max_attempts=max(1, int(_non_negative("max_attempts", values.get("max_attempts", 5)))),
         recrawl_days=_recrawl_days(values.get("recrawl_days", DEFAULT_RECRAWL_DAYS)),
+        per_host_concurrency=_positive_int(
+            "per_host_concurrency", values.get("per_host_concurrency", 1)
+        ),
+        autothrottle=_boolean("autothrottle", values.get("autothrottle", True)),
         **numbers,
     )
 
@@ -60,6 +67,20 @@ def _non_negative(name: str, value: object) -> float:
         msg = f"{name} must be a non-negative number"
         raise ConfigError(msg)
     return float(value)
+
+
+def _positive_int(name: str, value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        msg = f"{name} must be a whole number of at least 1"
+        raise ConfigError(msg)
+    return value
+
+
+def _boolean(name: str, value: object) -> bool:
+    if not isinstance(value, bool):
+        msg = f"{name} must be true or false"
+        raise ConfigError(msg)
+    return value
 
 
 def _recrawl_days(value: object) -> dict[UrlKind, float]:

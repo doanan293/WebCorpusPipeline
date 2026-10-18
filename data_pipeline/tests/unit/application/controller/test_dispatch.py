@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import unicodedata
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from data_pipeline.application.controller.add_urls import add_urls
 from data_pipeline.application.controller.dispatch import Dispatcher
+from data_pipeline.application.controller.ports import LoadResult
 from data_pipeline.domain.controller.models import ControllerConfig
 from data_pipeline.domain.shared.protocol import BUSY, IDLE
 from tests.fakes.controller import FakeClock, FakeDownloader, FakeUrlQueue
@@ -16,11 +19,14 @@ DAY = 86400.0
 
 
 def _setup(
-    nodes: dict[str, str | None], urls: list[str], load_ok: dict[str, bool] | None = None
+    nodes: dict[str, str | None],
+    urls: list[str],
+    load_results: dict[str, LoadResult] | None = None,
+    **config_values: Any,
 ) -> tuple[Dispatcher, FakeUrlQueue, FakeDownloader, FakeClock]:
     queue, clock = FakeUrlQueue(), FakeClock(100.0)
-    downloader = FakeDownloader(nodes, load_ok)
-    config = ControllerConfig(downloaders=tuple(nodes), database=Path("unused"))
+    downloader = FakeDownloader(nodes, load_results)
+    config = ControllerConfig(downloaders=tuple(nodes), database=Path("unused"), **config_values)
     add_urls(queue, urls, clock)
     return Dispatcher(queue, downloader, clock, config), queue, downloader, clock
 
@@ -64,7 +70,7 @@ def test_dispatch_skips_busy_and_rests_dead_node() -> None:
 
 def test_dispatch_failed_load_keeps_url_due() -> None:
     url = "https://a.hust.edu.vn/1"
-    dispatcher, queue, _, clock = _setup({"a": IDLE}, [url], load_ok={"a": False})
+    dispatcher, queue, _, clock = _setup({"a": IDLE}, [url], load_results={"a": "failed"})
     assert _steps(dispatcher, 1) == [False]
     assert queue.rows[url].attempts == 1
     assert queue.rows[url].next_due_at == clock.t
@@ -92,3 +98,61 @@ def test_unexpected_ping_status_is_logged(caplog: pytest.LogCaptureFixture) -> N
     assert downloader.loads == []
     assert "unexpected ping status" in caplog.text
     assert "dang cho" in caplog.text
+
+
+def test_busy_node_is_skipped_without_failure() -> None:
+    url = "https://a.hust.edu.vn/1"
+    dispatcher, queue, downloader, _ = _setup(
+        {"a": IDLE, "b": IDLE}, [url], load_results={"a": "busy"}
+    )
+    assert _steps(dispatcher, 1) == [True]
+    assert downloader.loads == [("b", url)]
+    assert queue.rows[url].attempts == 0
+    assert "a" not in dispatcher.rotation.resting
+
+
+def test_nfd_idle_status_counts_as_idle() -> None:
+    url = "https://a.hust.edu.vn/1"
+    dispatcher, _, downloader, _ = _setup({"a": unicodedata.normalize("NFD", IDLE)}, [url])
+    assert _steps(dispatcher, 1) == [True]
+    assert downloader.loads == [("a", url)]
+
+
+def test_latency_is_measured_from_load_to_idle() -> None:
+    dispatcher, _, downloader, clock = _setup(
+        {"a": IDLE}, ["https://a.hust.edu.vn/1", "https://a.hust.edu.vn/2"]
+    )
+    downloader.statuses["a"] = IDLE
+    assert _steps(dispatcher, 1) == [True]
+    downloader.statuses["a"] = BUSY
+    clock.t += 8.0
+    assert _steps(dispatcher, 1) == [False]  # still fetching: host has its one request in flight
+    assert dispatcher.in_flight() == 1
+    downloader.statuses["a"] = IDLE
+    clock.t += 12.0
+    _steps(dispatcher, 1)
+    # 20 s from load to idle, 4 requests targeted in flight: 5 s, the maximum.
+    assert dispatcher.throttle.delay("a.hust.edu.vn") == 5.0
+
+
+def test_queue_skips_blocked_hosts() -> None:
+    a, b = "https://a.hust.edu.vn/1", "https://b.hust.edu.vn/1"
+    dispatcher, _, downloader, _ = _setup(
+        {"n1": IDLE, "n2": IDLE}, [a, "https://a.hust.edu.vn/2", b]
+    )
+    assert _steps(dispatcher, 2) == [True, True]
+    assert {url for _, url in downloader.loads} == {a, b}
+
+
+def test_per_host_concurrency_allows_parallel_requests() -> None:
+    urls = [f"https://a.hust.edu.vn/{i}" for i in range(3)]
+    dispatcher, _, downloader, _ = _setup(
+        {"n1": IDLE, "n2": IDLE, "n3": IDLE},
+        urls,
+        per_host_concurrency=2,
+        host_delay_seconds=0.0,
+        autothrottle=False,
+    )
+    downloader.busy_after_load = True
+    assert _steps(dispatcher, 3) == [True, True, False]
+    assert dispatcher.in_flight() == 2
