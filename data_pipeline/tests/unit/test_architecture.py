@@ -77,7 +77,11 @@ def allowed(importer: str, imported: str) -> bool:
         block = importer.split(".")[2] if layer == "api" and importer.count(".") >= 2 else None
         if block in BLOCKS and target_context not in {block, SHARED, None}:
             return False
-        return target_layer != "infrastructure" and target_layer not in OUTER - {layer}
+        # The command line launches the services; services never reach back into it.
+        launches = layer == "cli" and target_layer == "api"
+        return target_layer != "infrastructure" and (
+            launches or target_layer not in OUTER - {layer}
+        )
     if target_layer in OUTER or target_layer == BOOTSTRAP:
         return False
     if layer not in RANK or target_layer not in RANK:
@@ -238,3 +242,8 @@ def test_api_module_uses_only_its_block() -> None:
     assert allowed("data_pipeline.api.fetcher", "data_pipeline.domain.shared.protocol")
     assert allowed("data_pipeline.api.fetcher", "data_pipeline.bootstrap")
     assert not allowed("data_pipeline.api.fetcher", "data_pipeline.application.parser.parse")
+
+
+def test_cli_may_launch_api_services() -> None:
+    assert allowed("data_pipeline.cli.serve", "data_pipeline.api.controller")
+    assert not allowed("data_pipeline.api.controller", "data_pipeline.cli.serve")

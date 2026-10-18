@@ -6,6 +6,7 @@ inside their function, so a command only needs the extras it actually uses.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
@@ -16,6 +17,7 @@ from data_pipeline.infrastructure.corpus.mongo import MongoCorpusDatabase, conne
 from data_pipeline.infrastructure.shared import env, settings
 
 if TYPE_CHECKING:
+    from data_pipeline.application.controller.ports import Clock, Downloader, UrlQueue
     from data_pipeline.application.corpus.ports import (
         CorpusDatabase,
         CorpusFiles,
@@ -37,6 +39,7 @@ if TYPE_CHECKING:
         TransportFactory,
     )
     from data_pipeline.application.hosts.ports import AuditReports, BrowserProber, HostProber
+    from data_pipeline.domain.controller.models import ControllerConfig
     from data_pipeline.domain.crawl.config import CrawlerConfig
     from data_pipeline.domain.crawl.seeds import SeedSet
 
@@ -246,3 +249,35 @@ class _EnrichmentStatus:
 def enrichment_status(uow: EnrichUnitOfWork) -> EnrichmentStatus:
     """How far enrichment has got, as the corpus packaging asks it."""
     return _EnrichmentStatus(uow)
+
+
+# -- controller -------------------------------------------------------------------------------
+
+
+def controller_config(path: Path) -> ControllerConfig:
+    from data_pipeline.infrastructure.controller.config_file import load_controller_config
+
+    return load_controller_config(path)
+
+
+def url_queue(path: Path) -> UrlQueue:
+    from data_pipeline.infrastructure.controller.sqlite_queue import SqliteUrlQueue
+
+    return SqliteUrlQueue(path)
+
+
+def downloader(config: ControllerConfig) -> Downloader:
+    from data_pipeline.infrastructure.controller.http_downloader import HttpDownloader
+
+    return HttpDownloader(
+        ping_timeout=config.ping_timeout_seconds, load_timeout=config.load_timeout_seconds
+    )
+
+
+class _SystemClock:
+    def now(self) -> float:
+        return time.time()
+
+
+def system_clock() -> Clock:
+    return _SystemClock()
