@@ -53,9 +53,10 @@ packages = ["src/data_pipeline"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "--strict-markers -m 'not performance'"
+addopts = "--strict-markers -m 'not performance and not docker'"
 markers = [
     "performance: local algorithmic performance tests",
+    "docker: needs the compose services (MongoDB) running",
 ]
 
 [tool.ruff]

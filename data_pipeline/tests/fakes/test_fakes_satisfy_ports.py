@@ -13,6 +13,7 @@ from data_pipeline.application.enrich import ports
 from data_pipeline.application.fetcher import ports as fetcher_ports
 from data_pipeline.application.hosts import ports as hosts_ports
 from data_pipeline.application.parser import ports as parser_ports
+from data_pipeline.application.storage import ports as storage_ports
 from tests.fakes.aggregator import FakeServiceClient, MemoryAggregatorState, MemoryOutbox
 from tests.fakes.controller import FakeClock, FakeDownloader, FakeUrlQueue
 from tests.fakes.corpus import FakeCorpusDatabase, FakePublisher
@@ -30,6 +31,7 @@ from tests.fakes.enrich import (
 from tests.fakes.fetcher import FakeGetter, FakeParserClient, FakeRenderer
 from tests.fakes.hosts import FakeBrowser, FakeProber, MemoryReports
 from tests.fakes.parser import FakeAggregatorClient, FakeCloud, MemoryParseCache
+from tests.fakes.storage import FakeCorpusStore
 
 
 def _never(*_: object) -> Any:
@@ -184,3 +186,8 @@ def test_aggregator_fakes_satisfy_their_ports() -> None:
         (client, aggregator_ports.ServiceClient),
     ):
         _check(instance, port)
+
+
+def test_storage_fake_satisfies_its_port() -> None:
+    store: storage_ports.CorpusStore = FakeCorpusStore()
+    _check(store, storage_ports.CorpusStore)

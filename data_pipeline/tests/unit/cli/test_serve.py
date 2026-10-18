@@ -81,3 +81,23 @@ def test_serve_parser_runs_parse(
         for route in app.router.routes()
         if route.resource and route.resource.canonical == "/parse"
     ] == ["POST"]
+
+
+def test_serve_storage_runs_add_on_2200(
+    project: ProjectPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    served: list[tuple[web.Application, int]] = []
+
+    def fake_run(app: web.Application, port: int, background: object = ()) -> None:
+        served.append((app, port))
+
+    monkeypatch.setattr(common, "run", fake_run)
+    monkeypatch.setenv("MONGODB_URI", "mongodb://127.0.0.1:1")
+    assert main(["serve", "storage"]) == 0
+    ((app, port),) = served
+    assert port == 2200
+    assert [
+        route.method
+        for route in app.router.routes()
+        if route.resource and route.resource.canonical == "/add"
+    ] == ["POST"]

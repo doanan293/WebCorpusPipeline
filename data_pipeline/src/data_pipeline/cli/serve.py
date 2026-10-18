@@ -79,3 +79,20 @@ def parser(
     app_ = service.create_service(readers, aggregator, closers=(aggregator.close,))
     common.run(app_, settings.port)
     return 0
+
+
+@app.command()
+def storage(
+    port: Annotated[int, typer.Option(help="Port to listen on.")] = 2200,
+) -> int:
+    """Lưu trữ: POST /add into Mongo (MONGODB_URI, MONGODB_DATABASE)."""
+    from data_pipeline.api import common
+    from data_pipeline.api import storage as service
+
+    defaults = bootstrap.load_settings(context.current_paths())
+    store = bootstrap.corpus_store(
+        os.environ.get("MONGODB_URI", defaults.mongo_uri),
+        os.environ.get("MONGODB_DATABASE", defaults.mongo_database),
+    )
+    common.run(service.create_service(store, bootstrap.utc_now_iso), port)
+    return 0

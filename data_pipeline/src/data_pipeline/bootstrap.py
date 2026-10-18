@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from data_pipeline.application.fetcher.ports import Renderer
     from data_pipeline.application.hosts.ports import AuditReports, BrowserProber, HostProber
     from data_pipeline.application.parser.parse import DocumentReaders
+    from data_pipeline.application.storage.ports import CorpusStore
     from data_pipeline.domain.controller.models import ControllerConfig
     from data_pipeline.domain.crawl.config import CrawlerConfig
     from data_pipeline.domain.crawl.seeds import SeedSet
@@ -363,3 +364,19 @@ def document_readers(config: ParserConfig, paths: ProjectPaths) -> DocumentReade
     )
     scratch = Path(tempfile.gettempdir()) / "data-pipeline-parse"
     return DocumentReaders(LocalParserAdapter(), cloud, FileParseCache(cache_dir), scratch)
+
+
+# -- storage ----------------------------------------------------------------------------------
+
+
+def corpus_store(uri: str, database: str) -> CorpusStore:
+    from data_pipeline.infrastructure.storage.mongo import MongoCorpusStore
+    from data_pipeline.infrastructure.storage.mongo import connect as connect_store
+
+    return MongoCorpusStore(connect_store(uri)[database])
+
+
+def utc_now_iso() -> str:
+    from datetime import UTC, datetime
+
+    return datetime.now(UTC).isoformat(timespec="seconds")
