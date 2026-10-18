@@ -34,16 +34,13 @@ def test_refused_writes_are_store_rejected(error: Exception) -> None:
 
 class _Graph:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, object]] = []
+        self.calls: list[tuple[str, Any]] = []
 
-    def bulk_write(self, requests: list[Any], ordered: bool = True) -> None:
-        self.calls.append(("bulk_write", [request._filter for request in requests]))
+    def insert_many(self, docs: list[dict[str, Any]], ordered: bool = True) -> None:
+        self.calls.append(("insert_many", [dict(doc) for doc in docs]))
 
     def delete_many(self, query: dict[str, Any]) -> None:
         self.calls.append(("delete_many", query))
-
-    def insert_many(self, docs: list[Any], ordered: bool = True) -> None:
-        self.calls.append(("insert_many", docs))
 
 
 class _GraphDatabase:
@@ -51,7 +48,7 @@ class _GraphDatabase:
         self.graph = _Graph()
 
 
-def test_replace_edges_keeps_edges_until_new_ones_written() -> None:
+def test_replace_edges_writes_new_edges_in_one_go_then_drops_the_rest() -> None:
     db = _GraphDatabase()
     store = MongoCorpusStore(db)  # type: ignore[arg-type]
     edges = [
@@ -61,16 +58,14 @@ def test_replace_edges_keeps_edges_until_new_ones_written() -> None:
     ]
     store.replace_edges("https://h/", edges)
     (first, written), (second, query) = db.graph.calls
-    assert first == "bulk_write"
-    assert written == [
-        {"src": "https://h/", "dest": "https://h/a", "text": "A"},
-        {"src": "https://h/", "dest": "https://h/b", "text": "B"},
+    assert first == "insert_many"
+    assert isinstance(written, list)
+    assert [(doc["dest"], doc["text"]) for doc in written] == [
+        ("https://h/a", "A"),
+        ("https://h/b", "B"),
     ]
     assert second == "delete_many"
-    assert query == {
-        "src": "https://h/",
-        "$nor": [{"dest": "https://h/a", "text": "A"}, {"dest": "https://h/b", "text": "B"}],
-    }
+    assert query == {"src": "https://h/", "_id": {"$nin": [doc["_id"] for doc in written]}}
 
 
 def test_replace_edges_with_no_links_clears_the_page() -> None:

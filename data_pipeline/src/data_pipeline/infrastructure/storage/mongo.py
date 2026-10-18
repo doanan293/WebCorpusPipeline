@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from pymongo import ASCENDING, MongoClient, ReplaceOne
+from bson import ObjectId
+from pymongo import ASCENDING, MongoClient
 from pymongo.database import Database
 from pymongo.errors import (
     ConnectionFailure,
@@ -43,26 +44,23 @@ class MongoCorpusStore:
         )
 
     def replace_edges(self, src: str, edges: list[dict[str, Any]]) -> None:
-        """Write the page's edges, then drop the ones it no longer has.
+        """Write the page's edges, then drop its other edges.
 
+        New edges get their ids here, so the old ones are exactly those of ``src`` with another id.
         In that order, a crash in between leaves extra edges until the next visit, never a page
-        with none.
+        with none; and it takes two writes per page, not one per edge.
         """
-        unique = list({(e["dest"], e["text"]): e for e in edges}.values())
+        unique = [
+            {"_id": ObjectId(), **edge}
+            for edge in {(e["dest"], e["text"]): e for e in edges}.values()
+        ]
 
         def replace() -> None:
             if unique:
-                self.db.graph.bulk_write(
-                    [
-                        ReplaceOne(
-                            {"src": src, "dest": e["dest"], "text": e["text"]}, dict(e), upsert=True
-                        )
-                        for e in unique
-                    ],
-                    ordered=False,
+                self.db.graph.insert_many(unique, ordered=False)
+                self.db.graph.delete_many(
+                    {"src": src, "_id": {"$nin": [edge["_id"] for edge in unique]}}
                 )
-                keep = [{"dest": e["dest"], "text": e["text"]} for e in unique]
-                self.db.graph.delete_many({"src": src, "$nor": keep})
             else:
                 self.db.graph.delete_many({"src": src})
 
