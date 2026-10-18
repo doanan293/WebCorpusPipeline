@@ -27,8 +27,17 @@ def load_fetcher_config(path: Path) -> FetcherConfig:
     if unknown:
         msg = f"unknown fetcher settings: {', '.join(unknown)}"
         raise ConfigError(msg)
-    for name, value in values.items():
+    for name, value in list(values.items()):
         expected = type(getattr(defaults, name))
+        if expected is tuple:
+            if not isinstance(value, list) or not all(
+                isinstance(item, int) and not isinstance(item, bool)
+                for item in cast("list[object]", value)
+            ):
+                msg = f"{name} must be a list of numbers"
+                raise ConfigError(msg)
+            values[name] = tuple(cast("list[int]", value))
+            continue
         ok = isinstance(value, expected) or (expected is float and isinstance(value, int))
         if not ok or (isinstance(value, bool) and expected is not bool):
             msg = f"{name} must be a {expected.__name__}"

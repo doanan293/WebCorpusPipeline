@@ -4,3 +4,4 @@ llamaparse: false                 # bật để gửi trang PDF không có lớp
 cache_dir: data/enrichment/cache  # kết quả LlamaParse đã trả tiền, dùng lại được
 cloud_poll_seconds: 5
 cloud_timeout_seconds: 1800
+document_workers: 8             # số tài liệu (pdf, docx, ...) đọc cùng lúc

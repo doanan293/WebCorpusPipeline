@@ -34,6 +34,7 @@ def load_parser_config(path: Path) -> ParserConfig:
             cloud_timeout_seconds=float(
                 values.get("cloud_timeout_seconds", defaults.cloud_timeout_seconds)
             ),
+            document_workers=max(1, int(values.get("document_workers", defaults.document_workers))),
         )
     except (TypeError, ValueError) as exc:
         msg = f"invalid parser setting: {exc}"

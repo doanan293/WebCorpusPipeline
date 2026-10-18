@@ -10,6 +10,8 @@ from aiohttp.test_utils import TestServer
 from data_pipeline.domain.fetcher.models import Fetched, FetcherConfig, FetchError
 from data_pipeline.infrastructure.fetcher.http_getter import AiohttpPageGetter, public_address_check
 
+hits: dict[str, int] = {}
+
 
 def _site() -> web.Application:
     async def page(_: web.Request) -> web.Response:
@@ -26,7 +28,21 @@ def _site() -> web.Application:
         await response.write_eof()
         return response
 
+    flaky_left = [2]
+
+    async def flaky(_: web.Request) -> web.Response:
+        if flaky_left[0] > 0:
+            flaky_left[0] -= 1
+            return web.Response(status=503)
+        return web.Response(text="<html><body>back</body></html>", content_type="text/html")
+
+    async def missing(_: web.Request) -> web.Response:
+        hits["missing"] = hits.get("missing", 0) + 1
+        return web.Response(status=404)
+
     app = web.Application()
+    app.router.add_get("/flaky", flaky)
+    app.router.add_get("/missing", missing)
     app.router.add_get("/page", page)
     app.router.add_get("/to-private", to_private)
     app.router.add_get("/big", big)
@@ -74,3 +90,21 @@ def test_public_address_check_rejects_loopback() -> None:
 def test_public_address_check_rejects_name_resolving_to_loopback() -> None:
     with pytest.raises(FetchError, match="non_public_address"):
         asyncio.run(public_address_check("http://localhost/"))
+
+
+def test_retries_on_503_then_succeeds() -> None:
+    page = _get("/flaky", FetcherConfig(retries=3, retry_backoff_seconds=0.01))
+    assert page.status == 200
+    assert b"back" in page.body
+
+
+def test_no_retry_on_404() -> None:
+    hits.clear()
+    page = _get("/missing", FetcherConfig(retries=3, retry_backoff_seconds=0.01))
+    assert page.status == 404
+    assert hits["missing"] == 1
+
+
+def test_gives_up_after_retries() -> None:
+    page = _get("/flaky", FetcherConfig(retries=1, retry_backoff_seconds=0.01))
+    assert page.status == 503

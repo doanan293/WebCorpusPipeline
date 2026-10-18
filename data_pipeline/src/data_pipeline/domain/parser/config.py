@@ -11,3 +11,4 @@ class ParserConfig:
     cache_dir: Path = Path("data/enrichment/cache")
     cloud_poll_seconds: float = 5.0
     cloud_timeout_seconds: float = 1800.0
+    document_workers: int = 8

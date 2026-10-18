@@ -212,6 +212,7 @@ def aggregator_client(aggregator_url: str) -> HttpAggregatorClient:
 
 def document_readers(config: ParserConfig, paths: ProjectPaths) -> DocumentReaders:
     """Local parsers, the LlamaParse cache, and LlamaParse itself when enabled and keyed."""
+    import asyncio
     import logging
     import tempfile
 
@@ -240,7 +241,13 @@ def document_readers(config: ParserConfig, paths: ProjectPaths) -> DocumentReade
         config.cache_dir if config.cache_dir.is_absolute() else paths.root / config.cache_dir
     )
     scratch = Path(tempfile.gettempdir()) / "data-pipeline-parse"
-    return DocumentReaders(LocalParserAdapter(), cloud, FileParseCache(cache_dir), scratch)
+    return DocumentReaders(
+        LocalParserAdapter(),
+        cloud,
+        FileParseCache(cache_dir),
+        scratch,
+        asyncio.Semaphore(config.document_workers),
+    )
 
 
 # -- storage ----------------------------------------------------------------------------------

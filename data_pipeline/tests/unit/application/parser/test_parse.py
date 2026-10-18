@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import io
+import threading
+import time
 from pathlib import Path
 
 import docx
@@ -137,3 +139,44 @@ def test_aggregator_down_is_unsent(tmp_path: Path) -> None:
         )
     )
     assert outcome == "unsent"
+
+
+class _SlowLocal:
+    """A local parser that records how many documents it reads at once."""
+
+    def __init__(self) -> None:
+        self.active = 0
+        self.most = 0
+        self.lock = threading.Lock()
+
+    def parse(self, file: DownloadedFile) -> LocalResult:
+        with self.lock:
+            self.active += 1
+            self.most = max(self.most, self.active)
+        time.sleep(0.05)
+        with self.lock:
+            self.active -= 1
+        return LocalResult(file.sha256, [ExtractedPart(0, "page", "text")], parser_version="fake-1")
+
+
+def test_document_parsing_respects_worker_limit(tmp_path: Path) -> None:
+    local = _SlowLocal()
+    readers = DocumentReaders(local, None, MemoryParseCache(), tmp_path, limit=asyncio.Semaphore(2))
+
+    async def scenario() -> None:
+        await asyncio.gather(
+            *(
+                parse_payload(
+                    f"https://h/{i}.docx",
+                    "other",
+                    "",
+                    b"x",
+                    readers=readers,
+                    aggregator=FakeAggregatorClient(),
+                )
+                for i in range(6)
+            )
+        )
+
+    asyncio.run(scenario())
+    assert local.most == 2

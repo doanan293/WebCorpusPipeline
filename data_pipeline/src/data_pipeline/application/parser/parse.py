@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -37,12 +37,16 @@ def charset_of(content_type: str) -> str | None:
 
 @dataclass(frozen=True, slots=True)
 class DocumentReaders:
-    """What reading a document needs: the local parsers, LlamaParse (or ``None``), its cache."""
+    """What reading a document needs: the local parsers, LlamaParse (or ``None``), its cache.
+
+    ``limit`` bounds how many documents are read at once (each takes a thread and memory).
+    """
 
     local: LocalParser
     cloud: CloudParser | None
     cache: ParseCache
     scratch: Path
+    limit: asyncio.Semaphore = field(default_factory=lambda: asyncio.Semaphore(8))
 
 
 async def parse_payload(
@@ -61,9 +65,10 @@ async def parse_payload(
     else:
         doc_format = document_format(url, content_type)
         try:
-            text = await asyncio.to_thread(
-                _document_text, url, doc_format, content_type, body, readers
-            )
+            async with readers.limit:
+                text = await asyncio.to_thread(
+                    _document_text, url, doc_format, content_type, body, readers
+                )
         except Exception as exc:  # noqa: BLE001 -- a broken document is logged, never fatal
             log.warning("cannot parse %s: %s", url, exc)
             return "unparsable"

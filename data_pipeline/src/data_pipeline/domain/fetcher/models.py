@@ -29,3 +29,7 @@ class FetcherConfig:
     max_response_bytes: int = 104857600
     max_file_bytes: int = 104857600
     allow_private_addresses: bool = False
+    retries: int = 3
+    retry_statuses: tuple[int, ...] = (408, 425, 429, 500, 502, 503, 504)
+    retry_backoff_seconds: float = 2.0  # waits 2, 4, 8 s before the 1st, 2nd, 3rd retry
+    browser_pages: int = 8

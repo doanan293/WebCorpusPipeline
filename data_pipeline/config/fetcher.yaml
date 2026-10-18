@@ -6,3 +6,6 @@ max_redirects: 20
 max_response_bytes: 104857600     # trang HTML
 max_file_bytes: 104857600         # tài liệu (pdf, docx, ...)
 allow_private_addresses: false    # chỉ bật khi thử nghiệm với website cục bộ
+retries: 3                        # thử lại khi mất kết nối hoặc gặp 408/425/429/5xx
+retry_backoff_seconds: 2.0        # chờ 2, 4, 8 s trước mỗi lần thử lại
+browser_pages: 8                  # số trang Playwright mở cùng lúc
