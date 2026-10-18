@@ -80,7 +80,6 @@ max-statements = 60
 # Typer passes options by keyword, so boolean flags in command signatures are fine.
 "src/data_pipeline/cli/**" = ["PLC0415", "T20", "FBT001", "FBT002", "PLR0913", "PLR0917"]
 "src/data_pipeline/bootstrap.py" = ["PLC0415"]
-"scripts/**" = ["T20"]
 
 [tool.pyrefly]
 preset = "strict"
