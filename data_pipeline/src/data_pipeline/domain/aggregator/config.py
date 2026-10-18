@@ -12,5 +12,5 @@ class AggregatorConfig:
     batch_size: int = 500
     batch_seconds: float = 1.0
     outbox_retry_seconds: float = 30.0
-    database: Path = Path("/state/aggregator.sqlite3")
-    outbox: Path = Path("/state/outbox.jsonl")
+    database: Path = Path("data/state/aggregator.sqlite3")
+    outbox: Path = Path("data/state/outbox.jsonl")

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
 from aiohttp import web
 
 from data_pipeline.domain.shared.config import ProjectPaths
+from data_pipeline.infrastructure.shared.lease import SqliteLease
 from dich_vu.api import common
 from dich_vu.cli import main
+from tests.fakes.controller import FakeClock
 
 
 def test_serve_controller_runs_add_on_configured_port(
@@ -139,3 +142,52 @@ def test_serve_aggregator_runs_add_on_3300(
 def test_help_for_every_command(args: list[str], capsys: pytest.CaptureFixture[str]) -> None:
     assert main(args) == 0
     assert "Usage" in capsys.readouterr().out
+
+
+def test_serve_controller_refuses_when_state_is_held(
+    project: ProjectPaths,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    served: list[object] = []
+
+    def fake_run(app: web.Application, port: int, background: object = ()) -> None:
+        served.append(app)
+
+    monkeypatch.setattr(common, "run", fake_run)
+    database = tmp_path / "q.sqlite3"
+    SqliteLease(database, "data-pipeline crawl@host:1", FakeClock(time.time())).acquire()
+    config = tmp_path / "controller.yaml"
+    config.write_text(
+        f"port: 5201\ndownloaders: [http://n:8800]\ndatabase: {database}\n", encoding="utf-8"
+    )
+
+    assert main(["serve", "controller", "--config", str(config)]) == 2
+    assert served == []
+    assert "data-pipeline crawl@host:1" in capsys.readouterr().err
+
+
+def test_serve_aggregator_refuses_when_state_is_held(
+    project: ProjectPaths,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    served: list[object] = []
+
+    def fake_run(app: web.Application, port: int, background: object = ()) -> None:
+        served.append(app)
+
+    monkeypatch.setattr(common, "run", fake_run)
+    database = tmp_path / "agg.sqlite3"
+    SqliteLease(database, "data-pipeline crawl@host:1", FakeClock(time.time())).acquire()
+    hosts = tmp_path / "hosts.txt"
+    hosts.write_text("a.hust.edu.vn\n", encoding="utf-8")
+    config = tmp_path / "aggregator.yaml"
+    config.write_text(
+        f"hosts_file: {hosts}\ndatabase: {database}\noutbox: {tmp_path / 'outbox.jsonl'}\n",
+        encoding="utf-8",
+    )
+
+    assert main(["serve", "aggregator", "--config", str(config)]) == 2
+    assert served == []

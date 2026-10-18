@@ -47,13 +47,14 @@ def controller(
     from dich_vu.api import controller as service
 
     settings = bootstrap.controller_config(_config_path(config, "controller.yaml"))
-    app_ = service.create_service(
-        bootstrap.url_queue(settings.database),
-        bootstrap.downloader(settings),
-        bootstrap.system_clock(),
-        settings,
-    )
-    common.run(app_, settings.port)
+    with bootstrap.state_lease(settings.database, "dich-vu controller"):
+        app_ = service.create_service(
+            bootstrap.url_queue(settings.database),
+            bootstrap.downloader(settings),
+            bootstrap.system_clock(),
+            settings,
+        )
+        common.run(app_, settings.port)
     return 0
 
 
@@ -135,20 +136,21 @@ def aggregator(
     hosts = sorted(
         bootstrap.hostnames(hosts_file if hosts_file.is_absolute() else paths.root / hosts_file)
     )
-    client = bootstrap.service_client(
-        os.environ.get("STORAGE_URL", "http://storage:2200"),
-        os.environ.get("CONTROLLER_URL", "http://controller:5200"),
-    )
-    app_ = service.create_service(
-        settings,
-        bootstrap.aggregator_state(settings.database),
-        bootstrap.outbox(settings.outbox),
-        client,
-        seed_urls=seed_payload(hosts)["urls"],
-        allowed_hosts=frozenset(hosts),
-        closers=(client.close,),
-    )
-    common.run(app_, settings.port)
+    with bootstrap.state_lease(settings.database, "dich-vu aggregator"):
+        client = bootstrap.service_client(
+            os.environ.get("STORAGE_URL", "http://storage:2200"),
+            os.environ.get("CONTROLLER_URL", "http://controller:5200"),
+        )
+        app_ = service.create_service(
+            settings,
+            bootstrap.aggregator_state(settings.database),
+            bootstrap.outbox(settings.outbox),
+            client,
+            seed_urls=seed_payload(hosts)["urls"],
+            allowed_hosts=frozenset(hosts),
+            closers=(client.close,),
+        )
+        common.run(app_, settings.port)
     return 0
 
 

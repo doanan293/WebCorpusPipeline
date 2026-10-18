@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -54,6 +54,20 @@ def load_settings(paths: ProjectPaths, overrides: Mapping[str, Any] | None = Non
 def load_env(paths: ProjectPaths) -> None:
     """Load the project's ``.env`` into the process environment."""
     env.load_env(paths)
+
+
+# -- shared state -----------------------------------------------------------------------------
+
+
+def state_lease(path: Path, role: str) -> AbstractContextManager[None]:
+    """Hold the one-writer lease of a shared state file; ``StateLockedError`` names the holder."""
+    import os
+    import socket
+
+    from data_pipeline.infrastructure.shared.lease import SqliteLease
+
+    owner = f"{role}@{socket.gethostname()}:{os.getpid()}"
+    return SqliteLease(path, owner, _SystemClock()).held()
 
 
 # -- parser keys -----------------------------------------------------------------------------

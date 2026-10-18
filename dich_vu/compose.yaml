@@ -9,6 +9,8 @@ x-service: &service
     dockerfile: dich_vu/Dockerfile
   image: dich-vu:latest
   restart: unless-stopped
+  # The host user, so the shared state stays writable by `data-pipeline crawl run` on the host.
+  user: "${UID:-1000}:${GID:-1000}"
   volumes:
     - ../data_pipeline/config:/app/data_pipeline/config:ro
 
@@ -90,7 +92,7 @@ services:
     ports: ["5200:5200"]
     volumes:
       - ../data_pipeline/config:/app/data_pipeline/config:ro
-      - controller_state:/state
+      - ../data_pipeline/data/state:/app/data_pipeline/data/state
     depends_on:
       fetcher-1: {condition: service_healthy}
       fetcher-2: {condition: service_healthy}
@@ -109,7 +111,7 @@ services:
       CONTROLLER_URL: http://controller:5200
     volumes:
       - ../data_pipeline/config:/app/data_pipeline/config:ro
-      - aggregator_state:/state
+      - ../data_pipeline/data/state:/app/data_pipeline/data/state
     depends_on:
       storage: {condition: service_healthy}
       controller: {condition: service_healthy}
@@ -121,5 +123,3 @@ services:
 
 volumes:
   mongodb_data:
-  controller_state:
-  aggregator_state:
