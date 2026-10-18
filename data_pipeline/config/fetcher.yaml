@@ -1,0 +1,8 @@
+# Tải về (khối 2 trên slide): nhận POST /load, tải URL rồi gửi sang Đọc nội dung (POST /parse).
+port: 8800
+user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+timeout_seconds: 60
+max_redirects: 20
+max_response_bytes: 104857600     # trang HTML
+max_file_bytes: 104857600         # tài liệu (pdf, docx, ...)
+allow_private_addresses: false    # chỉ bật khi thử nghiệm với website cục bộ
