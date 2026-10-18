@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import replace
 
-from dieu_khien.application.controller.ports import QueueCounts
+from dieu_khien.application.controller.ports import LoadResult, QueueCounts
 from dieu_khien.domain.controller.models import QueuedUrl, UrlKind
 
 
@@ -60,13 +60,13 @@ class FakeUrlQueue:
 
 
 class FakeDownloader:
-    """``statuses`` answers ``ping`` (``None`` = unreachable); ``load_ok`` answers ``load``."""
+    """``statuses`` answers ``ping`` (``None`` = unreachable); ``load_results`` answers ``load``."""
 
     def __init__(
-        self, statuses: dict[str, str | None], load_ok: dict[str, bool] | None = None
+        self, statuses: dict[str, str | None], load_results: dict[str, LoadResult] | None = None
     ) -> None:
         self.statuses = statuses
-        self.load_ok = load_ok or {}
+        self.load_results = load_results or {}
         self.loads: list[tuple[str, str]] = []
         self.pings: list[str] = []
 
@@ -74,11 +74,11 @@ class FakeDownloader:
         self.pings.append(node)
         return self.statuses.get(node)
 
-    async def load(self, node: str, url: str) -> bool:
-        ok = self.load_ok.get(node, True)
-        if ok:
+    async def load(self, node: str, url: str) -> LoadResult:
+        result = self.load_results.get(node, "accepted")
+        if result == "accepted":
             self.loads.append((node, url))
-        return ok
+        return result
 
     async def close(self) -> None:
         return None

@@ -10,7 +10,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from dieu_khien.api.server import create_service
 from dieu_khien.domain.controller.models import ControllerConfig
-from dieu_khien.domain.shared.protocol import ACCEPTED, IDLE
+from dieu_khien.domain.shared.protocol import ACCEPTED, BUSY, IDLE
 from dieu_khien.infrastructure.controller.http_downloader import HttpDownloader
 from dieu_khien.infrastructure.controller.sqlite_queue import SqliteUrlQueue
 
@@ -89,7 +89,7 @@ def test_slow_load_counts_as_failed(tmp_path: Path) -> None:
     node.router.add_get("/ping", ping)
     node.router.add_post("/load", slow_load)
 
-    async def scenario() -> bool:
+    async def scenario() -> str:
         async with TestServer(node) as server:
             downloader = HttpDownloader(ping_timeout=2.0, load_timeout=0.2)
             try:
@@ -97,4 +97,22 @@ def test_slow_load_counts_as_failed(tmp_path: Path) -> None:
             finally:
                 await downloader.close()
 
-    assert asyncio.run(scenario()) is False
+    assert asyncio.run(scenario()) == "failed"
+
+
+def test_http_downloader_maps_409_to_busy() -> None:
+    async def load(request: web.Request) -> web.Response:
+        return web.json_response({"status": BUSY}, status=409)
+
+    app = web.Application()
+    app.router.add_post("/load", load)
+
+    async def scenario() -> str:
+        async with TestServer(app) as node:
+            downloader = HttpDownloader(ping_timeout=2.0, load_timeout=2.0)
+            try:
+                return await downloader.load(str(node.make_url("")).rstrip("/"), "https://a/")
+            finally:
+                await downloader.close()
+
+    assert asyncio.run(scenario()) == "busy"

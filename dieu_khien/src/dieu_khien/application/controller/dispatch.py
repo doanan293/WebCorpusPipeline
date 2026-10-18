@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import unicodedata
 
 from dieu_khien.application.controller.ports import Clock, Downloader, UrlQueue
 from dieu_khien.domain.controller.models import ControllerConfig
@@ -30,7 +31,9 @@ class Dispatcher:
         if item is None:
             return False
         for node in self.rotation.order(now):
-            status = await self.downloader.ping(node)
+            raw = await self.downloader.ping(node)
+            # A node typed on another system may send "đang chờ" decomposed (NFD); same text.
+            status = unicodedata.normalize("NFC", raw) if raw is not None else None
             if status is None:
                 self.rotation.rest(node, now + self.config.node_cooldown_seconds)
                 continue
@@ -40,7 +43,10 @@ class Dispatcher:
                     log.warning("unexpected ping status from %s: %r", node, status)
                 continue
             self.rotation.used(node)
-            if await self.downloader.load(node, item.url):
+            result = await self.downloader.load(node, item.url)
+            if result == "busy":
+                continue  # taken by someone else between ping and load; try the next node
+            if result == "accepted":
                 due = after_success(now, item.kind, self.config.recrawl_days)
                 self.queue.mark_sent(item.url, now, due)
                 log.info("load %s -> %s: ok", item.url, node)

@@ -41,6 +41,8 @@ Trả ngay (không chờ tải):
 
 - Chỉ node trả **đúng chuỗi** `"đang chờ"` (có dấu) mới được giao việc. Chuỗi khác bị bỏ qua và ghi vào log
   `unexpected ping status`.
+- Node trả `409` cho `/load` (vừa nhận việc khác) được coi là đang bận: URL được gửi sang node kế, node không
+  bị nghỉ. Chuỗi `/ping` được so sau khi chuẩn hoá Unicode (NFC), nên "đang chờ" gõ dạng tổ hợp vẫn được nhận.
 - Node không trả lời `/ping`, hoặc `/load` lỗi hay quá `load_timeout_seconds`, sẽ bị nghỉ
   `node_cooldown_seconds` giây; URL vẫn được giữ để gửi node khác.
 - Kết quả tải không gửi về Điều khiển: node Tải về gửi thẳng sang Đọc nội dung.

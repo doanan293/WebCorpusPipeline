@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 from dieu_khien.domain.controller.models import QueuedUrl, UrlKind
+
+type LoadResult = Literal["accepted", "busy", "failed"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,8 +36,8 @@ class Downloader(Protocol):
         """The node's ``/ping`` status, or ``None`` when it cannot be reached."""
         ...
 
-    async def load(self, node: str, url: str) -> bool:
-        """Send one URL to the node's ``/load``; ``True`` on a 2xx answer."""
+    async def load(self, node: str, url: str) -> LoadResult:
+        """Send one URL to the node's ``/load``: 2xx accepted, 409 busy, anything else failed."""
         ...
 
     async def close(self) -> None: ...
