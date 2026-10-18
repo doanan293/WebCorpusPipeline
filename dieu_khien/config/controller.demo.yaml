@@ -1,0 +1,13 @@
+# Điều khiển (khối 3 trên slide): nhận POST /add, gửi URL xoay vòng sang các node Tải về.
+port: 5200
+downloaders:                       # demo: hai node Tải về giả lập trong compose
+  - http://fake-fetcher-1:8800
+  - http://fake-fetcher-2:8801
+host_delay_seconds: 1.0            # "thời gian chờ" giữa hai lần gửi vào cùng một host
+ping_timeout_seconds: 2
+load_timeout_seconds: 10
+node_cooldown_seconds: 30          # node lỗi thì tạm bỏ qua chừng này giây
+max_attempts: 5
+tick_seconds: 0.5
+recrawl_days: {hub: 1, page: 7, document: 30}   # kiểm tra lại định kỳ; 0 = không kiểm tra lại
+database: /state/controller.demo.sqlite3   # tách khỏi hàng đợi thật
