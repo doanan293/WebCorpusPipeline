@@ -116,7 +116,7 @@ dùng volume Mongo `data_pipeline_mongodb_data` (project compose vẫn tên `dat
 (`UID`/`GID`, mặc định 1000). Vì vậy `docker compose up` tiếp tục đúng chỗ `data-pipeline crawl run` dừng và
 ngược lại. Trong lúc các dịch vụ chạy, `crawl run` báo trạng thái đang được dùng và thoát (và ngược lại).
 
-Không có Docker: chạy từng khối bằng `uv run dich-vu serve <khối>` (trong `dich_vu/`) với biến môi trường trỏ tới khối
+Không có Docker: chạy từng khối bằng `uv run dich-vu serve <khối>` (trong `dich_vu/`; đường dẫn trong `config/*.yaml` tính từ `data_pipeline/`, nên vẫn dùng chung `data_pipeline/data/state`) với biến môi trường trỏ tới khối
 kề bên (mặc định là tên service trong compose):
 
 | Khối | Biến môi trường |

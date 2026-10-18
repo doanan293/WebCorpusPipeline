@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import replace
@@ -90,10 +91,16 @@ class AggregatorRuntime:
         self.scope = replace(self.scope, allowed_hosts=self.state.scope_hosts())
 
     async def tick(self) -> None:
+        batch: list[str] | None = None
         try:
             batch = self.batcher.due(self.clock())
             if batch:
                 await self.send("controller", {"urls": batch})
+        except asyncio.CancelledError:
+            # Stopped mid-send: these URLs are already seen, so keep them for the next start.
+            if batch:
+                self.outbox.append("controller", {"urls": batch})
+            raise
         except Exception:
             log.exception("sending new urls failed")
 

@@ -141,7 +141,7 @@ def test_store_down_records_wait_in_outbox(tmp_path: Path) -> None:
 
     asyncio.run(scenario())
     assert store.collections["html"] == {}
-    pending = JsonlOutbox(tmp_path / "outbox.jsonl").pending()
+    pending = list(JsonlOutbox(tmp_path / "outbox.jsonl").pending())
     assert {entry.target for entry in pending} == {"storage"}
     assert len(pending) == len(EXPECTED_HTML_PATHS) + len(EXPECTED_OTHER_PATHS)
 

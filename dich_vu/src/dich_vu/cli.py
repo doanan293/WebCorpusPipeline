@@ -32,6 +32,11 @@ def _load_project_env() -> None:
     bootstrap.load_env(current_paths())
 
 
+def _under_root(path: Path) -> Path:
+    """Relative paths in config/*.yaml are relative to data_pipeline/, wherever this runs from."""
+    return path if path.is_absolute() else current_paths().root / path
+
+
 def _config_path(value: Path | None, name: str) -> Path:
     return value if value is not None else current_paths().root / "config" / name
 
@@ -47,9 +52,10 @@ def controller(
     from dich_vu.api import controller as service
 
     settings = bootstrap.controller_config(_config_path(config, "controller.yaml"))
-    with bootstrap.state_lease(settings.database, "dich-vu controller"):
+    database = _under_root(settings.database)
+    with bootstrap.state_lease(database, "dich-vu controller"):
         app_ = service.create_service(
-            bootstrap.url_queue(settings.database),
+            bootstrap.url_queue(database),
             bootstrap.downloader(settings),
             bootstrap.system_clock(),
             settings,
@@ -129,20 +135,20 @@ def aggregator(
     from dich_vu.api import aggregator as service
     from dich_vu.api import common
 
-    paths = current_paths()
     settings = bootstrap.aggregator_config(_config_path(config, "aggregator.yaml"))
-    seeds = bootstrap.seeds(paths.root / settings.seeds_file)
-    initial_file = paths.root / settings.initial_scope_file
+    seeds = bootstrap.seeds(_under_root(settings.seeds_file))
+    initial_file = _under_root(settings.initial_scope_file)
     initial = bootstrap.hostnames(initial_file) if initial_file.exists() else frozenset()
-    with bootstrap.state_lease(settings.database, "dich-vu aggregator"):
+    database, outbox = _under_root(settings.database), _under_root(settings.outbox)
+    with bootstrap.state_lease(database, "dich-vu aggregator"):
         client = bootstrap.service_client(
             os.environ.get("STORAGE_URL", "http://storage:2200"),
             os.environ.get("CONTROLLER_URL", "http://controller:5200"),
         )
         app_ = service.create_service(
             settings,
-            bootstrap.aggregator_state(settings.database),
-            bootstrap.outbox(settings.outbox),
+            bootstrap.aggregator_state(database),
+            bootstrap.outbox(outbox),
             client,
             seeds=seeds,
             initial_scope=initial,

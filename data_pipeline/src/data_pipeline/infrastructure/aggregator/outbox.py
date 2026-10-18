@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
 from data_pipeline.application.aggregator.ports import OutboxEntry, Target
-from data_pipeline.infrastructure.shared.files import atomic_write_text
 
 log = logging.getLogger(__name__)
 
@@ -50,23 +49,27 @@ class JsonlOutbox:
             "outbox: %s refused %s for good (%s)", target, payload.get("url", "urls"), reason
         )
 
-    def pending(self) -> list[OutboxEntry]:
+    def pending(self) -> Iterator[OutboxEntry]:
+        """The waiting requests, read one line at a time (the file may hold whole records)."""
         if not self.path.exists():
-            return []
-        entries: list[OutboxEntry] = []
-        for number, line in enumerate(self.path.read_text(encoding="utf-8").splitlines(), 1):
-            if not line.strip():
-                continue
-            try:
-                raw = json.loads(line)
-                entries.append(OutboxEntry(raw["id"], raw["target"], raw["payload"]))
-            except (ValueError, KeyError, TypeError):
-                log.warning("outbox: skipping unreadable line %d of %s", number, self.path)
-        return entries
+            return
+        with self.path.open(encoding="utf-8") as handle:
+            for number, line in enumerate(handle, 1):
+                if not line.strip():
+                    continue
+                try:
+                    raw = json.loads(line)
+                    yield OutboxEntry(raw["id"], raw["target"], raw["payload"])
+                except (ValueError, KeyError, TypeError):
+                    log.warning("outbox: skipping unreadable line %d of %s", number, self.path)
 
     def remove(self, ids: Sequence[int]) -> None:
-        if not ids:
+        if not ids or not self.path.exists():
             return
         gone = set(ids)
-        kept = [entry for entry in self.pending() if entry.id not in gone]
-        atomic_write_text(self.path, "".join(_line(e.id, e.target, e.payload) for e in kept))
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        with temporary.open("w", encoding="utf-8") as out:
+            for entry in self.pending():
+                if entry.id not in gone:
+                    out.write(_line(entry.id, entry.target, entry.payload))
+        temporary.replace(self.path)

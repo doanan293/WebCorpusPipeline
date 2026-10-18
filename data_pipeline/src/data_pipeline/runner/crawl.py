@@ -168,7 +168,9 @@ def _log_progress(counts: Counter[str], parts: CrawlParts, dispatcher: Dispatche
     )
 
 
-async def add_seeds(parts: CrawlParts, seeds: Seeds) -> int:
+async def add_seeds(
+    parts: CrawlParts, seeds: Seeds, initial_scope: frozenset[str] = frozenset()
+) -> int:
     """Put ``seeds`` into the shared state without crawling; return how many URLs were new."""
     client = DirectServiceClient(parts.store, parts.queue, parts.clock, parts.now_iso)
     runtime = AggregatorRuntime(
@@ -180,5 +182,6 @@ async def add_seeds(parts: CrawlParts, seeds: Seeds) -> int:
         clock=time.monotonic,
     )
     before = parts.queue.counts(parts.clock.now()).total
+    runtime.adopt_initial_scope(initial_scope)  # first, or a first seed would narrow the scope
     await runtime.add_seeds(seeds)
     return parts.queue.counts(parts.clock.now()).total - before

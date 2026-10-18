@@ -191,3 +191,33 @@ def test_serve_aggregator_refuses_when_state_is_held(
 
     assert main(["serve", "aggregator", "--config", str(config)]) == 2
     assert served == []
+
+
+def test_serve_resolves_state_paths_under_the_data_pipeline_root(
+    project: ProjectPaths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    served: list[object] = []
+
+    def fake_run(app: web.Application, port: int, background: object = ()) -> None:
+        served.append(app)
+
+    monkeypatch.setattr(common, "run", fake_run)
+    monkeypatch.chdir(tmp_path)
+    seeds = project.root / "seeds.txt"
+    seeds.write_text("a.hust.edu.vn\n", encoding="utf-8")
+    controller = tmp_path / "controller.yaml"
+    controller.write_text(
+        "downloaders: [http://n:8800]\ndatabase: data/state/controller.sqlite3\n", encoding="utf-8"
+    )
+    aggregator = tmp_path / "aggregator.yaml"
+    aggregator.write_text(
+        f"seeds_file: {seeds}\ninitial_scope_file: {seeds}\n"
+        "database: data/state/aggregator.sqlite3\noutbox: data/state/outbox.jsonl\n",
+        encoding="utf-8",
+    )
+
+    assert main(["serve", "controller", "--config", str(controller)]) == 0
+    assert main(["serve", "aggregator", "--config", str(aggregator)]) == 0
+    assert (project.root / "data/state/controller.sqlite3").exists()
+    assert (project.root / "data/state/aggregator.sqlite3").exists()
+    assert not (tmp_path / "data").exists()

@@ -56,6 +56,11 @@ def _parts(paths: ProjectPaths, aggregator: AggregatorConfig, database: Path) ->
     )
 
 
+def _initial_scope(aggregator: AggregatorConfig) -> frozenset[str]:
+    path = aggregator.initial_scope_file
+    return bootstrap.hostnames(path) if path.exists() else frozenset()
+
+
 def _check(seeds: Seeds) -> Seeds:
     for problem in seeds.problems:
         typer.echo(f"Warning: seeds {problem}", err=True)
@@ -87,8 +92,7 @@ def run(
     aggregator = _aggregator(paths)
     database = _under_root(paths, crawl_config.controller.database)
     start = _check(bootstrap.seeds(context.pick(seeds, aggregator.seeds_file)))
-    initial_file = aggregator.initial_scope_file
-    initial = bootstrap.hostnames(initial_file) if initial_file.exists() else frozenset()
+    initial = _initial_scope(aggregator)
     with (
         bootstrap.state_lease(database, "data-pipeline crawl"),
         bootstrap.state_lease(aggregator.database, "data-pipeline crawl"),
@@ -147,7 +151,7 @@ def add(
     ):
         parts = _parts(paths, aggregator, database)
         try:
-            new = asyncio.run(runner.add_seeds(parts, seeds))
+            new = asyncio.run(runner.add_seeds(parts, seeds, _initial_scope(aggregator)))
         finally:
             parts.store.close()
     known = len(seeds.urls) - new

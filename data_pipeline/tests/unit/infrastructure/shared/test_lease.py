@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+import time
 from pathlib import Path
 
 import pytest
@@ -58,3 +60,21 @@ def test_same_owner_may_acquire_again(tmp_path: Path) -> None:
     SqliteLease(path, "a", clock).acquire()
 
     SqliteLease(path, "a", clock).acquire()
+
+
+def test_renewal_survives_a_failed_renew(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    lease = SqliteLease(tmp_path / "state.sqlite3", "a", FakeClock(1000.0), renew_every=0.01)
+    calls: list[int] = []
+
+    def flaky_renew() -> None:
+        calls.append(1)
+        if len(calls) == 1:
+            locked = "database is locked"
+            raise sqlite3.OperationalError(locked)
+
+    monkeypatch.setattr(lease, "renew", flaky_renew)
+    with lease.held():
+        deadline = time.monotonic() + 2
+        while len(calls) < 3 and time.monotonic() < deadline:
+            time.sleep(0.01)
+    assert len(calls) >= 3

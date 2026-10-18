@@ -7,6 +7,7 @@ goes stale.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
 from collections.abc import Iterator
@@ -16,6 +17,8 @@ from typing import Protocol
 
 from data_pipeline.domain.shared.errors import StateLockedError
 from data_pipeline.infrastructure.shared.sqlite import connect
+
+log = logging.getLogger(__name__)
 
 _SCHEMA = "CREATE TABLE IF NOT EXISTS lease (name TEXT PRIMARY KEY, owner TEXT, heartbeat_at REAL)"
 _NAME = "state"
@@ -86,7 +89,11 @@ class SqliteLease:
 
         def keep_alive() -> None:
             while not stop.wait(self.renew_every):
-                self.renew()
+                try:
+                    self.renew()
+                except sqlite3.Error:
+                    # A dead renewer would let the lease go stale and admit a second writer.
+                    log.warning("state lease: renewing %s failed; trying again", self.path)
 
         thread = threading.Thread(target=keep_alive, name="state-lease", daemon=True)
         thread.start()

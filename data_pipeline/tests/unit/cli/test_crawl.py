@@ -119,3 +119,10 @@ def test_crawl_run_closes_the_store(project: ProjectPaths, monkeypatch: pytest.M
     monkeypatch.setattr(runner, "crawl", fake_crawl)
     assert main(["crawl", "run"]) == 0
     assert closed == [True]
+
+
+def test_seeds_add_first_keeps_the_initial_scope(project: ProjectPaths) -> None:
+    _project(project)
+    assert main(["seeds", "add", "soict.hust.edu.vn"]) == 0
+    state = SqliteAggregatorState(project.root / "data/state/aggregator.sqlite3")
+    assert state.scope_hosts() == {"soict.hust.edu.vn", "ctsv.hust.edu.vn"}

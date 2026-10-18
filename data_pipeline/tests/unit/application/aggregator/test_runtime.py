@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -157,3 +158,30 @@ def test_initial_scope_is_adopted_only_once() -> None:
     assert runtime.scope.allowed_hosts == {"old.hust.edu.vn"}
     runtime.adopt_initial_scope(frozenset({"other.hust.edu.vn"}))
     assert state.scope_hosts() == {"old.hust.edu.vn"}
+
+
+def test_batch_cancelled_mid_send_goes_to_outbox() -> None:
+    class _Hanging(FakeServiceClient):
+        @override
+        async def send(self, target: Target, payload: dict[str, Any]) -> SendResult:
+            await asyncio.sleep(60)
+            return "ok"
+
+    outbox = MemoryOutbox()
+    clock = [0.0]
+    runtime = _runtime(_Hanging(), outbox, clock)
+    runtime.batcher.add([f"https://{HOST}/1"], 0.0)
+    clock[0] = 2.0
+
+    async def scenario() -> None:
+        task = asyncio.create_task(runtime.tick())
+        await asyncio.sleep(0.01)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        await runtime.shutdown()
+
+    asyncio.run(scenario())
+    assert [(e.target, e.payload) for e in outbox.entries] == [
+        ("controller", {"urls": [f"https://{HOST}/1"]})
+    ]
