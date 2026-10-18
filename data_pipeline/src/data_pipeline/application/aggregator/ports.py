@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
 type Target = Literal["storage", "controller"]
+# ok: accepted; retry: try again later (down, 5xx); dead: refused for good (4xx), never resent.
+type SendResult = Literal["ok", "retry", "dead"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,14 +31,18 @@ class ContentOwners(Protocol):
 class Outbox(Protocol):
     def append(self, target: Target, payload: dict[str, Any]) -> None: ...
 
+    def dead(self, target: Target, payload: dict[str, Any], reason: str) -> None:
+        """Keep a request the other block refused for good, apart from the ones to resend."""
+        ...
+
     def pending(self) -> list[OutboxEntry]: ...
 
     def remove(self, ids: Sequence[int]) -> None: ...
 
 
 class ServiceClient(Protocol):
-    async def send(self, target: Target, payload: dict[str, Any]) -> bool:
-        """``POST /add`` to the storage or controller block; ``True`` when it was accepted."""
+    async def send(self, target: Target, payload: dict[str, Any]) -> SendResult:
+        """``POST /add`` to the storage or controller block."""
         ...
 
 

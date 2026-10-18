@@ -8,7 +8,11 @@ from collections.abc import AsyncIterator, Callable
 
 from aiohttp import web
 
-from data_pipeline.application.storage.ports import CorpusStore, StoreUnavailableError
+from data_pipeline.application.storage.ports import (
+    CorpusStore,
+    StoreRejectedError,
+    StoreUnavailableError,
+)
 from data_pipeline.application.storage.store import store_record
 from data_pipeline.domain.shared.protocol import validate_record
 from dich_vu.api.common import Stats, error, json_object, stats_loop
@@ -33,6 +37,10 @@ def create_app(
         except StoreUnavailableError:
             counters.incr("unavailable")
             return error(503, "mongo unavailable")
+        except StoreRejectedError as exc:
+            counters.incr("rejected")
+            log.warning("refused %s: %s", record["url"], exc)
+            return error(422, str(exc))
         counters.incr("stored")
         return web.json_response({"status": "ok"})
 

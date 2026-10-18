@@ -5,8 +5,8 @@ from typing import Any
 
 import aiohttp
 
-from data_pipeline.application.aggregator.ports import Target
-from data_pipeline.infrastructure.shared.http_client import BACKOFF_SECONDS, send
+from data_pipeline.application.aggregator.ports import SendResult, Target
+from data_pipeline.infrastructure.shared.http_client import BACKOFF_SECONDS, post
 
 
 class HttpServiceClient:
@@ -22,10 +22,10 @@ class HttpServiceClient:
         }
         self.session: aiohttp.ClientSession | None = None
 
-    async def send(self, target: Target, payload: dict[str, Any]) -> bool:
+    async def send(self, target: Target, payload: dict[str, Any]) -> SendResult:
         if self.session is None:
             self.session = aiohttp.ClientSession()
-        return await send(self.session, self.urls[target], json=payload, backoff=self.backoff)
+        return await post(self.session, self.urls[target], json=payload, backoff=self.backoff)
 
     async def close(self) -> None:
         if self.session is not None:

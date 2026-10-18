@@ -5,9 +5,14 @@ from typing import Any
 
 from pymongo import ASCENDING, MongoClient
 from pymongo.database import Database
-from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+from pymongo.errors import (
+    ConnectionFailure,
+    DocumentTooLarge,
+    ServerSelectionTimeoutError,
+    WriteError,
+)
 
-from data_pipeline.application.storage.ports import StoreUnavailableError
+from data_pipeline.application.storage.ports import StoreRejectedError, StoreUnavailableError
 
 _UNAVAILABLE = (ConnectionFailure, ServerSelectionTimeoutError)
 
@@ -28,6 +33,9 @@ class MongoCorpusStore:
         except _UNAVAILABLE as exc:
             msg = "mongo unavailable"
             raise StoreUnavailableError(msg) from exc
+        except (DocumentTooLarge, WriteError) as exc:
+            msg = f"mongo refused the record: {exc}"
+            raise StoreRejectedError(msg) from exc
 
     def upsert(self, collection: str, document: dict[str, Any]) -> None:
         self._guard(

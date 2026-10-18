@@ -49,3 +49,11 @@ def test_add_empty_object_is_ok() -> None:
     store = FakeCorpusStore()
     assert _post(store, {}) == (200, {"status": "ok"})
     assert store.collections["html"] == {}
+
+
+def test_too_large_document_is_rejected_with_422() -> None:
+    store = FakeCorpusStore()
+    store.reject = True
+    status, body = _post(store, RECORD)
+    assert status == 422
+    assert isinstance(body, dict) and "error" in body

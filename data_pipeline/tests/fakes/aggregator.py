@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
-from data_pipeline.application.aggregator.ports import OutboxEntry, Target
+from data_pipeline.application.aggregator.ports import OutboxEntry, SendResult, Target
 
 
 class MemoryAggregatorState:
@@ -25,6 +25,10 @@ class MemoryAggregatorState:
 class MemoryOutbox:
     def __init__(self) -> None:
         self.entries: list[OutboxEntry] = []
+        self.dead_letters: list[tuple[Target, dict[str, Any], str]] = []
+
+    def dead(self, target: Target, payload: dict[str, Any], reason: str) -> None:
+        self.dead_letters.append((target, payload, reason))
 
     def append(self, target: Target, payload: dict[str, Any]) -> None:
         next_id = max((entry.id for entry in self.entries), default=0) + 1
@@ -38,11 +42,30 @@ class MemoryOutbox:
 
 
 class FakeServiceClient:
-    def __init__(self, ok: bool = True) -> None:
-        self.ok = ok
-        self.sent: list[tuple[Target, dict[str, Any]]] = []
+    """Answers every send with ``answer(target, payload)`` (``"ok"`` by default), or raises ``error``."""
 
-    async def send(self, target: Target, payload: dict[str, Any]) -> bool:
-        if self.ok:
+    def __init__(
+        self,
+        ok: bool = True,
+        *,
+        answer: Callable[[Target, dict[str, Any]], SendResult] | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        default: SendResult = "ok" if ok else "retry"
+
+        def constant(target: Target, payload: dict[str, Any]) -> SendResult:
+            return default
+
+        self.answer = answer or constant
+        self.error = error
+        self.sent: list[tuple[Target, dict[str, Any]]] = []
+        self.attempts: list[tuple[Target, dict[str, Any]]] = []
+
+    async def send(self, target: Target, payload: dict[str, Any]) -> SendResult:
+        self.attempts.append((target, payload))
+        if self.error is not None:
+            raise self.error
+        result = self.answer(target, payload)
+        if result == "ok":
             self.sent.append((target, payload))
-        return self.ok
+        return result

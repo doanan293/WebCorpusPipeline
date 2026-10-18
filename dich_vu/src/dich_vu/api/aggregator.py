@@ -11,15 +11,9 @@ from typing import Any
 
 from aiohttp import web
 
-from data_pipeline.application.aggregator.aggregate import Scope, aggregate
-from data_pipeline.application.aggregator.delivery import deliver, flush_outbox
-from data_pipeline.application.aggregator.ports import (
-    AggregatorState,
-    Outbox,
-    ServiceClient,
-    Target,
-)
-from data_pipeline.domain.aggregator.batching import UrlBatcher
+from data_pipeline.application.aggregator.aggregate import Scope
+from data_pipeline.application.aggregator.ports import AggregatorState, Outbox, ServiceClient
+from data_pipeline.application.aggregator.runtime import AggregatorRuntime
 from data_pipeline.domain.aggregator.config import AggregatorConfig
 from data_pipeline.domain.shared.protocol import validate_record
 from dich_vu.api.common import Stats, error, json_object, stats_loop
@@ -63,43 +57,30 @@ def create_service(
 ) -> web.Application:
     """``create_app`` that aggregates, plus the seeding, batching and outbox loops."""
     stats = Stats()
-    batcher = UrlBatcher(config.batch_size, config.batch_seconds)
-    scope = Scope(allowed_hosts, config.allowed_suffixes, allowed_ports)
-
-    async def send(target: Target, payload: dict[str, Any]) -> None:
-        stats.incr(f"to_{target}")
-        await deliver(target, payload, client=client, outbox=outbox)
-
-    async def handle(record: dict[str, Any]) -> None:
-        await aggregate(
-            record,
-            seen=state,
-            owners=state,
-            deliver=send,
-            batcher=batcher,
-            scope=scope,
-            now=time.monotonic(),
-        )
+    runtime = AggregatorRuntime(
+        config,
+        state,
+        outbox,
+        client,
+        Scope(allowed_hosts, config.allowed_suffixes, allowed_ports),
+        clock=time.monotonic,
+        count=stats.incr,
+    )
 
     async def batch_loop() -> None:
         while True:
             await asyncio.sleep(BATCH_TICK_SECONDS)
-            batch = batcher.due(time.monotonic())
-            if batch:
-                await send("controller", {"urls": batch})
+            await runtime.tick()
 
     async def outbox_loop() -> None:
         while True:
             await asyncio.sleep(config.outbox_retry_seconds)
-            if sent := await flush_outbox(client, outbox):
-                log.info("outbox: resent %d requests", sent)
+            await runtime.flush()
 
     async def seed_once() -> None:
-        if seed_urls:
-            await send("controller", {"urls": list(seed_urls)})
-            log.info("seeded %d start pages", len(seed_urls))
+        await runtime.seed(seed_urls)
 
-    app = create_app(handle, stats)
+    app = create_app(runtime.handle, stats)
 
     async def lifetime(_: web.Application) -> AsyncIterator[None]:
         tasks = [
@@ -112,6 +93,7 @@ def create_service(
         for task in tasks:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        await runtime.shutdown()
         for close in closers:
             await close()
 

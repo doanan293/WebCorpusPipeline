@@ -6,7 +6,7 @@ import aiohttp
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 
-from data_pipeline.infrastructure.shared.http_client import send
+from data_pipeline.infrastructure.shared.http_client import post, send
 
 
 def _server(statuses: list[int], seen: list[bytes]) -> web.Application:
@@ -70,3 +70,23 @@ def test_send_retries_when_nobody_listens() -> None:
 
     assert asyncio.run(scenario()) is False
     assert sleeps == [1.0, 2.0, 4.0]
+
+
+def _post(statuses: list[int]) -> str:
+    async def no_sleep(seconds: float) -> None:
+        return None
+
+    async def scenario() -> str:
+        async with (
+            TestServer(_server(statuses, [])) as server,
+            aiohttp.ClientSession() as session,
+        ):
+            return await post(session, str(server.make_url("/add")), json={}, sleep=no_sleep)
+
+    return asyncio.run(scenario())
+
+
+def test_post_tells_refused_from_down() -> None:
+    assert _post([200]) == "ok"
+    assert _post([422]) == "dead"
+    assert _post([503]) == "retry"
