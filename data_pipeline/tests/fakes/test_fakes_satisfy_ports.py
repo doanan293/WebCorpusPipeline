@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from data_pipeline.application.aggregator import ports as aggregator_ports
 from data_pipeline.application.controller import ports as controller_ports
 from data_pipeline.application.corpus import ports as corpus_ports
 from data_pipeline.application.crawl import ports as crawl_ports
@@ -12,6 +13,7 @@ from data_pipeline.application.enrich import ports
 from data_pipeline.application.fetcher import ports as fetcher_ports
 from data_pipeline.application.hosts import ports as hosts_ports
 from data_pipeline.application.parser import ports as parser_ports
+from tests.fakes.aggregator import FakeServiceClient, MemoryAggregatorState, MemoryOutbox
 from tests.fakes.controller import FakeClock, FakeDownloader, FakeUrlQueue
 from tests.fakes.corpus import FakeCorpusDatabase, FakePublisher
 from tests.fakes.crawl import (
@@ -165,5 +167,20 @@ def test_parser_and_fetcher_fakes_satisfy_their_ports() -> None:
         (getter, fetcher_ports.PageGetter),
         (renderer, fetcher_ports.Renderer),
         (client, fetcher_ports.ParserClient),
+    ):
+        _check(instance, port)
+
+
+def test_aggregator_fakes_satisfy_their_ports() -> None:
+    state = MemoryAggregatorState()
+    seen: aggregator_ports.SeenUrls = state
+    owners: aggregator_ports.ContentOwners = state
+    outbox: aggregator_ports.Outbox = MemoryOutbox()
+    client: aggregator_ports.ServiceClient = FakeServiceClient()
+    for instance, port in (
+        (seen, aggregator_ports.SeenUrls),
+        (owners, aggregator_ports.ContentOwners),
+        (outbox, aggregator_ports.Outbox),
+        (client, aggregator_ports.ServiceClient),
     ):
         _check(instance, port)

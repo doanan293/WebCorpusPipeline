@@ -1,0 +1,10 @@
+# Tổng hợp dữ liệu (khối 4 trên slide): nhận POST /add từ Đọc nội dung,
+# gửi bản ghi sang Lưu trữ và URL mới sang Điều khiển.
+port: 3300
+hosts_file: config/domains/active.txt   # URL mầm: trang chủ của mỗi host
+allowed_suffixes: [hust.edu.vn]         # "lọc url - lấy trong miền hust"
+batch_size: 500
+batch_seconds: 1.0
+outbox_retry_seconds: 30
+database: /state/aggregator.sqlite3
+outbox: /state/outbox.jsonl

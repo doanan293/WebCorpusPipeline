@@ -1,0 +1,48 @@
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any
+
+from data_pipeline.application.aggregator.ports import ContentOwners, SeenUrls, Target
+from data_pipeline.domain.aggregator.batching import UrlBatcher
+from data_pipeline.domain.aggregator.content import content_key
+from data_pipeline.domain.aggregator.links import candidate_urls
+from data_pipeline.domain.aggregator.records import duplicate_stub
+from data_pipeline.domain.shared.url import canonicalize_url
+
+
+@dataclass(frozen=True, slots=True)
+class Scope:
+    """Which hosts count as hust: listed hosts, plus every subdomain of the suffixes."""
+
+    allowed_hosts: frozenset[str]
+    allowed_suffixes: tuple[str, ...]
+
+
+async def aggregate(
+    record: dict[str, Any],
+    *,
+    seen: SeenUrls,
+    owners: ContentOwners,
+    deliver: Callable[[Target, dict[str, Any]], Awaitable[None]],
+    batcher: UrlBatcher,
+    scope: Scope,
+    now: float,
+) -> None:
+    """Store one record (a stub when another URL owns its text) and queue its new links."""
+    url = record["url"]
+    page_url = canonicalize_url(url, check_traps=False)[0]
+    if page_url is not None:
+        seen.add_new([page_url])
+    key = content_key(record["content"])
+    owner = owners.claim(key, url) if key is not None else url
+    await deliver("storage", record if owner == url else duplicate_stub(record, owner))
+    links = candidate_urls(
+        record["out-links"],
+        source_url=url,
+        allowed_hosts=scope.allowed_hosts,
+        allowed_suffixes=scope.allowed_suffixes,
+    )
+    for batch in batcher.add(seen.add_new(links), now):
+        await deliver("controller", {"urls": batch})
