@@ -11,7 +11,6 @@ from typing import Any
 
 from aiohttp import web
 
-from data_pipeline.api.common import Stats, error, json_object, stats_loop
 from data_pipeline.application.aggregator.aggregate import Scope, aggregate
 from data_pipeline.application.aggregator.delivery import deliver, flush_outbox
 from data_pipeline.application.aggregator.ports import (
@@ -23,6 +22,7 @@ from data_pipeline.application.aggregator.ports import (
 from data_pipeline.domain.aggregator.batching import UrlBatcher
 from data_pipeline.domain.aggregator.config import AggregatorConfig
 from data_pipeline.domain.shared.protocol import validate_record
+from dich_vu.api.common import Stats, error, json_object, stats_loop
 
 log = logging.getLogger(__name__)
 

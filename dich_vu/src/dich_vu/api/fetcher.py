@@ -8,10 +8,10 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 
 from aiohttp import web
 
-from data_pipeline.api.common import Stats, error, json_object, stats_loop
 from data_pipeline.application.fetcher.fetch import FetchOutcome, fetch_and_forward
 from data_pipeline.application.fetcher.ports import PageGetter, ParserClient, Renderer
 from data_pipeline.domain.shared.protocol import ACCEPTED, BUSY, IDLE
+from dich_vu.api.common import Stats, error, json_object, stats_loop
 
 log = logging.getLogger(__name__)
 

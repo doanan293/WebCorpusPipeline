@@ -13,7 +13,7 @@ RANK = {layer: index for index, layer in enumerate(LAYERS)}
 BLOCKS = frozenset({"controller", "fetcher", "parser", "aggregator", "storage"})
 CONTEXTS = frozenset({"corpus", "hosts", *BLOCKS})
 SHARED = "shared"
-OUTER = frozenset({"cli", "api"})  # entry points; bootstrap.py is the composition root
+OUTER = frozenset({"cli"})  # entry points; bootstrap.py is the composition root
 BOOTSTRAP = "bootstrap"
 IO_MODULES = frozenset(
     {
@@ -68,15 +68,7 @@ def allowed(importer: str, imported: str) -> bool:
         return target_layer not in OUTER
     # Entry points call use cases and bootstrap; they never build adapters themselves.
     if layer in OUTER:
-        # A block's service module speaks for that block only.
-        block = importer.split(".")[2] if layer == "api" and importer.count(".") >= 2 else None
-        if block in BLOCKS and target_context not in {block, SHARED, None}:
-            return False
-        # The command line launches the services; services never reach back into it.
-        launches = layer == "cli" and target_layer == "api"
-        return target_layer != "infrastructure" and (
-            launches or target_layer not in OUTER - {layer}
-        )
+        return target_layer != "infrastructure" and target_layer not in OUTER - {layer}
     if target_layer in OUTER or target_layer == BOOTSTRAP:
         return False
     if layer not in RANK or target_layer not in RANK:
@@ -150,17 +142,16 @@ def test_a_module_outside_the_layers_is_a_stray() -> None:
         "data_pipeline.domain.controller",
         "data_pipeline.infrastructure.shared.files",
         "data_pipeline.cli.main",
-        "data_pipeline.api.routes",
     ):
         assert not is_stray(module), module
 
 
 def test_entry_points_do_not_build_adapters() -> None:
     assert not allowed(
-        "data_pipeline.cli.serve", "data_pipeline.infrastructure.controller.sqlite_queue"
+        "data_pipeline.cli.reextract", "data_pipeline.infrastructure.controller.sqlite_queue"
     )
-    assert allowed("data_pipeline.cli.serve", "data_pipeline.bootstrap")
-    assert allowed("data_pipeline.cli.serve", "data_pipeline.application.controller.add_urls")
+    assert allowed("data_pipeline.cli.reextract", "data_pipeline.bootstrap")
+    assert allowed("data_pipeline.cli.reextract", "data_pipeline.application.controller.add_urls")
     assert allowed(
         "data_pipeline.bootstrap", "data_pipeline.infrastructure.controller.sqlite_queue"
     )
@@ -220,16 +211,3 @@ def test_blocks_do_not_import_each_other() -> None:
     assert allowed(
         "data_pipeline.application.fetcher.fetch", "data_pipeline.domain.shared.protocol"
     )
-
-
-def test_api_module_uses_only_its_block() -> None:
-    assert allowed("data_pipeline.api.fetcher", "data_pipeline.application.fetcher.fetch")
-    assert allowed("data_pipeline.api.fetcher", "data_pipeline.api.common")
-    assert allowed("data_pipeline.api.fetcher", "data_pipeline.domain.shared.protocol")
-    assert allowed("data_pipeline.api.fetcher", "data_pipeline.bootstrap")
-    assert not allowed("data_pipeline.api.fetcher", "data_pipeline.application.parser.parse")
-
-
-def test_cli_may_launch_api_services() -> None:
-    assert allowed("data_pipeline.cli.serve", "data_pipeline.api.controller")
-    assert not allowed("data_pipeline.api.controller", "data_pipeline.cli.serve")

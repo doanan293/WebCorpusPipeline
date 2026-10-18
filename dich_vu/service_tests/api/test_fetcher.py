@@ -4,8 +4,8 @@ import asyncio
 
 from aiohttp.test_utils import TestClient, TestServer
 
-from data_pipeline.api.fetcher import create_app
 from data_pipeline.application.fetcher.fetch import FetchOutcome
+from dich_vu.api.fetcher import create_app
 
 
 def test_ping_idle() -> None:

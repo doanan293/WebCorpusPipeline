@@ -15,12 +15,6 @@ from data_pipeline.cli.main import main
     "args",
     [
         ["--help"],
-        ["serve", "--help"],
-        ["serve", "controller", "--help"],
-        ["serve", "fetcher", "--help"],
-        ["serve", "parser", "--help"],
-        ["serve", "aggregator", "--help"],
-        ["serve", "storage", "--help"],
         ["reextract", "--help"],
         ["corpus", "--help"],
         ["corpus", "verify", "--help"],

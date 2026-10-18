@@ -1,30 +1,50 @@
 from __future__ import annotations
 
 import os
+import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import typer
 
 from data_pipeline import bootstrap
-from data_pipeline.cli import context
+from data_pipeline.cli import errors
+from data_pipeline.domain.shared.config import ProjectPaths
 
-app = typer.Typer(help="Run one block of the slide as an HTTP service.", no_args_is_help=True)
+app = typer.Typer(
+    name="dich-vu",
+    help="The five blocks of the slide as HTTP services.",
+    no_args_is_help=True,
+    add_completion=False,
+)
+serve = typer.Typer(help="Run one block of the slide as an HTTP service.", no_args_is_help=True)
+app.add_typer(serve, name="serve")
+
+
+def current_paths() -> ProjectPaths:
+    """The data_pipeline project the services read their config and data from."""
+    return bootstrap.project_paths()
+
+
+@app.callback()
+def _load_project_env() -> None:
+    bootstrap.load_env(current_paths())
 
 
 def _config_path(value: Path | None, name: str) -> Path:
-    return context.pick(value, context.current_paths().root / "config" / name)
+    return value if value is not None else current_paths().root / "config" / name
 
 
-@app.command()
+@serve.command()
 def controller(
     config: Annotated[
         Path | None, typer.Option(help="Controller settings (default: config/controller.yaml).")
     ] = None,
 ) -> int:
     """Điều khiển: POST /add on port 5200, sending queued URLs to the download nodes."""
-    from data_pipeline.api import common
-    from data_pipeline.api import controller as service
+    from dich_vu.api import common
+    from dich_vu.api import controller as service
 
     settings = bootstrap.controller_config(_config_path(config, "controller.yaml"))
     app_ = service.create_service(
@@ -37,7 +57,7 @@ def controller(
     return 0
 
 
-@app.command()
+@serve.command()
 def fetcher(
     config: Annotated[
         Path | None, typer.Option(help="Fetcher settings (default: config/fetcher.yaml).")
@@ -47,8 +67,8 @@ def fetcher(
     ] = None,
 ) -> int:
     """Tải về: POST /load and GET /ping; sends downloads to PARSER_URL/parse."""
-    from data_pipeline.api import common
-    from data_pipeline.api import fetcher as service
+    from dich_vu.api import common
+    from dich_vu.api import fetcher as service
 
     settings = bootstrap.fetcher_config(_config_path(config, "fetcher.yaml"))
     getter = bootstrap.page_getter(settings)
@@ -60,17 +80,17 @@ def fetcher(
     return 0
 
 
-@app.command()
+@serve.command()
 def parser(
     config: Annotated[
         Path | None, typer.Option(help="Parser settings (default: config/parser.yaml).")
     ] = None,
 ) -> int:
     """Đọc nội dung: POST /parse; sends records to AGGREGATOR_URL/add."""
-    from data_pipeline.api import common
-    from data_pipeline.api import parser as service
+    from dich_vu.api import common
+    from dich_vu.api import parser as service
 
-    paths = context.current_paths()
+    paths = current_paths()
     settings = bootstrap.parser_config(_config_path(config, "parser.yaml"))
     aggregator = bootstrap.aggregator_client(
         os.environ.get("AGGREGATOR_URL", "http://aggregator:3300")
@@ -81,15 +101,15 @@ def parser(
     return 0
 
 
-@app.command()
+@serve.command()
 def storage(
     port: Annotated[int, typer.Option(help="Port to listen on.")] = 2200,
 ) -> int:
     """Lưu trữ: POST /add into Mongo (MONGODB_URI, MONGODB_DATABASE)."""
-    from data_pipeline.api import common
-    from data_pipeline.api import storage as service
+    from dich_vu.api import common
+    from dich_vu.api import storage as service
 
-    defaults = bootstrap.load_settings(context.current_paths())
+    defaults = bootstrap.load_settings(current_paths())
     store = bootstrap.corpus_store(
         os.environ.get("MONGODB_URI", defaults.mongo_uri),
         os.environ.get("MONGODB_DATABASE", defaults.mongo_database),
@@ -98,18 +118,18 @@ def storage(
     return 0
 
 
-@app.command()
+@serve.command()
 def aggregator(
     config: Annotated[
         Path | None, typer.Option(help="Aggregator settings (default: config/aggregator.yaml).")
     ] = None,
 ) -> int:
     """Tổng hợp dữ liệu: POST /add; records to STORAGE_URL, new URLs to CONTROLLER_URL."""
-    from data_pipeline.api import aggregator as service
-    from data_pipeline.api import common
     from data_pipeline.application.aggregator.seeds import seed_payload
+    from dich_vu.api import aggregator as service
+    from dich_vu.api import common
 
-    paths = context.current_paths()
+    paths = current_paths()
     settings = bootstrap.aggregator_config(_config_path(config, "aggregator.yaml"))
     hosts_file = settings.hosts_file
     hosts = sorted(
@@ -130,3 +150,34 @@ def aggregator(
     )
     common.run(app_, settings.port)
     return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the CLI and translate failures into exit codes (2 usage/error, 130 interrupt)."""
+    try:
+        result = app(
+            args=list(argv) if argv is not None else None,
+            prog_name="dich-vu",
+            standalone_mode=False,
+        )
+    except typer.TyperException as exc:
+        show = getattr(exc, "show", None)
+        if callable(show):
+            show()
+        else:
+            errors.fail(str(exc))
+        return exc.exit_code
+    except (typer.Abort, KeyboardInterrupt):
+        return 130
+    except (FileNotFoundError, FileExistsError, ValueError, RuntimeError) as exc:
+        return errors.fail(str(exc))
+    except Exception as exc:
+        message = errors.external_failure_message(exc)
+        if message is None:
+            raise
+        return errors.fail(message, exit_code=1)
+    return result if isinstance(result, int) else 0
+
+
+def run() -> NoReturn:
+    sys.exit(main())

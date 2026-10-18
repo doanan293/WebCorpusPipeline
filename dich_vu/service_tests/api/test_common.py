@@ -5,7 +5,7 @@ import asyncio
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from data_pipeline.api.common import error, json_object
+from dich_vu.api.common import error, json_object
 
 
 def _app() -> web.Application:

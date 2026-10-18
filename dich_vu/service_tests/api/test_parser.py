@@ -4,7 +4,7 @@ import asyncio
 
 from aiohttp.test_utils import TestClient, TestServer
 
-from data_pipeline.api.parser import create_app
+from dich_vu.api.parser import create_app
 
 HEADERS = {"X-Url": "https://h/a", "X-Format": "html", "Content-Type": "text/html"}
 

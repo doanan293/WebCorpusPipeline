@@ -10,7 +10,6 @@ from pathlib import Path
 
 from aiohttp.test_utils import TestServer
 
-from data_pipeline.api import aggregator, controller, fetcher, parser, storage
 from data_pipeline.application.parser.parse import DocumentReaders
 from data_pipeline.domain.aggregator.config import AggregatorConfig
 from data_pipeline.domain.controller.models import ControllerConfig
@@ -24,6 +23,7 @@ from data_pipeline.infrastructure.fetcher.http_getter import AiohttpPageGetter
 from data_pipeline.infrastructure.fetcher.parser_client import HttpParserClient
 from data_pipeline.infrastructure.parser.aggregator_client import HttpAggregatorClient
 from data_pipeline.infrastructure.parser.parsers.dispatch import LocalParserAdapter
+from dich_vu.api import aggregator, controller, fetcher, parser, storage
 from tests.fakes.fetcher import FakeRenderer
 from tests.fakes.parser import MemoryParseCache
 from tests.fakes.storage import FakeCorpusStore

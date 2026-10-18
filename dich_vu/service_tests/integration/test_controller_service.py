@@ -8,11 +8,11 @@ from pathlib import Path
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from data_pipeline.api.controller import create_service
 from data_pipeline.domain.controller.models import ControllerConfig
 from data_pipeline.domain.shared.protocol import ACCEPTED, IDLE
 from data_pipeline.infrastructure.controller.http_downloader import HttpDownloader
 from data_pipeline.infrastructure.controller.sqlite_queue import SqliteUrlQueue
+from dich_vu.api.controller import create_service
 
 
 class _Clock:

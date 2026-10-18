@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 from aiohttp import web
 
-from data_pipeline.api import common
-from data_pipeline.cli.main import main
 from data_pipeline.domain.shared.config import ProjectPaths
+from dich_vu.api import common
+from dich_vu.cli import main
 
 
 def test_serve_controller_runs_add_on_configured_port(
@@ -122,3 +122,20 @@ def test_serve_aggregator_runs_add_on_3300(
     assert main(["serve", "aggregator", "--config", str(config)]) == 0
     ((_app, port),) = served
     assert port == 3300
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--help"],
+        ["serve", "--help"],
+        ["serve", "controller", "--help"],
+        ["serve", "fetcher", "--help"],
+        ["serve", "parser", "--help"],
+        ["serve", "aggregator", "--help"],
+        ["serve", "storage", "--help"],
+    ],
+)
+def test_help_for_every_command(args: list[str], capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(args) == 0
+    assert "Usage" in capsys.readouterr().out

@@ -4,7 +4,7 @@ import asyncio
 
 from aiohttp.test_utils import TestClient, TestServer
 
-from data_pipeline.api.storage import create_app
+from dich_vu.api.storage import create_app
 from tests.fakes.storage import FakeCorpusStore
 
 RECORD = {

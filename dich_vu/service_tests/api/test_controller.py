@@ -5,7 +5,7 @@ import asyncio
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
-from data_pipeline.api.controller import create_app
+from dich_vu.api.controller import create_app
 from tests.fakes.controller import FakeClock, FakeUrlQueue
 
 

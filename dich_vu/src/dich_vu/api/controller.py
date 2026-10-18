@@ -9,11 +9,11 @@ from collections.abc import AsyncIterator
 
 from aiohttp import web
 
-from data_pipeline.api.common import error, json_object
 from data_pipeline.application.controller.add_urls import add_urls
 from data_pipeline.application.controller.dispatch import Dispatcher
 from data_pipeline.application.controller.ports import Clock, Downloader, UrlQueue
 from data_pipeline.domain.controller.models import ControllerConfig
+from dich_vu.api.common import error, json_object
 
 log = logging.getLogger(__name__)
 

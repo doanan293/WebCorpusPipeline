@@ -8,13 +8,13 @@ from typing import Any
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from data_pipeline.api import controller as controller_api
-from data_pipeline.api.aggregator import create_app, create_service
 from data_pipeline.domain.aggregator.config import AggregatorConfig
 from data_pipeline.infrastructure.aggregator.outbox import JsonlOutbox
 from data_pipeline.infrastructure.aggregator.service_client import HttpServiceClient
 from data_pipeline.infrastructure.aggregator.sqlite_state import SqliteAggregatorState
 from data_pipeline.infrastructure.controller.sqlite_queue import SqliteUrlQueue
+from dich_vu.api import controller as controller_api
+from dich_vu.api.aggregator import create_app, create_service
 
 RECORD: dict[str, Any] = {
     "url": "https://hust.edu.vn/",

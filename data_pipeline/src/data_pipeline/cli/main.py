@@ -14,19 +14,17 @@ from data_pipeline.cli import (
     errors,
     eval,
     reextract,
-    serve,
 )
 
 app = typer.Typer(
     name="data-pipeline",
-    help="The blocks of the HUST crawler as services, plus corpus and domain tools.",
+    help="The HUST crawler run as one process, plus corpus and domain tools.",
     no_args_is_help=True,
     add_completion=False,
 )
 app.add_typer(corpus.app, name="corpus")
 app.add_typer(domains.app, name="domains")
 app.add_typer(eval.app, name="eval")
-app.add_typer(serve.app, name="serve")
 app.command("reextract")(reextract.reextract)
 
 

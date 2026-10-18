@@ -1,7 +1,7 @@
 # Các khối dịch vụ (theo slide của thầy)
 
 Hệ thống thu thập gồm 5 khối dịch vụ nhỏ và MongoDB. Các khối giao tiếp bằng HTTP và JSON, mỗi khối chạy
-trong một container riêng (cùng một image) bằng lệnh `data-pipeline serve <khối>`.
+trong một container riêng (cùng một image) bằng lệnh `dich-vu serve <khối>` (lõi nằm ở [`data_pipeline/`](../data_pipeline/README.md)).
 
 ```mermaid
 flowchart LR
@@ -103,7 +103,7 @@ curl -X POST localhost:5200/add -d '{"urls": ["https://ctsv.hust.edu.vn/"]}'
 Thứ tự khởi động đi ngược chiều dữ liệu (Lưu trữ, Đọc nội dung, Tải về, Điều khiển, rồi Tổng hợp), vì
 Điều khiển cần node Tải về sống và Tổng hợp gửi URL mầm ngay khi khởi động.
 
-Không có Docker: chạy từng khối bằng `uv run data-pipeline serve <khối>` với biến môi trường trỏ tới khối
+Không có Docker: chạy từng khối bằng `uv run dich-vu serve <khối>` (trong `dich_vu/`) với biến môi trường trỏ tới khối
 kề bên (mặc định là tên service trong compose):
 
 | Khối | Biến môi trường |

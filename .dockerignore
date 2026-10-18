@@ -1,0 +1,10 @@
+# The dich_vu image needs only these; data_pipeline/data holds gigabytes of crawl state.
+*
+!data_pipeline/pyproject.toml
+!data_pipeline/uv.lock
+!data_pipeline/src
+!data_pipeline/config
+!dich_vu/pyproject.toml
+!dich_vu/uv.lock
+!dich_vu/src
+**/__pycache__

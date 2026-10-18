@@ -1,12 +1,16 @@
 # The blocks of the slide, each its own container (one image), plus MongoDB.
+# The project keeps the name data_pipeline so the existing volumes (Mongo above all) are reused.
+name: data_pipeline
 # Start order follows the data downstream-first: the controller pings live fetchers and the
 # aggregator sends its start pages to a live controller.
 x-service: &service
-  build: .
-  image: data-pipeline:latest
+  build:
+    context: ..
+    dockerfile: dich_vu/Dockerfile
+  image: dich-vu:latest
   restart: unless-stopped
   volumes:
-    - ./config:/app/config:ro
+    - ../data_pipeline/config:/app/data_pipeline/config:ro
 
 services:
   mongodb:
@@ -43,11 +47,11 @@ services:
     environment:
       AGGREGATOR_URL: http://aggregator:3300
     env_file:
-      - path: .env
+      - path: ../data_pipeline/.env
         required: false
     volumes:
-      - ./config:/app/config:ro
-      - ./data/enrichment/cache:/app/data/enrichment/cache
+      - ../data_pipeline/config:/app/data_pipeline/config:ro
+      - ../data_pipeline/data/enrichment/cache:/app/data_pipeline/data/enrichment/cache
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen(u.Request('http://127.0.0.1:6600/parse', data=b'', headers={'X-Url': 'http://health/', 'X-Format': 'html'}), timeout=3)"]
       interval: 10s
@@ -85,7 +89,7 @@ services:
     command: ["serve", "controller"]
     ports: ["5200:5200"]
     volumes:
-      - ./config:/app/config:ro
+      - ../data_pipeline/config:/app/data_pipeline/config:ro
       - controller_state:/state
     depends_on:
       fetcher-1: {condition: service_healthy}
@@ -104,7 +108,7 @@ services:
       STORAGE_URL: http://storage:2200
       CONTROLLER_URL: http://controller:5200
     volumes:
-      - ./config:/app/config:ro
+      - ../data_pipeline/config:/app/data_pipeline/config:ro
       - aggregator_state:/state
     depends_on:
       storage: {condition: service_healthy}

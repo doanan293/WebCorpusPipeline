@@ -8,10 +8,10 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 
 from aiohttp import web
 
-from data_pipeline.api.common import Stats, error, stats_loop
 from data_pipeline.application.parser.parse import DocumentReaders, parse_payload
 from data_pipeline.application.parser.ports import AggregatorClient
 from data_pipeline.domain.shared.protocol import ACCEPTED
+from dich_vu.api.common import Stats, error, stats_loop
 
 log = logging.getLogger(__name__)
 

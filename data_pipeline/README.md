@@ -1,8 +1,9 @@
 # Data pipeline
 
-Hệ thống thu thập trang web và tài liệu của Đại học Bách khoa Hà Nội (HUST), theo kiến trúc dịch vụ nhỏ trong
-slide của thầy: **Điều khiển, Tải về, Đọc nội dung, Tổng hợp dữ liệu, Lưu trữ** và **Mongo**, mỗi khối một
-service HTTP/JSON. Lập chỉ mục và tìm kiếm nằm ở project [`lucene/`](../lucene/README.md) (chưa đọc dữ liệu này).
+Hệ thống thu thập trang web và tài liệu của Đại học Bách khoa Hà Nội (HUST), gồm năm khối theo
+slide của thầy: **Điều khiển, Tải về, Đọc nội dung, Tổng hợp dữ liệu, Lưu trữ** và **Mongo**. Folder này chứa lõi
+của năm khối và CLI của nhóm; cùng lõi đó chạy thành năm dịch vụ HTTP/JSON theo slide ở
+[`dich_vu/`](../dich_vu/README.md). Lập chỉ mục và tìm kiếm nằm ở project [`lucene/`](../lucene/README.md) (chưa đọc dữ liệu này).
 Mọi lệnh chạy trong `data_pipeline/`.
 
 ```mermaid
@@ -14,19 +15,11 @@ flowchart LR
     AGG --> S["Lưu trữ :2200"] --> M[("Mongo")]
 ```
 
-Giao diện từng khối, luồng dữ liệu và cách thay khối bằng khối của nhóm khác: [docs/services.md](docs/services.md).
+Giao diện từng khối, luồng dữ liệu và cách thay khối bằng khối của nhóm khác: [dich_vu/README.md](../dich_vu/README.md).
 
 ## Chạy bằng Docker
 
-```bash
-cp .env.example .env                       # khoá LlamaParse, Kaggle (tuỳ chọn)
-docker compose up -d --build               # 5 khối + MongoDB
-docker compose logs -f controller          # xem URL được gửi đi
-curl -X POST localhost:5200/add -d '{"urls": ["https://ctsv.hust.edu.vn/"]}'
-```
-
-Khi khởi động, Tổng hợp gửi trang chủ của các host trong `config/domains/active.txt` sang Điều khiển; Điều khiển
-tự lập lịch crawl lại (trang chủ mỗi ngày, trang mỗi tuần, tài liệu mỗi 30 ngày).
+Năm dịch vụ chạy từ [`dich_vu/`](../dich_vu/README.md) (`cd ../dich_vu && docker compose up -d --build`).
 
 ## Cài đặt để phát triển
 
@@ -35,14 +28,12 @@ Cần Python 3.13 và [uv](https://docs.astral.sh/uv/).
 ```bash
 uv sync                                # gồm cả nhóm dev (pytest, ruff, pyrefly, pre-commit)
 uv run playwright install chromium     # trình duyệt cho trang JavaScript
-uv run data-pipeline serve controller  # chạy một khối (xem docs/services.md cho biến môi trường)
 ```
 
 ## Lệnh
 
 | Lệnh | Việc làm |
 |---|---|
-| `serve controller\|fetcher\|parser\|aggregator\|storage` | chạy một khối |
 | `reextract` | chạy lại bộ trích xuất trên HTML của bản crawl cũ, gửi kết quả vào Tổng hợp |
 | `corpus package\|verify\|query\|publish\|pull` | đóng gói MongoDB thành corpus, truy vấn đồ thị, Kaggle ([docs/corpus.md](docs/corpus.md)) |
 | `domains audit` | kiểm tra host nào còn trả nội dung ([docs/domains.md](docs/domains.md)) |
@@ -61,7 +52,7 @@ uv run data-pipeline serve controller  # chạy một khối (xem docs/services.
 | Vị trí | Nội dung |
 |---|---|
 | `.env` | `LLAMAPARSE_KEY1..n`, `KAGGLE_API_TOKEN`. Không commit |
-| `config/controller.yaml`, `fetcher.yaml`, `parser.yaml`, `aggregator.yaml` | cấu hình từng khối ([docs/services.md](docs/services.md#cấu-hình)) |
+| `config/controller.yaml`, `fetcher.yaml`, `parser.yaml`, `aggregator.yaml` | cấu hình từng khối ([dich_vu/README.md](../dich_vu/README.md#cấu-hình)) |
 | `config/pipeline.yaml` | MongoDB cho các lệnh `corpus` |
 | `config/domains/` | `all.txt`, `active.txt`, `status.jsonl` |
 | `config/kaggle-dataset.json`, `config/corpus.lock.json` | metadata dataset Kaggle và bản đã ghim |
@@ -72,7 +63,7 @@ Dữ liệu các khối lưu lại (Mongo, SQLite của Điều khiển và Tổ
 
 ```bash
 uv run pytest -q                     # bỏ qua test cần Docker (marker `docker`)
-uv run pytest -q -m docker           # test với MongoDB thật (docker compose up -d mongodb)
+uv run pytest -q -m docker           # test với MongoDB thật (`docker compose -f ../dich_vu/compose.yaml up -d mongodb`)
 uv run ruff check . && uv run ruff format --check .
 uv run pyrefly check                 # kiểm tra kiểu (preset strict)
 uv run pre-commit install            # cài hook (ruff, pyrefly khi commit; pytest khi push)
@@ -86,7 +77,7 @@ chuyện qua HTTP. Quy tắc phụ thuộc được kiểm tra tự động (`te
 
 | Tài liệu | Nội dung |
 |---|---|
-| [docs/services.md](docs/services.md) | các khối, endpoint, luồng dữ liệu, chạy, thay khối |
+| [../dich_vu/README.md](../dich_vu/README.md) | các khối, endpoint, luồng dữ liệu, chạy, thay khối |
 | [docs/architecture.md](docs/architecture.md) | cấu trúc package, quy tắc phụ thuộc, yêu cầu của thầy |
 | [docs/data-schema.md](docs/data-schema.md) | MongoDB, trạng thái các khối, gói corpus |
 | [docs/corpus.md](docs/corpus.md) | đóng gói, Kaggle |
