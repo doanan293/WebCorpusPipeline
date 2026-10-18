@@ -38,10 +38,14 @@ if TYPE_CHECKING:
         Parses,
         TransportFactory,
     )
+    from data_pipeline.application.fetcher.ports import Renderer
     from data_pipeline.application.hosts.ports import AuditReports, BrowserProber, HostProber
     from data_pipeline.domain.controller.models import ControllerConfig
     from data_pipeline.domain.crawl.config import CrawlerConfig
     from data_pipeline.domain.crawl.seeds import SeedSet
+    from data_pipeline.domain.fetcher.models import FetcherConfig
+    from data_pipeline.infrastructure.fetcher.http_getter import AiohttpPageGetter
+    from data_pipeline.infrastructure.fetcher.parser_client import HttpParserClient
 
 # -- configuration ----------------------------------------------------------------------------
 
@@ -281,3 +285,30 @@ class _SystemClock:
 
 def system_clock() -> Clock:
     return _SystemClock()
+
+
+# -- fetcher ----------------------------------------------------------------------------------
+
+
+def fetcher_config(path: Path) -> FetcherConfig:
+    from data_pipeline.infrastructure.fetcher.config_file import load_fetcher_config
+
+    return load_fetcher_config(path)
+
+
+def page_getter(config: FetcherConfig) -> AiohttpPageGetter:
+    from data_pipeline.infrastructure.fetcher.http_getter import AiohttpPageGetter
+
+    return AiohttpPageGetter(config)
+
+
+def renderer(config: FetcherConfig) -> Renderer:
+    from data_pipeline.infrastructure.fetcher.browser import PlaywrightRenderer
+
+    return PlaywrightRenderer(config)
+
+
+def parser_client(parser_url: str) -> HttpParserClient:
+    from data_pipeline.infrastructure.fetcher.parser_client import HttpParserClient
+
+    return HttpParserClient(parser_url)

@@ -38,3 +38,24 @@ def test_serve_controller_bad_config_exits_2(project: ProjectPaths, tmp_path: Pa
     config = tmp_path / "controller.yaml"
     config.write_text("port: 5200\n", encoding="utf-8")
     assert main(["serve", "controller", "--config", str(config)]) == 2
+
+
+def test_serve_fetcher_uses_port_option(
+    project: ProjectPaths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    served: list[tuple[web.Application, int]] = []
+
+    def fake_run(app: web.Application, port: int, background: object = ()) -> None:
+        served.append((app, port))
+
+    monkeypatch.setattr(common, "run", fake_run)
+    config = tmp_path / "fetcher.yaml"
+    config.write_text("port: 8800\n", encoding="utf-8")
+    assert main(["serve", "fetcher", "--config", str(config), "--port", "8801"]) == 0
+    ((app, port),) = served
+    assert port == 8801
+    paths = sorted(
+        (route.method, route.resource.canonical) for route in app.router.routes() if route.resource
+    )
+    assert ("GET", "/ping") in paths
+    assert ("POST", "/load") in paths

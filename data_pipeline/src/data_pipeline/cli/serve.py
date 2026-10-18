@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -33,4 +34,27 @@ def controller(
         settings,
     )
     common.run(app_, settings.port)
+    return 0
+
+
+@app.command()
+def fetcher(
+    config: Annotated[
+        Path | None, typer.Option(help="Fetcher settings (default: config/fetcher.yaml).")
+    ] = None,
+    port: Annotated[
+        int | None, typer.Option(help="Port to listen on (default: from config).")
+    ] = None,
+) -> int:
+    """Tải về: POST /load and GET /ping; sends downloads to PARSER_URL/parse."""
+    from data_pipeline.api import common
+    from data_pipeline.api import fetcher as service
+
+    settings = bootstrap.fetcher_config(_config_path(config, "fetcher.yaml"))
+    getter = bootstrap.page_getter(settings)
+    parser = bootstrap.parser_client(os.environ.get("PARSER_URL", "http://parser:6600"))
+    app_ = service.create_service(
+        getter, bootstrap.renderer(settings), parser, closers=(getter.close, parser.close)
+    )
+    common.run(app_, port if port is not None else settings.port)
     return 0
