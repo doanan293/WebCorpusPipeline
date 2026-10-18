@@ -39,3 +39,11 @@ class ControllerConfig:
     recrawl_days: Mapping[UrlKind, float] = field(
         default_factory=lambda: dict(DEFAULT_RECRAWL_DAYS)
     )
+
+
+@dataclass(frozen=True, slots=True)
+class CrawlConfig:
+    """The one-process crawl: ``workers`` in-process download nodes under the controller's rules."""
+
+    workers: int
+    controller: ControllerConfig

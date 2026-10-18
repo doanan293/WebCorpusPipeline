@@ -28,7 +28,12 @@ from dich_vu.api import aggregator, controller, fetcher, parser, storage
 from tests.fakes.fetcher import FakeRenderer
 from tests.fakes.parser import MemoryParseCache
 from tests.fakes.storage import FakeCorpusStore
-from tests.integration.services.site import site_app
+from tests.integration.services.site import (
+    EXPECTED_EDGE,
+    EXPECTED_HTML_PATHS,
+    EXPECTED_OTHER_PATHS,
+    site_app,
+)
 
 
 def _free_port() -> int:
@@ -132,8 +137,8 @@ async def _wait(check: object, seconds: float) -> None:
 
 def test_site_flows_through_all_blocks(tmp_path: Path) -> None:
     store = FakeCorpusStore()
-    expected_html = 3
-    expected_other = 2
+    expected_html = len(EXPECTED_HTML_PATHS)
+    expected_other = len(EXPECTED_OTHER_PATHS)
 
     async def scenario() -> Stack:
         async with _stack(tmp_path, store) as stack:
@@ -149,7 +154,8 @@ def test_site_flows_through_all_blocks(tmp_path: Path) -> None:
     stack = asyncio.run(scenario())
     site = stack.site
     html = store.collections["html"]
-    assert set(html) == {f"{site}/", f"{site}/a", f"{site}/b"}
+    assert set(html) == {f"{site}{path}" for path in EXPECTED_HTML_PATHS}
+    assert set(store.collections["other"]) == {f"{site}{path}" for path in EXPECTED_OTHER_PATHS}
     duplicates = [doc for doc in html.values() if doc.get("duplicate_of")]
     assert len(duplicates) == 1
     assert duplicates[0]["content"] == ""
@@ -158,7 +164,8 @@ def test_site_flows_through_all_blocks(tmp_path: Path) -> None:
     assert other[f"{site}/doc.pdf"]["format"] == "pdf"
     assert "Thong bao tuyen sinh PDF" in other[f"{site}/doc.pdf"]["content"]
     assert "Bao cao nam hoc DOCX" in other[f"{site}/report.docx"]["content"]
-    assert {"src": f"{site}/", "dest": f"{site}/a", "text": "Bai A"} in store.graph
+    src, dest, text = EXPECTED_EDGE
+    assert {"src": f"{site}{src}", "dest": f"{site}{dest}", "text": text} in store.graph
     queued = [row[0] for row in stack.queue.db.execute("SELECT url FROM urls")]
     assert not any("google.com" in url for url in queued)
 

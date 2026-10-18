@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
+from collections import Counter
 
 import docx
 import pymupdf
@@ -31,7 +33,14 @@ def _docx() -> bytes:
     return buffer.getvalue()
 
 
-def site_app() -> web.Application:
+# What crawling the site from "/" must store, whichever way the blocks run (paths on the site).
+EXPECTED_HTML_PATHS = frozenset({"/", "/a", "/b"})
+EXPECTED_OTHER_PATHS = frozenset({"/doc.pdf", "/report.docx"})
+EXPECTED_EDGE = ("/", "/a", "Bai A")
+
+
+def site_app(hits: Counter[str] | None = None, slow_seconds: float = 30.0) -> web.Application:
+    """The site; ``hits`` counts requests per path; ``/slow`` answers after ``slow_seconds``."""
     pages = {
         "/": _page(
             "Trang chu",
@@ -46,6 +55,7 @@ def site_app() -> web.Application:
         ),
         "/a": _page("Bai", "Noi dung bai viet giong nhau.", []),
         "/b": _page("Bai", "Noi dung bai viet giong nhau.", []),
+        "/slow": _page("Cham", "Trang tra loi cham.", []),
     }
     files = {
         "/doc.pdf": (_pdf(), "application/pdf"),
@@ -56,6 +66,10 @@ def site_app() -> web.Application:
     }
 
     async def handle(request: web.Request) -> web.Response:
+        if hits is not None:
+            hits[request.path] += 1
+        if request.path == "/slow":
+            await asyncio.sleep(slow_seconds)
         if request.path in pages:
             return web.Response(text=pages[request.path], content_type="text/html", charset="utf-8")
         if request.path in files:

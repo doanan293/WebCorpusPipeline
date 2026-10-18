@@ -13,7 +13,9 @@ RANK = {layer: index for index, layer in enumerate(LAYERS)}
 BLOCKS = frozenset({"controller", "fetcher", "parser", "aggregator", "storage"})
 CONTEXTS = frozenset({"corpus", "hosts", *BLOCKS})
 SHARED = "shared"
-OUTER = frozenset({"cli"})  # entry points; bootstrap.py is the composition root
+# Entry points; bootstrap.py is the composition root. runner wires the blocks into one process
+# (for the cli), the one place allowed to use several blocks at once.
+OUTER = frozenset({"cli", "runner"})
 BOOTSTRAP = "bootstrap"
 IO_MODULES = frozenset(
     {
@@ -68,7 +70,8 @@ def allowed(importer: str, imported: str) -> bool:
         return target_layer not in OUTER
     # Entry points call use cases and bootstrap; they never build adapters themselves.
     if layer in OUTER:
-        return target_layer != "infrastructure" and target_layer not in OUTER - {layer}
+        runs = layer == "cli" and target_layer == "runner"
+        return target_layer != "infrastructure" and (runs or target_layer not in OUTER - {layer})
     if target_layer in OUTER or target_layer == BOOTSTRAP:
         return False
     if layer not in RANK or target_layer not in RANK:
@@ -211,3 +214,14 @@ def test_blocks_do_not_import_each_other() -> None:
     assert allowed(
         "data_pipeline.application.fetcher.fetch", "data_pipeline.domain.shared.protocol"
     )
+
+
+def test_runner_may_wire_blocks() -> None:
+    assert allowed("data_pipeline.runner.adapters", "data_pipeline.application.parser.parse")
+    assert allowed("data_pipeline.runner.adapters", "data_pipeline.application.storage.store")
+    assert not allowed(
+        "data_pipeline.runner.adapters", "data_pipeline.infrastructure.storage.mongo"
+    )
+    assert not allowed("data_pipeline.runner.crawl", "data_pipeline.cli.crawl")
+    assert allowed("data_pipeline.cli.crawl", "data_pipeline.runner.crawl")
+    assert not allowed("data_pipeline.application.parser.parse", "data_pipeline.runner.adapters")

@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from data_pipeline.application.storage.ports import CorpusStore
     from data_pipeline.domain.aggregator.config import AggregatorConfig
     from data_pipeline.domain.aggregator.seeds import Seeds
-    from data_pipeline.domain.controller.models import ControllerConfig
+    from data_pipeline.domain.controller.models import ControllerConfig, CrawlConfig
     from data_pipeline.domain.fetcher.models import FetcherConfig
     from data_pipeline.domain.parser.config import ParserConfig
     from data_pipeline.infrastructure.aggregator.service_client import HttpServiceClient
@@ -137,6 +137,12 @@ def controller_config(path: Path) -> ControllerConfig:
     from data_pipeline.infrastructure.controller.config_file import load_controller_config
 
     return load_controller_config(path)
+
+
+def crawl_config(crawl_path: Path, controller_path: Path) -> CrawlConfig:
+    from data_pipeline.infrastructure.controller.config_file import load_crawl_config
+
+    return load_crawl_config(crawl_path, controller_path)
 
 
 def url_queue(path: Path) -> UrlQueue:

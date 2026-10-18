@@ -15,6 +15,8 @@ from data_pipeline.cli.main import main
     "args",
     [
         ["--help"],
+        ["crawl", "run", "--help"],
+        ["seeds", "add", "--help"],
         ["reextract", "--help"],
         ["corpus", "--help"],
         ["corpus", "verify", "--help"],

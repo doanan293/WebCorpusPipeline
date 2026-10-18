@@ -10,6 +10,7 @@ from data_pipeline import bootstrap
 from data_pipeline.cli import (
     context,
     corpus,
+    crawl,
     domains,
     errors,
     eval,
@@ -22,6 +23,8 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+app.add_typer(crawl.app, name="crawl")
+app.add_typer(crawl.seeds_app, name="seeds")
 app.add_typer(corpus.app, name="corpus")
 app.add_typer(domains.app, name="domains")
 app.add_typer(eval.app, name="eval")

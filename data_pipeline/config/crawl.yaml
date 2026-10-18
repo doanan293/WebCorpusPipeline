@@ -1,0 +1,9 @@
+# `data-pipeline crawl run`: năm khối trong một tiến trình. Đọc config/controller.yaml (lịch, crawl lại,
+# hàng đợi dùng chung) rồi ghi đè bằng các khoá dưới đây. Mặc định theo nhịp của pipeline Scrapy cũ.
+workers: 64                        # số URL tải song song (thay cho các node Tải về)
+per_host_concurrency: 4            # số URL của một host đang tải cùng lúc
+host_delay_seconds: 0              # khoảng chờ tối thiểu; AutoThrottle tự giãn khi host chậm
+autothrottle: true
+autothrottle_start_delay_seconds: 0.25
+autothrottle_max_delay_seconds: 5
+autothrottle_target_concurrency: 4

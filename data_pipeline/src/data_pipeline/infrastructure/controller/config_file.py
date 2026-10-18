@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
 import yaml
 
-from data_pipeline.domain.controller.models import DEFAULT_RECRAWL_DAYS, ControllerConfig, UrlKind
+from data_pipeline.domain.controller.models import (
+    DEFAULT_RECRAWL_DAYS,
+    ControllerConfig,
+    CrawlConfig,
+    UrlKind,
+)
 from data_pipeline.domain.shared.errors import ConfigError
 
 _NUMBERS = (
@@ -21,8 +27,7 @@ _NUMBERS = (
 )
 
 
-def load_controller_config(path: Path) -> ControllerConfig:
-    """Read ``controller.yaml``; a missing or unusable value is a ``ConfigError`` naming it."""
+def _read_mapping(path: Path) -> dict[str, Any]:
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError) as exc:
@@ -31,7 +36,33 @@ def load_controller_config(path: Path) -> ControllerConfig:
     if not isinstance(raw, dict):
         msg = f"{path} must hold a mapping"
         raise ConfigError(msg)
-    values = cast("dict[str, Any]", raw)
+    return cast("dict[str, Any]", raw)
+
+
+def load_controller_config(path: Path) -> ControllerConfig:
+    """Read ``controller.yaml``; a missing or unusable value is a ``ConfigError`` naming it."""
+    return _controller_config(_read_mapping(path))
+
+
+def load_crawl_config(crawl_path: Path, controller_path: Path) -> CrawlConfig:
+    """``controller.yaml`` with the keys of ``crawl.yaml`` on top, run by in-process nodes.
+
+    The one-process crawl follows the controller's rules; ``crawl.yaml`` only sets its own pace
+    (``workers`` and any controller key such as ``per_host_concurrency``). ``downloaders`` and
+    ``port`` there are ignored: the nodes are ``workers`` in-process ones and nothing listens.
+    """
+    overrides = _read_mapping(crawl_path)
+    workers = _positive_int("workers", overrides.pop("workers", 16))
+    for ignored in ("downloaders", "port"):
+        overrides.pop(ignored, None)
+    values = {**_read_mapping(controller_path), **overrides}
+    values["downloaders"] = ["http://in-process"]  # replaced below; keeps validation in one place
+    controller = _controller_config(values)
+    nodes = tuple(f"local:{index}" for index in range(workers))
+    return CrawlConfig(workers=workers, controller=replace(controller, downloaders=nodes))
+
+
+def _controller_config(values: dict[str, Any]) -> ControllerConfig:
     downloaders = values.get("downloaders")
     if not isinstance(downloaders, list) or not downloaders:
         msg = "downloaders must list at least one download node URL"

@@ -5,7 +5,10 @@ from pathlib import Path
 import pytest
 
 from data_pipeline.domain.shared.errors import ConfigError
-from data_pipeline.infrastructure.controller.config_file import load_controller_config
+from data_pipeline.infrastructure.controller.config_file import (
+    load_controller_config,
+    load_crawl_config,
+)
 
 
 def test_config_reads_repo_file() -> None:
@@ -79,3 +82,32 @@ def test_config_rejects_bad_throttle_settings(tmp_path: Path, line: str) -> None
     )
     with pytest.raises(ConfigError, match=line.split(":", maxsplit=1)[0]):
         load_controller_config(path)
+
+
+def test_crawl_config_overrides_controller_settings(tmp_path: Path) -> None:
+    crawl = tmp_path / "crawl.yaml"
+    crawl.write_text(
+        "workers: 3\nper_host_concurrency: 4\nhost_delay_seconds: 0\ndownloaders: [http://x:1]\n",
+        encoding="utf-8",
+    )
+    config = load_crawl_config(crawl, Path("config/controller.yaml"))
+    assert config.workers == 3
+    assert config.controller.downloaders == ("local:0", "local:1", "local:2")
+    assert config.controller.per_host_concurrency == 4
+    assert config.controller.host_delay_seconds == 0.0
+    assert config.controller.database == Path("data/state/controller.sqlite3")
+
+
+def test_repo_crawl_config_uses_the_old_crawler_pace() -> None:
+    config = load_crawl_config(Path("config/crawl.yaml"), Path("config/controller.yaml"))
+    assert config.workers == 64
+    assert config.controller.per_host_concurrency == 4
+    assert config.controller.host_delay_seconds == 0.0
+    assert config.controller.autothrottle_start_delay_seconds == 0.25
+
+
+def test_crawl_config_rejects_zero_workers(tmp_path: Path) -> None:
+    crawl = tmp_path / "crawl.yaml"
+    crawl.write_text("workers: 0\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="workers"):
+        load_crawl_config(crawl, Path("config/controller.yaml"))
