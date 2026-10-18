@@ -31,6 +31,11 @@ def content_id_for(text: str) -> str:
 def record_from_article(url: str, article: Mapping[str, Any]) -> dict[str, Any]:
     """An HTML record from an extracted article dict (fresh, or stored by the batch crawl)."""
     text = str(article.get("text") or "")
+    refs = list(article.get("observed_refs", []))
+    if any("sentence" in ref for ref in refs):
+        # Out-links are links only; embedded resources (images, the NukeViet cron beacon
+        # ``index.php?second=cronjobs&p=<random>``) are not. Older stored articles cannot tell.
+        refs = [ref for ref in refs if "sentence" in ref]
     record: dict[str, Any] = {
         "url": url,
         "format": "html",
@@ -41,7 +46,7 @@ def record_from_article(url: str, article: Mapping[str, Any]) -> dict[str, Any]:
             # The slide's link text is the sentence holding the link; older stored articles have
             # only the link's own label.
             [ref["url"], ref.get("sentence") or ref.get("text") or ""]
-            for ref in article.get("observed_refs", [])
+            for ref in refs
         ],
     }
     for name in _EXTRA_FIELDS:

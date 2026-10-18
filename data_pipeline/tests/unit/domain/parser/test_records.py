@@ -27,7 +27,7 @@ def test_html_record_maps_slide_fields() -> None:
     assert "Noi dung bai." in record["content"]
     assert record["intro"] == "Gioi thieu"
     assert ["https://hust.edu.vn/b", "Bai B"] in record["out-links"]
-    assert record["images"] == ["https://hust.edu.vn/anh.jpg"]
+    assert "https://hust.edu.vn/anh.jpg" in record["images"]
     assert record["content_id"] == hashlib.sha256(record["content"].strip().encode()).hexdigest()
     assert {
         "published_at",
@@ -90,10 +90,22 @@ def test_out_links_carry_the_sentence_holding_the_link() -> None:
 
 
 def test_stored_article_without_sentences_keeps_its_labels() -> None:
+    """An article stored before sentences existed cannot tell links from images: keep them all."""
     article: dict[str, Any] = {
         "text": "body",
         "observed_refs": [
             {"url": "https://h/x", "text": "X", "kind": "page", "rel": []},
+            {"url": "https://h/i.png", "text": "", "kind": "file", "rel": []},
+        ],
+    }
+    record = record_from_article("https://h/", article)
+    assert record["out-links"] == [["https://h/x", "X"], ["https://h/i.png", ""]]
+
+
+def test_fresh_article_uses_sentences_and_drops_embedded_resources() -> None:
+    article: dict[str, Any] = {
+        "text": "body",
+        "observed_refs": [
             {
                 "url": "https://h/y",
                 "text": "Y",
@@ -101,7 +113,25 @@ def test_stored_article_without_sentences_keeps_its_labels() -> None:
                 "kind": "page",
                 "rel": [],
             },
+            {"url": "https://h/i.png", "text": "", "kind": "file", "rel": []},
         ],
     }
     record = record_from_article("https://h/", article)
-    assert record["out-links"] == [["https://h/x", "X"], ["https://h/y", "Xem Y nhé."]]
+    assert record["out-links"] == [["https://h/y", "Xem Y nhé."]]
+
+
+def test_out_links_are_links_not_embedded_resources() -> None:
+    """The slide's out-links are links (thẻ a); images go to ``images``. NukeViet pages embed
+    <img src="/index.php?second=cronjobs&p=<random>">: as an out-link, every page made a new URL."""
+    page = (
+        "<html><head><meta charset='utf-8'><title>T</title>"
+        "<link rel='next' href='/tin?page=2'></head><body><article><h1>T</h1>"
+        "<p>Xem <a href='/tb'>thông báo</a> mới.</p><img src='/anh.jpg' alt='Anh'>"
+        "<img src='/index.php?second=cronjobs&amp;p=x1y2'></article></body></html>"
+    ).encode()
+    record = html_record("https://hust.edu.vn/a", analyze_article(page, "https://hust.edu.vn/a"))
+    assert [url for url, _ in record["out-links"]] == [
+        "https://hust.edu.vn/tin?page=2",
+        "https://hust.edu.vn/tb",
+    ]
+    assert "https://hust.edu.vn/anh.jpg" in record["images"]

@@ -122,7 +122,9 @@ class HtmlDiscovery(TypedDict):
     text: str
     kind: str
     rel: list[str]
-    sentence: NotRequired[str]  # links only: the sentence holding the link (the slide's link text)
+    # Set on links only (a, area, link): the sentence holding the link, the slide's link text. Its
+    # absence marks an embedded resource (img, video, ...), which is not an out-link.
+    sentence: NotRequired[str]
 
 
 # Blocks of running text: a link inside one is quoted with the sentence around it.
@@ -278,7 +280,7 @@ def discoveries_from_root(root: etree._Element, base_url: str) -> list[HtmlDisco
                 sentence=anchor_sentence(element, text),
             )
         if tag == "link" and element.get("href"):
-            add(element.get("href", ""), text, tuple(sorted(relation)))
+            add(element.get("href", ""), text, tuple(sorted(relation)), sentence=text)
         if tag in _SRC_TAGS and element.get("src"):
             add(element.get("src", ""), text, (), kind_hint="file")
         if tag == "object" and element.get("data"):
