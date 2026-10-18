@@ -5,8 +5,8 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 
-from data_pipeline.domain.enrich.models import DownloadedFile, ParseResult, jsonable
-from data_pipeline.domain.enrich.serializers import parse_result_from_dict
+from data_pipeline.domain.parser.models import DownloadedFile, ParseResult, jsonable
+from data_pipeline.domain.parser.serializers import parse_result_from_dict
 from data_pipeline.infrastructure.enrich.sqlite.repository import LockedRepository, locked
 
 

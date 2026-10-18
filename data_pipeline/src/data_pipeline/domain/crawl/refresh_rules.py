@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from http import HTTPStatus
 
 from data_pipeline.domain.crawl.config import CrawlerConfig
-from data_pipeline.domain.crawl.extract.fingerprint import change_fingerprint
+from data_pipeline.domain.parser.extract.fingerprint import change_fingerprint
 
 
 @dataclass(frozen=True, slots=True)

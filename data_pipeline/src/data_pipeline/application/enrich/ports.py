@@ -6,16 +6,14 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from data_pipeline.domain.enrich.models import (
-    DownloadedFile,
     DownloadJob,
     HttpResponse,
     InventorySummary,
-    LocalResult,
-    ParseResult,
     RunSummary,
     SourceProgress,
     SourceRef,
 )
+from data_pipeline.domain.parser.models import DownloadedFile, LocalResult, ParseResult
 from data_pipeline.domain.shared.config import Settings
 
 

@@ -9,7 +9,6 @@ from scrapy.exceptions import IgnoreRequest
 from scrapy.http import Response
 
 from data_pipeline.application.crawl.ports import UrlRecords
-from data_pipeline.domain.crawl.frontier.assets import recognizable_asset
 from data_pipeline.domain.crawl.options import CrawlOptions
 from data_pipeline.domain.crawl.pages import (
     FailedRequest,
@@ -19,6 +18,7 @@ from data_pipeline.domain.crawl.pages import (
     Scheduled,
 )
 from data_pipeline.domain.crawl.refresh_rules import conditional_headers, response_validators
+from data_pipeline.domain.shared.assets import recognizable_asset
 
 
 def _host(url: str) -> str:

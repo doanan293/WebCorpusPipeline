@@ -25,7 +25,7 @@ from scrapy_playwright.page import PageMethod
 from twisted.internet import task
 from twisted.internet.interfaces import IReactorTime
 
-from data_pipeline.domain.crawl.access import classify_access
+from data_pipeline.domain.fetcher.access import classify_access
 from data_pipeline.domain.shared.url import UrlPolicy
 from data_pipeline.infrastructure.shared.network import (
     resolve_public_hostname,

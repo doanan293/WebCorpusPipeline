@@ -6,8 +6,8 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from data_pipeline.domain.crawl.frontier.assets import classify_asset
 from data_pipeline.domain.crawl.models import DUPLICATE_DROPPED_FIELDS
+from data_pipeline.domain.shared.assets import classify_asset
 
 if TYPE_CHECKING:
     import sqlite3

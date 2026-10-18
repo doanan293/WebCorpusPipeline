@@ -7,7 +7,7 @@ from typing import Any, Literal, cast
 from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
-from data_pipeline.domain.crawl.extract.links import normalize_url
+from data_pipeline.domain.shared.links import normalize_url
 from data_pipeline.domain.shared.url import canonicalize_url
 
 DiscoveryStrategy = Literal["sitemap-only", "hybrid-unified"]

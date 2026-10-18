@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING, Any, cast
 
 from data_pipeline.application.crawl.ports import RefreshRuns
 from data_pipeline.application.crawl.writer import content_id_for
-from data_pipeline.domain.crawl.access import classify_page_gate
-from data_pipeline.domain.crawl.extract.article import analyze_article
 from data_pipeline.domain.crawl.frontier.sitemaps import SitemapParseError, parse_sitemap
 from data_pipeline.domain.crawl.pages import FetchedPage, FollowUp
 from data_pipeline.domain.crawl.refresh_rules import (
@@ -18,6 +16,8 @@ from data_pipeline.domain.crawl.refresh_rules import (
     classify_refetch,
 )
 from data_pipeline.domain.crawl.seeds import SeedMode
+from data_pipeline.domain.fetcher.access import classify_page_gate
+from data_pipeline.domain.parser.extract.article import analyze_article
 
 if TYPE_CHECKING:
     from data_pipeline.application.crawl.page_pipeline import PagePipeline

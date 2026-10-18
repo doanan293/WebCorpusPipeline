@@ -18,9 +18,9 @@ from data_pipeline.application.crawl.ports import (
 )
 from data_pipeline.application.crawl.refresh_pipeline import RefreshSession
 from data_pipeline.application.crawl.requeue import restore_status
-from data_pipeline.domain.crawl.extract.dates import parse_page_date
 from data_pipeline.domain.crawl.refresh_rules import RefreshSettings
 from data_pipeline.domain.crawl.run_status import CONTINUABLE_RUN_STATUSES, FINISHED_STATUSES
+from data_pipeline.domain.parser.extract.dates import parse_page_date
 
 RefreshReason = Literal[
     "homepage", "sitemap", "navigation", "pagination_head", "recent", "pagination_next"

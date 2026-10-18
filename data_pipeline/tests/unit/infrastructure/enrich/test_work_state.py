@@ -4,12 +4,8 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from data_pipeline.domain.enrich.models import (
-    DownloadedFile,
-    DownloadJob,
-    ParseResult,
-    SourceProgress,
-)
+from data_pipeline.domain.enrich.models import DownloadJob, SourceProgress
+from data_pipeline.domain.parser.models import DownloadedFile, ParseResult
 from data_pipeline.infrastructure.enrich.sqlite.unit_of_work import SqliteEnrichUnitOfWork
 
 

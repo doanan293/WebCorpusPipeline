@@ -4,8 +4,8 @@ from dataclasses import replace
 from typing import Any, cast
 
 from data_pipeline.application.crawl.refresh_pipeline import RefreshSession
-from data_pipeline.domain.crawl.extract.article import analyze_article
 from data_pipeline.domain.crawl.refresh_rules import RefreshSettings
+from data_pipeline.domain.parser.extract.article import analyze_article
 from tests.fakes.crawl import FakeRefreshRuns
 from tests.unit.application.crawl.test_page_pipeline import page, pipeline
 

@@ -15,12 +15,8 @@ from data_pipeline.domain.enrich.download_rules import (
     PermanentDownloadError,
     RetryableDownloadError,
 )
-from data_pipeline.domain.enrich.models import (
-    DownloadedFile,
-    DownloadJob,
-    HttpResponse,
-    SourceProgress,
-)
+from data_pipeline.domain.enrich.models import DownloadJob, HttpResponse, SourceProgress
+from data_pipeline.domain.parser.models import DownloadedFile
 from data_pipeline.domain.shared.config import ProjectPaths, Settings
 from data_pipeline.infrastructure.enrich.files.download_files import LocalDownloadFiles
 from data_pipeline.infrastructure.enrich.http.aiohttp_transport import USER_AGENT

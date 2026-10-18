@@ -12,7 +12,7 @@ from data_pipeline.infrastructure.crawl.scrapy.middlewares import (
     PublicAssetAddressMiddleware,
     SafeRedirectMiddleware,
 )
-from data_pipeline.infrastructure.crawl.scrapy.playwright_driver import isolate_playwright_driver
+from data_pipeline.infrastructure.fetcher.playwright_driver import isolate_playwright_driver
 
 # Rendering only needs the DOM's text and links. Every subresource a page loads passes
 # through Scrapy's event loop, so these are not fetched at all. Stylesheets are kept: some

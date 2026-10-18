@@ -9,7 +9,8 @@ from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 from typing import Any
 
-from data_pipeline.domain.enrich.models import DownloadedFile, RunSummary
+from data_pipeline.domain.enrich.models import RunSummary
+from data_pipeline.domain.parser.models import DownloadedFile
 from data_pipeline.infrastructure.enrich.files.download_files import verify_file
 from data_pipeline.infrastructure.enrich.sqlite.downloads import SqliteDownloads
 from data_pipeline.infrastructure.enrich.sqlite.failures import SqliteFailures

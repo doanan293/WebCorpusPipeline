@@ -8,16 +8,16 @@ from pathlib import Path
 from typing import Any
 
 from data_pipeline.application.enrich.extract import extract_documents
-from data_pipeline.domain.enrich.key_pool import KeysExhaustedError
-from data_pipeline.domain.enrich.models import (
+from data_pipeline.domain.parser.key_pool import KeysExhaustedError
+from data_pipeline.domain.parser.models import (
     DownloadedFile,
     ExtractedPart,
     LocalResult,
     ParseResult,
 )
 from data_pipeline.domain.shared.config import Settings
-from data_pipeline.infrastructure.enrich.files.cache import FileParseCache
 from data_pipeline.infrastructure.enrich.sqlite.unit_of_work import SqliteEnrichUnitOfWork
+from data_pipeline.infrastructure.parser.cache import FileParseCache
 from tests.fakes.enrich import FakeCloudParser, FakeLocalParser
 
 type Cloud = Callable[[str, DownloadedFile, LocalResult, list[int]], ParseResult]

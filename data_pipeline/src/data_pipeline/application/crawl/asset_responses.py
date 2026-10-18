@@ -4,15 +4,12 @@ from collections.abc import Iterable, Iterator
 from http import HTTPStatus
 
 from data_pipeline.application.crawl.writer import CrawlWriter, StorageLimitError
-from data_pipeline.domain.crawl.frontier.assets import (
-    AssetPolicy,
-    recognizable_asset,
-    role_for_group,
-)
+from data_pipeline.domain.crawl.frontier.assets import AssetPolicy
 from data_pipeline.domain.crawl.models import ReusedAssetTarget
 from data_pipeline.domain.crawl.options import CrawlOptions
 from data_pipeline.domain.crawl.pages import FailedRequest, FetchedPage
 from data_pipeline.domain.crawl.routing import route_response
+from data_pipeline.domain.shared.assets import recognizable_asset, role_for_group
 
 _ACCESS_GATES = ("captcha_blocked", "login_required")
 _ASSET_SAFETY_REASONS = {

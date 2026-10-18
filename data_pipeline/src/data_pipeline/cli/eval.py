@@ -15,7 +15,7 @@ def extraction(
     output: Annotated[Path, typer.Option(help="Where to write the evaluation report.")],
 ) -> int:
     """Score HTML content extraction against fixtures."""
-    from data_pipeline.domain.crawl.extract import evaluation
+    from data_pipeline.domain.parser.extract import evaluation
 
     print(json.dumps(evaluation.evaluate(fixtures, output), ensure_ascii=False, indent=2))
     return 0

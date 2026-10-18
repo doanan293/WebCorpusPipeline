@@ -23,7 +23,8 @@ from data_pipeline.domain.enrich.download_rules import (
     raise_for_status,
     range_start,
 )
-from data_pipeline.domain.enrich.models import DownloadedFile, DownloadJob, HttpResponse
+from data_pipeline.domain.enrich.models import DownloadJob, HttpResponse
+from data_pipeline.domain.parser.models import DownloadedFile
 from data_pipeline.domain.shared.config import Settings
 
 

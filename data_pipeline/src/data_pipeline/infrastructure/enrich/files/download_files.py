@@ -11,7 +11,8 @@ from data_pipeline.domain.enrich.download_rules import (
     extension_for,
     is_strong_etag,
 )
-from data_pipeline.domain.enrich.models import DownloadedFile, DownloadJob
+from data_pipeline.domain.enrich.models import DownloadJob
+from data_pipeline.domain.parser.models import DownloadedFile
 
 
 def sha256_file(path: Path) -> str:

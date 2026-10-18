@@ -147,19 +147,19 @@ def api_keys(paths: ProjectPaths) -> list[tuple[str, str]]:
 
 
 def local_parser() -> LocalParser:
-    from data_pipeline.infrastructure.enrich.parsers.dispatch import LocalParserAdapter
+    from data_pipeline.infrastructure.parser.parsers.dispatch import LocalParserAdapter
 
     return LocalParserAdapter()
 
 
 def cloud_parser(parses: Parses, settings: Settings, keys: list[tuple[str, str]]) -> CloudParser:
-    from data_pipeline.infrastructure.enrich.llamaparse import LlamaParseCloud
+    from data_pipeline.infrastructure.parser.llamaparse import LlamaParseCloud
 
     return LlamaParseCloud(parses, settings, keys)
 
 
 def parse_cache(root: Path) -> ParseCache:
-    from data_pipeline.infrastructure.enrich.files.cache import FileParseCache
+    from data_pipeline.infrastructure.parser.cache import FileParseCache
 
     return FileParseCache(root / "cache")
 

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Literal, cast
 
-from data_pipeline.domain.crawl.extract.links import resource_kind
+from data_pipeline.domain.parser.extract.links import resource_kind
 
 ResponsePurpose = Literal["page", "robots", "sitemap", "asset"]
 RouteAction = Literal[

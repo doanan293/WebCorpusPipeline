@@ -10,11 +10,11 @@ from data_pipeline.application.enrich.ports import (
     ParseCache,
     Parses,
 )
-from data_pipeline.domain.enrich.cache_key import CLOUD_CACHE_REVISION, cache_key
-from data_pipeline.domain.enrich.cloud_pages import cloud_part_indices
-from data_pipeline.domain.enrich.key_pool import KeysExhaustedError
-from data_pipeline.domain.enrich.merge import merge_parts
-from data_pipeline.domain.enrich.models import DownloadedFile, LocalResult, ParseResult
+from data_pipeline.domain.parser.cache_key import CLOUD_CACHE_REVISION, cache_key
+from data_pipeline.domain.parser.cloud_pages import cloud_part_indices
+from data_pipeline.domain.parser.key_pool import KeysExhaustedError
+from data_pipeline.domain.parser.merge import merge_parts
+from data_pipeline.domain.parser.models import DownloadedFile, LocalResult, ParseResult
 from data_pipeline.domain.shared.config import Settings
 
 

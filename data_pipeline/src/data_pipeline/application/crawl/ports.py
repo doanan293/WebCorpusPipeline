@@ -7,12 +7,12 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from data_pipeline.domain.crawl.config import CrawlerConfig
-from data_pipeline.domain.crawl.frontier.assets import AssetRole
 from data_pipeline.domain.crawl.models import RawPage, ReusedAssetTarget, RouteFamilyState
 from data_pipeline.domain.crawl.options import CrawlOptions
 from data_pipeline.domain.crawl.pages import FailedRequest, FetchedPage, FollowUp, Probe, Scheduled
 from data_pipeline.domain.crawl.seeds import SeedSet
 from data_pipeline.domain.crawl.tuning import RuntimeTuning
+from data_pipeline.domain.shared.assets import AssetRole
 
 
 class RawHtml(Protocol):

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from data_pipeline.domain.crawl.frontier.assets import AssetGroup, AssetRole
+from data_pipeline.domain.shared.assets import AssetGroup, AssetRole
 
 # Fields a duplicate page's stored article drops: its owner holds the same content.
 DUPLICATE_DROPPED_FIELDS = ("content_html", "content_blocks", "headings", "observed_refs")

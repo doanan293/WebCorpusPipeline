@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
+from data_pipeline.domain.aggregator.link_policy import LinkKind
 from data_pipeline.domain.crawl.frontier.frontier import (
     Candidate,
     DiscoverySource,
     FrontierDecision,
     FrontierPolicy,
 )
-from data_pipeline.domain.crawl.frontier.link_policy import LinkKind
 from data_pipeline.domain.crawl.models import FamilyObservation
 from data_pipeline.domain.crawl.options import CrawlOptions
 from data_pipeline.domain.crawl.seeds import SeedSet

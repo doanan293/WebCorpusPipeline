@@ -7,8 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import parse_qsl, urlsplit
 
-from data_pipeline.domain.crawl.frontier.assets import AssetGroup, AssetRole
-from data_pipeline.domain.crawl.frontier.link_policy import (
+from data_pipeline.domain.aggregator.link_policy import (
     LinkKind,
     is_navigation_path,
     query_key_kind,
@@ -16,6 +15,7 @@ from data_pipeline.domain.crawl.frontier.link_policy import (
 from data_pipeline.domain.crawl.models import FamilyObservation, RouteFamilyState
 from data_pipeline.domain.crawl.options import CrawlOptions
 from data_pipeline.domain.crawl.seeds import SeedMode, SeedSet
+from data_pipeline.domain.shared.assets import AssetGroup, AssetRole
 from data_pipeline.domain.shared.url import canonicalize_url, classify_frontier_trap
 
 _MIN_PAGINATION_SEGMENTS = 2

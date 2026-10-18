@@ -1,11 +1,8 @@
 import pytest
 
-from data_pipeline.domain.crawl.frontier.assets import (
-    AssetPolicy,
-    is_recognizable_binary,
-    recognizable_asset,
-)
+from data_pipeline.domain.crawl.frontier.assets import AssetPolicy
 from data_pipeline.domain.crawl.options import CrawlOptions
+from data_pipeline.domain.shared.assets import is_recognizable_binary, recognizable_asset
 
 
 @pytest.mark.parametrize(

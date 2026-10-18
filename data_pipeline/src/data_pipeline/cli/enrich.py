@@ -15,7 +15,8 @@ from data_pipeline.cli.context import (
     SourceOption,
     WorkDirOption,
 )
-from data_pipeline.domain.enrich.models import RunSummary, jsonable
+from data_pipeline.domain.enrich.models import RunSummary
+from data_pipeline.domain.parser.models import jsonable
 
 app = typer.Typer(help="Download crawled documents and extract their text.", no_args_is_help=True)
 

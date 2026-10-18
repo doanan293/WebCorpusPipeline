@@ -9,9 +9,9 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from data_pipeline.application.crawl.ports import CrawlUnitOfWork
-from data_pipeline.domain.crawl.frontier.assets import AssetGroup, AssetRole
 from data_pipeline.domain.crawl.models import DUPLICATE_DROPPED_FIELDS
 from data_pipeline.domain.crawl.options import CrawlOptions
+from data_pipeline.domain.shared.assets import AssetGroup, AssetRole
 
 _MAX_EXTENSION_LENGTH = 5
 

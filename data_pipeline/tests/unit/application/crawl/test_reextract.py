@@ -8,8 +8,8 @@ import pytest
 from data_pipeline.application.crawl import reextract as reextract_module
 from data_pipeline.application.crawl.reextract import ReextractSummary, reextract
 from data_pipeline.application.crawl.writer import CrawlWriter
-from data_pipeline.domain.crawl.extract.article import ArticleAnalysis, analyze_article
 from data_pipeline.domain.crawl.options import CrawlOptions
+from data_pipeline.domain.parser.extract.article import ArticleAnalysis, analyze_article
 from data_pipeline.infrastructure.crawl.sqlite.storage import SqliteCrawlStorage
 from data_pipeline.infrastructure.crawl.sqlite.unit_of_work import SqliteCrawlUnitOfWork
 

@@ -12,13 +12,13 @@ from data_pipeline.application.crawl.page_pipeline import PagePipeline
 from data_pipeline.application.crawl.refresh_pipeline import RefreshSession
 from data_pipeline.application.crawl.writer import CrawlWriter
 from data_pipeline.domain.crawl.config import CrawlerConfig
-from data_pipeline.domain.crawl.extract.article import analyze_article
 from data_pipeline.domain.crawl.frontier.assets import AssetPolicy
 from data_pipeline.domain.crawl.frontier.frontier import FrontierPolicy
 from data_pipeline.domain.crawl.frontier.sitemaps import SitemapDiscoveryCoordinator
 from data_pipeline.domain.crawl.options import CrawlOptions
 from data_pipeline.domain.crawl.refresh_rules import RefreshSettings
 from data_pipeline.domain.crawl.seeds import SeedSet
+from data_pipeline.domain.parser.extract.article import analyze_article
 from data_pipeline.infrastructure.crawl.scrapy.unified_spider import UnifiedSpider
 from data_pipeline.infrastructure.crawl.sqlite.refresh_store import RefreshStore
 from data_pipeline.infrastructure.crawl.sqlite.unit_of_work import SqliteCrawlUnitOfWork

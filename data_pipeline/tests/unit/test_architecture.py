@@ -201,7 +201,7 @@ def test_contexts_never_import_each_other() -> None:
         "data_pipeline.application.corpus.package", "data_pipeline.domain.enrich.models"
     )
     assert allowed("data_pipeline.application.corpus.package", "data_pipeline.domain.shared.url")
-    assert not allowed("data_pipeline.domain.shared.url", "data_pipeline.domain.crawl.access")
+    assert not allowed("data_pipeline.domain.shared.url", "data_pipeline.domain.fetcher.access")
     assert allowed(
         "data_pipeline.bootstrap",
         "data_pipeline.infrastructure.crawl.sqlite.unit_of_work",

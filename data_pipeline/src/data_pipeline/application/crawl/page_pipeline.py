@@ -10,26 +10,18 @@ from urllib.parse import urlsplit
 from data_pipeline.application.crawl.asset_responses import AssetResponses
 from data_pipeline.application.crawl.ports import UrlRecords
 from data_pipeline.application.crawl.writer import CrawlWriter
-from data_pipeline.domain.crawl.access import classify_page_gate
-from data_pipeline.domain.crawl.extract.article import analyze_article
-from data_pipeline.domain.crawl.frontier.assets import (
-    AssetPolicy,
-    classify_asset,
-    is_recognizable_binary,
-    recognizable_asset,
-    role_for_group,
+from data_pipeline.domain.aggregator.link_policy import (
+    ClassifiedLink,
+    classify_link,
+    select_semantic_next,
 )
+from data_pipeline.domain.crawl.frontier.assets import AssetPolicy
 from data_pipeline.domain.crawl.frontier.frontier import (
     Candidate,
     DiscoverySource,
     FrontierDecision,
     FrontierPolicy,
     Purpose,
-)
-from data_pipeline.domain.crawl.frontier.link_policy import (
-    ClassifiedLink,
-    classify_link,
-    select_semantic_next,
 )
 from data_pipeline.domain.crawl.frontier.sitemaps import (
     SitemapDiscoveryCoordinator,
@@ -48,6 +40,14 @@ from data_pipeline.domain.crawl.pages import (
 )
 from data_pipeline.domain.crawl.routing import ResponseRoute, route_response
 from data_pipeline.domain.crawl.seeds import SeedMode, SeedSet
+from data_pipeline.domain.fetcher.access import classify_page_gate
+from data_pipeline.domain.parser.extract.article import analyze_article
+from data_pipeline.domain.shared.assets import (
+    classify_asset,
+    is_recognizable_binary,
+    recognizable_asset,
+    role_for_group,
+)
 from data_pipeline.domain.shared.url import canonicalize_url
 
 if TYPE_CHECKING:

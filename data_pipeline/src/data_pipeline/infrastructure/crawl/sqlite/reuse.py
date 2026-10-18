@@ -10,9 +10,9 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import cast
 
-from data_pipeline.domain.crawl.frontier.assets import AssetRole, classify_asset
 from data_pipeline.domain.crawl.models import ReusedAssetTarget
 from data_pipeline.domain.crawl.run_status import FINISHED_STATUSES
+from data_pipeline.domain.shared.assets import AssetRole, classify_asset
 from data_pipeline.infrastructure.crawl.sqlite.resume import STATE_VERSION
 from data_pipeline.infrastructure.crawl.sqlite.unit_of_work import SqliteCrawlUnitOfWork
 from data_pipeline.infrastructure.shared.network import validate_public_web_url

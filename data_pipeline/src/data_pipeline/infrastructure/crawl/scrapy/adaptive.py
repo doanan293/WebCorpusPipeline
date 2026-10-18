@@ -9,8 +9,8 @@ from scrapy import Spider, signals
 from scrapy.crawler import Crawler
 from scrapy.http import Request, Response
 
-from data_pipeline.domain.crawl.access import classify_access
 from data_pipeline.domain.crawl.host_health import HostDecision, HostHealth, Observation
+from data_pipeline.domain.fetcher.access import classify_access
 from data_pipeline.infrastructure.crawl.scrapy.resources import ResourceMonitor, ResourceSample
 
 

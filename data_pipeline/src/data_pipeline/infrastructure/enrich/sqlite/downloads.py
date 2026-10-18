@@ -7,7 +7,8 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
 
-from data_pipeline.domain.enrich.models import DownloadedFile, DownloadJob
+from data_pipeline.domain.enrich.models import DownloadJob
+from data_pipeline.domain.parser.models import DownloadedFile
 from data_pipeline.infrastructure.enrich.sqlite.repository import LockedRepository, locked
 
 

@@ -11,7 +11,7 @@ from data_pipeline.application.corpus.ports import EdgeIndex, EdgeIndexFactory
 from data_pipeline.application.enrich.export import export_enrichment
 from data_pipeline.application.enrich.inventory import index_inventory
 from data_pipeline.bootstrap import enrichment_status
-from data_pipeline.domain.enrich.models import DownloadedFile, ParseResult
+from data_pipeline.domain.parser.models import DownloadedFile, ParseResult
 from data_pipeline.infrastructure.corpus.files.corpus_files import LocalCorpusFiles
 from data_pipeline.infrastructure.corpus.graph_index import open_edge_index
 from data_pipeline.infrastructure.enrich.files.articles import JsonlArticleSource

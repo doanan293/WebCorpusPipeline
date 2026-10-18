@@ -12,9 +12,9 @@ from data_pipeline.application.crawl.ports import (
     RawHtml,
 )
 from data_pipeline.application.crawl.writer import content_id_for
-from data_pipeline.domain.crawl.extract.article import analyze_article
 from data_pipeline.domain.crawl.models import DUPLICATE_DROPPED_FIELDS
 from data_pipeline.domain.crawl.run_status import FINISHED_STATUSES
+from data_pipeline.domain.parser.extract.article import analyze_article
 
 
 @dataclass(frozen=True, slots=True)

@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Any
 
 from data_pipeline.application.enrich.ports import Inventory, Parses
-from data_pipeline.domain.enrich.models import RunSummary, jsonable
+from data_pipeline.domain.enrich.models import RunSummary
+from data_pipeline.domain.parser.models import jsonable
 
 
 def export_enrichment(
