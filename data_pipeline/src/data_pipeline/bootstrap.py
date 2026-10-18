@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from data_pipeline.application.parser.ports import RawPages
     from data_pipeline.application.storage.ports import CorpusStore
     from data_pipeline.domain.aggregator.config import AggregatorConfig
+    from data_pipeline.domain.aggregator.seeds import Seeds
     from data_pipeline.domain.controller.models import ControllerConfig
     from data_pipeline.domain.fetcher.models import FetcherConfig
     from data_pipeline.domain.parser.config import ParserConfig
@@ -265,6 +266,13 @@ def hostnames(path: Path) -> frozenset[str]:
     from data_pipeline.infrastructure.shared.files import load_hostnames
 
     return load_hostnames(path)
+
+
+def seeds(path: Path, allowed_ports: frozenset[int] = frozenset()) -> Seeds:
+    """The seeds file: one hostname or URL per line."""
+    from data_pipeline.domain.aggregator.seeds import parse_seeds
+
+    return parse_seeds(path.read_text(encoding="utf-8").splitlines(), allowed_ports)
 
 
 def aggregator_state(path: Path) -> AggregatorState:

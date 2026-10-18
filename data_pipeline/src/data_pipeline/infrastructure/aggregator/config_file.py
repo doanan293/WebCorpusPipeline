@@ -8,6 +8,11 @@ import yaml
 from data_pipeline.domain.aggregator.config import AggregatorConfig
 from data_pipeline.domain.shared.errors import ConfigError
 
+_RETIRED = {
+    "allowed_suffixes": "links are followed only within the hosts of the seeds",
+    "hosts_file": "renamed seeds_file (hostnames or URLs, one per line)",
+}
+
 
 def load_aggregator_config(path: Path) -> AggregatorConfig:
     """Read ``aggregator.yaml``; a missing or unusable value is a ``ConfigError`` naming it."""
@@ -25,15 +30,17 @@ def load_aggregator_config(path: Path) -> AggregatorConfig:
     if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
         msg = "batch_size must be a positive integer"
         raise ConfigError(msg)
-    suffixes = values.get("allowed_suffixes", list(defaults.allowed_suffixes))
-    if not isinstance(suffixes, list):
-        msg = "allowed_suffixes must be a list of domains"
-        raise ConfigError(msg)
+    for retired, instead in _RETIRED.items():
+        if retired in values:
+            msg = f"{retired} is no longer read: {instead}"
+            raise ConfigError(msg)
     try:
         return AggregatorConfig(
             port=int(values.get("port", defaults.port)),
-            hosts_file=Path(str(values.get("hosts_file", defaults.hosts_file))),
-            allowed_suffixes=tuple(str(s).lower() for s in cast("list[object]", suffixes)),
+            seeds_file=Path(str(values.get("seeds_file", defaults.seeds_file))),
+            initial_scope_file=Path(
+                str(values.get("initial_scope_file", defaults.initial_scope_file))
+            ),
             batch_size=batch_size,
             batch_seconds=float(values.get("batch_seconds", defaults.batch_seconds)),
             outbox_retry_seconds=float(

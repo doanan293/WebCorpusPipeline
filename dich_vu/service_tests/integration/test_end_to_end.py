@@ -12,6 +12,7 @@ from aiohttp.test_utils import TestServer
 
 from data_pipeline.application.parser.parse import DocumentReaders
 from data_pipeline.domain.aggregator.config import AggregatorConfig
+from data_pipeline.domain.aggregator.seeds import parse_seeds
 from data_pipeline.domain.controller.models import ControllerConfig
 from data_pipeline.domain.fetcher.models import FetcherConfig
 from data_pipeline.infrastructure.aggregator.outbox import JsonlOutbox
@@ -96,8 +97,7 @@ async def _stack(
                 SqliteAggregatorState(tmp_path / "agg.sqlite3"),
                 JsonlOutbox(tmp_path / "outbox.jsonl"),
                 service_client,
-                seed_urls=[f"{site_url}/"],
-                allowed_hosts=frozenset({"127.0.0.1"}),
+                seeds=parse_seeds([f"{site_url}/"], frozenset({site_port})),
                 allowed_ports=frozenset({site_port}),
                 closers=(service_client.close,),
             ),

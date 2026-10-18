@@ -7,8 +7,9 @@ from pathlib import Path
 @dataclass(frozen=True, slots=True)
 class AggregatorConfig:
     port: int = 3300
-    hosts_file: Path = Path("config/domains/active.txt")
-    allowed_suffixes: tuple[str, ...] = ("hust.edu.vn",)
+    seeds_file: Path = Path("config/domains/active.txt")  # one host or URL per line
+    # Hosts of the crawl so far; adopted as the scope once, when the store has none yet.
+    initial_scope_file: Path = Path("config/domains/active.txt")
     batch_size: int = 500
     batch_seconds: float = 1.0
     outbox_retry_seconds: float = 30.0

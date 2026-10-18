@@ -15,6 +15,7 @@ from data_pipeline.application.aggregator.aggregate import Scope
 from data_pipeline.application.aggregator.ports import AggregatorState, Outbox, ServiceClient
 from data_pipeline.application.aggregator.runtime import AggregatorRuntime
 from data_pipeline.domain.aggregator.config import AggregatorConfig
+from data_pipeline.domain.aggregator.seeds import Seeds
 from data_pipeline.domain.shared.protocol import validate_record
 from dich_vu.api.common import Stats, error, json_object, stats_loop
 
@@ -50,19 +51,23 @@ def create_service(
     outbox: Outbox,
     client: ServiceClient,
     *,
-    seed_urls: Sequence[str],
-    allowed_hosts: frozenset[str] = frozenset(),
+    seeds: Seeds,
+    initial_scope: frozenset[str] = frozenset(),
     allowed_ports: frozenset[int] = frozenset(),
     closers: Sequence[Callable[[], Awaitable[None]]] = (),
 ) -> web.Application:
-    """``create_app`` that aggregates, plus the seeding, batching and outbox loops."""
+    """``create_app`` that aggregates, plus the seeding, batching and outbox loops.
+
+    Links are followed only within the hosts of the seeds (and ``initial_scope``, the hosts of the
+    crawl so far, adopted once when the state has no scope yet).
+    """
     stats = Stats()
     runtime = AggregatorRuntime(
         config,
         state,
         outbox,
         client,
-        Scope(allowed_hosts, config.allowed_suffixes, allowed_ports),
+        Scope(frozenset(), allowed_ports),
         clock=time.monotonic,
         count=stats.incr,
     )
@@ -78,7 +83,8 @@ def create_service(
             await runtime.flush()
 
     async def seed_once() -> None:
-        await runtime.seed(seed_urls)
+        runtime.adopt_initial_scope(initial_scope)
+        await runtime.add_seeds(seeds)
 
     app = create_app(runtime.handle, stats)
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from typing import Any
 
 from data_pipeline.application.aggregator.aggregate import Scope, aggregate
@@ -14,6 +15,7 @@ from data_pipeline.application.aggregator.ports import (
 )
 from data_pipeline.domain.aggregator.batching import UrlBatcher
 from data_pipeline.domain.aggregator.config import AggregatorConfig
+from data_pipeline.domain.aggregator.seeds import Seeds
 
 log = logging.getLogger(__name__)
 
@@ -68,6 +70,24 @@ class AggregatorRuntime:
         if urls:
             await self.send("controller", {"urls": list(urls)})
             log.info("seeded %d start urls", len(urls))
+
+    def adopt_initial_scope(self, hosts: frozenset[str]) -> None:
+        """Take ``hosts`` as the scope when the store has none yet (the crawl before seeds)."""
+        if not self.state.scope_hosts():
+            self.state.add_scope_hosts(hosts)
+        self._reload_scope()
+
+    async def add_seeds(self, seeds: Seeds) -> None:
+        """Widen the scope to the hosts of the seeds, then queue them (known URLs keep
+        their schedule)."""
+        for problem in seeds.problems:
+            log.warning("seeds: %s", problem)
+        self.state.add_scope_hosts(seeds.hosts)
+        self._reload_scope()
+        await self.seed(seeds.urls)
+
+    def _reload_scope(self) -> None:
+        self.scope = replace(self.scope, allowed_hosts=self.state.scope_hosts())
 
     async def tick(self) -> None:
         try:

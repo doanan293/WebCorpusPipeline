@@ -12,6 +12,7 @@ from data_pipeline.application.aggregator.delivery import deliver, flush_outbox
 from data_pipeline.application.aggregator.ports import SendResult, Target
 from data_pipeline.application.aggregator.runtime import AggregatorRuntime
 from data_pipeline.domain.aggregator.config import AggregatorConfig
+from data_pipeline.domain.aggregator.seeds import parse_seeds
 from tests.fakes.aggregator import FakeServiceClient, MemoryAggregatorState, MemoryOutbox
 
 HOST = "a.hust.edu.vn"
@@ -35,7 +36,7 @@ def _runtime(
         MemoryAggregatorState(),
         outbox,
         client,
-        Scope(frozenset({HOST}), ()),
+        Scope(frozenset({HOST})),
         clock=lambda: clock[0],
     )
 
@@ -118,3 +119,41 @@ def test_seed_goes_to_controller() -> None:
     runtime = _runtime(client, MemoryOutbox(), [0.0])
     asyncio.run(runtime.seed([f"https://{HOST}/"]))
     assert client.sent == [("controller", {"urls": [f"https://{HOST}/"]})]
+
+
+def test_url_seed_spreads_within_its_host() -> None:
+    client = FakeServiceClient()
+    runtime = AggregatorRuntime(
+        AggregatorConfig(database=Path("unused")),
+        MemoryAggregatorState(),
+        MemoryOutbox(),
+        client,
+        Scope(frozenset()),
+        clock=lambda: 0.0,
+    )
+    seed = "https://soict.hust.edu.vn/tin-tuc/abc"
+    asyncio.run(runtime.add_seeds(parse_seeds([seed])))
+    assert client.sent == [("controller", {"urls": [seed]})]
+    links = [
+        "https://soict.hust.edu.vn/tin-tuc/xyz",
+        "https://hust.edu.vn/other",
+        "https://www.soict.hust.edu.vn/z",
+    ]
+    asyncio.run(runtime.handle(_record(seed, links)))
+    assert runtime.batcher.pending == ["https://soict.hust.edu.vn/tin-tuc/xyz"]
+
+
+def test_initial_scope_is_adopted_only_once() -> None:
+    state = MemoryAggregatorState()
+    runtime = AggregatorRuntime(
+        AggregatorConfig(database=Path("unused")),
+        state,
+        MemoryOutbox(),
+        FakeServiceClient(),
+        Scope(frozenset()),
+        clock=lambda: 0.0,
+    )
+    runtime.adopt_initial_scope(frozenset({"old.hust.edu.vn"}))
+    assert runtime.scope.allowed_hosts == {"old.hust.edu.vn"}
+    runtime.adopt_initial_scope(frozenset({"other.hust.edu.vn"}))
+    assert state.scope_hosts() == {"old.hust.edu.vn"}

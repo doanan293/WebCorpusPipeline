@@ -13,10 +13,9 @@ from data_pipeline.domain.aggregator.records import duplicate_stub
 
 @dataclass(frozen=True, slots=True)
 class Scope:
-    """Which hosts count as hust: listed hosts, plus every subdomain of the suffixes."""
+    """The hosts a crawl may spread over (those of its seeds), and non-default ports allowed."""
 
     allowed_hosts: frozenset[str]
-    allowed_suffixes: tuple[str, ...]
     allowed_ports: frozenset[int] = frozenset()
 
 
@@ -42,7 +41,6 @@ async def aggregate(
         record["out-links"],
         source_url=url,
         allowed_hosts=scope.allowed_hosts,
-        allowed_suffixes=scope.allowed_suffixes,
         allowed_ports=scope.allowed_ports,
     )
     for batch in batcher.add(seen.add_new(links), now):

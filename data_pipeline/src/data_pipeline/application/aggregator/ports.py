@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
@@ -46,5 +46,13 @@ class ServiceClient(Protocol):
         ...
 
 
-class AggregatorState(SeenUrls, ContentOwners, Protocol):
-    """Both memories of the aggregator, kept by one store."""
+class ScopeHosts(Protocol):
+    def add_scope_hosts(self, hosts: Iterable[str]) -> None: ...
+
+    def scope_hosts(self) -> frozenset[str]:
+        """Every host a seed ever named: links are followed only to these."""
+        ...
+
+
+class AggregatorState(SeenUrls, ContentOwners, ScopeHosts, Protocol):
+    """The memories of the aggregator, kept by one store."""

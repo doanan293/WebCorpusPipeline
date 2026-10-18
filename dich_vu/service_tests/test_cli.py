@@ -119,7 +119,7 @@ def test_serve_aggregator_runs_add_on_3300(
     hosts.write_text("hust.edu.vn\n", encoding="utf-8")
     config = tmp_path / "aggregator.yaml"
     config.write_text(
-        f"hosts_file: {hosts}\ndatabase: {tmp_path / 'a.sqlite3'}\noutbox: {tmp_path / 'o.jsonl'}\n",
+        f"seeds_file: {hosts}\ninitial_scope_file: {hosts}\ndatabase: {tmp_path / 'a.sqlite3'}\noutbox: {tmp_path / 'o.jsonl'}\n",
         encoding="utf-8",
     )
     assert main(["serve", "aggregator", "--config", str(config)]) == 0
@@ -185,7 +185,7 @@ def test_serve_aggregator_refuses_when_state_is_held(
     hosts.write_text("a.hust.edu.vn\n", encoding="utf-8")
     config = tmp_path / "aggregator.yaml"
     config.write_text(
-        f"hosts_file: {hosts}\ndatabase: {database}\noutbox: {tmp_path / 'outbox.jsonl'}\n",
+        f"seeds_file: {hosts}\ninitial_scope_file: {hosts}\ndatabase: {database}\noutbox: {tmp_path / 'outbox.jsonl'}\n",
         encoding="utf-8",
     )
 

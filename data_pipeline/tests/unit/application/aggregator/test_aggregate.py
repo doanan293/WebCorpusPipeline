@@ -9,7 +9,7 @@ from data_pipeline.application.aggregator.ports import Target
 from data_pipeline.domain.aggregator.batching import UrlBatcher
 from tests.fakes.aggregator import FakeServiceClient, MemoryAggregatorState, MemoryOutbox
 
-SCOPE = Scope(allowed_hosts=frozenset(), allowed_suffixes=("hust.edu.vn",))
+SCOPE = Scope(allowed_hosts=frozenset({"hust.edu.vn"}))
 
 
 def _record(url: str, content: str, links: list[tuple[str, str]]) -> dict[str, Any]:

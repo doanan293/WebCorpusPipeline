@@ -1,8 +1,8 @@
 # Tổng hợp dữ liệu (khối 4 trên slide): nhận POST /add từ Đọc nội dung,
 # gửi bản ghi sang Lưu trữ và URL mới sang Điều khiển.
 port: 3300
-hosts_file: config/domains/active.txt   # URL mầm: trang chủ của mỗi host
-allowed_suffixes: [hust.edu.vn]         # "lọc url - lấy trong miền hust"
+seeds_file: config/domains/active.txt   # mầm: mỗi dòng một host (bắt đầu từ trang chủ) hoặc một URL
+initial_scope_file: config/domains/active.txt   # host của crawl cũ, nạp vào phạm vi một lần khi chưa có
 batch_size: 500
 batch_seconds: 1.0
 outbox_retry_seconds: 30

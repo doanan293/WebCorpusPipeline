@@ -126,16 +126,14 @@ def aggregator(
     ] = None,
 ) -> int:
     """Tổng hợp dữ liệu: POST /add; records to STORAGE_URL, new URLs to CONTROLLER_URL."""
-    from data_pipeline.application.aggregator.seeds import seed_payload
     from dich_vu.api import aggregator as service
     from dich_vu.api import common
 
     paths = current_paths()
     settings = bootstrap.aggregator_config(_config_path(config, "aggregator.yaml"))
-    hosts_file = settings.hosts_file
-    hosts = sorted(
-        bootstrap.hostnames(hosts_file if hosts_file.is_absolute() else paths.root / hosts_file)
-    )
+    seeds = bootstrap.seeds(paths.root / settings.seeds_file)
+    initial_file = paths.root / settings.initial_scope_file
+    initial = bootstrap.hostnames(initial_file) if initial_file.exists() else frozenset()
     with bootstrap.state_lease(settings.database, "dich-vu aggregator"):
         client = bootstrap.service_client(
             os.environ.get("STORAGE_URL", "http://storage:2200"),
@@ -146,8 +144,8 @@ def aggregator(
             bootstrap.aggregator_state(settings.database),
             bootstrap.outbox(settings.outbox),
             client,
-            seed_urls=seed_payload(hosts)["urls"],
-            allowed_hosts=frozenset(hosts),
+            seeds=seeds,
+            initial_scope=initial,
             closers=(client.close,),
         )
         common.run(app_, settings.port)

@@ -3,14 +3,15 @@ from __future__ import annotations
 from data_pipeline.domain.aggregator.links import candidate_urls, in_scope
 
 
-def test_in_scope() -> None:
-    assert in_scope("hust.edu.vn", frozenset(), ("hust.edu.vn",))
-    assert in_scope("soict.hust.edu.vn", frozenset(), ("hust.edu.vn",))
-    assert not in_scope("nothust.edu.vn", frozenset(), ("hust.edu.vn",))
-    assert in_scope("127.0.0.1", frozenset({"127.0.0.1"}), ())
+def test_scope_is_exact_host() -> None:
+    hosts = frozenset({"soict.hust.edu.vn"})
+    assert in_scope("soict.hust.edu.vn", hosts)
+    assert not in_scope("hust.edu.vn", hosts)
+    assert not in_scope("www.soict.hust.edu.vn", hosts)
+    assert in_scope("127.0.0.1", frozenset({"127.0.0.1"}))
 
 
-def test_candidates_keep_hust_pages_and_documents() -> None:
+def test_candidates_keep_pages_and_documents_of_scope_hosts() -> None:
     links = [
         ("https://soict.hust.edu.vn/a", "A"),
         ("https://google.com/", "G"),
@@ -25,9 +26,8 @@ def test_candidates_keep_hust_pages_and_documents() -> None:
     assert candidate_urls(
         links,
         source_url="https://hust.edu.vn/",
-        allowed_hosts=frozenset(),
-        allowed_suffixes=("hust.edu.vn",),
-    ) == ["https://soict.hust.edu.vn/a", "https://hust.edu.vn/f.pdf", "https://hust.edu.vn/b"]
+        allowed_hosts=frozenset({"hust.edu.vn"}),
+    ) == ["https://hust.edu.vn/f.pdf", "https://hust.edu.vn/b"]
 
 
 def test_non_default_port_needs_allowed_port() -> None:
@@ -38,7 +38,6 @@ def test_non_default_port_needs_allowed_port() -> None:
             links,
             source_url="http://127.0.0.1:5000/",
             allowed_hosts=frozenset({"127.0.0.1"}),
-            allowed_suffixes=(),
             allowed_ports=ports,
         )
 

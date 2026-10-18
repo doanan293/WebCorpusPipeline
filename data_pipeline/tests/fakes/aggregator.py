@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
 from data_pipeline.application.aggregator.ports import OutboxEntry, SendResult, Target
@@ -12,6 +12,7 @@ class MemoryAggregatorState:
     def __init__(self) -> None:
         self.seen: set[str] = set()
         self.owners: dict[str, str] = {}
+        self.hosts: set[str] = set()
 
     def add_new(self, urls: Sequence[str]) -> list[str]:
         new = [url for url in dict.fromkeys(urls) if url not in self.seen]
@@ -20,6 +21,12 @@ class MemoryAggregatorState:
 
     def claim(self, content_id: str, url: str) -> str:
         return self.owners.setdefault(content_id, url)
+
+    def add_scope_hosts(self, hosts: Iterable[str]) -> None:
+        self.hosts.update(hosts)
+
+    def scope_hosts(self) -> frozenset[str]:
+        return frozenset(self.hosts)
 
 
 class MemoryOutbox:

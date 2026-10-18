@@ -9,6 +9,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from data_pipeline.domain.aggregator.config import AggregatorConfig
+from data_pipeline.domain.aggregator.seeds import parse_seeds
 from data_pipeline.infrastructure.aggregator.outbox import JsonlOutbox
 from data_pipeline.infrastructure.aggregator.service_client import HttpServiceClient
 from data_pipeline.infrastructure.aggregator.sqlite_state import SqliteAggregatorState
@@ -70,7 +71,9 @@ async def _start_aggregator(tmp_path: Path, controller_url: str, seeds: list[str
     config = _config(tmp_path)
     state = SqliteAggregatorState(config.database)
     client = HttpServiceClient("http://127.0.0.1:9", controller_url)
-    app = create_service(config, state, JsonlOutbox(config.outbox), client, seed_urls=seeds)
+    app = create_service(
+        config, state, JsonlOutbox(config.outbox), client, seeds=parse_seeds(seeds)
+    )
     async with TestServer(app):
         await asyncio.sleep(0.3)
     state.close()
