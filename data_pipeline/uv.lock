@@ -282,6 +282,7 @@ name = "data-pipeline"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "kaggle" },
     { name = "pymongo" },
     { name = "python-dotenv" },
@@ -297,7 +298,6 @@ crawl = [
     { name = "scrapy-playwright" },
 ]
 enrich = [
-    { name = "aiohttp" },
     { name = "llama-cloud" },
     { name = "lxml" },
     { name = "openpyxl" },
@@ -323,7 +323,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", marker = "extra == 'enrich'", specifier = ">=3.11,<4" },
+    { name = "aiohttp", specifier = ">=3.11,<4" },
     { name = "data-pipeline", extras = ["crawl"], marker = "extra == 'enrich'" },
     { name = "kaggle", specifier = ">=1.7,<2" },
     { name = "llama-cloud", marker = "extra == 'enrich'", specifier = ">=1,<2" },

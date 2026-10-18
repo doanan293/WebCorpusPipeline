@@ -10,7 +10,10 @@ PACKAGE = SRC / "data_pipeline"
 #   data_pipeline.<layer>.<context>...   and   data_pipeline.cli...
 LAYERS = ("domain", "application", "infrastructure")
 RANK = {layer: index for index, layer in enumerate(LAYERS)}
-CONTEXTS = frozenset({"crawl", "enrich", "corpus", "hosts"})
+BLOCKS = frozenset({"controller", "fetcher", "parser", "aggregator", "storage"})
+CONTEXTS = frozenset({"crawl", "enrich", "corpus", "hosts", *BLOCKS})
+# Batch crawl and enrich are being moved into the blocks; until they are deleted they may use them.
+LEGACY = frozenset({"crawl", "enrich"})
 SHARED = "shared"
 OUTER = frozenset({"cli", "api"})  # entry points; bootstrap.py is the composition root
 BOOTSTRAP = "bootstrap"
@@ -70,13 +73,21 @@ def allowed(importer: str, imported: str) -> bool:
         return target_layer not in OUTER
     # Entry points call use cases and bootstrap; they never build adapters themselves.
     if layer in OUTER:
+        # A block's service module speaks for that block only.
+        block = importer.split(".")[2] if layer == "api" and importer.count(".") >= 2 else None
+        if block in BLOCKS and target_context not in {block, SHARED, None}:
+            return False
         return target_layer != "infrastructure" and target_layer not in OUTER - {layer}
     if target_layer in OUTER or target_layer == BOOTSTRAP:
         return False
     if layer not in RANK or target_layer not in RANK:
         return False
     # Contexts never import each other; every context may use shared, shared uses only itself.
-    if target_context is not None and target_context not in {context, SHARED}:
+    if (
+        target_context is not None
+        and target_context not in {context, SHARED}
+        and not (context in LEGACY and target_context in BLOCKS)
+    ):
         return False
     if context == SHARED and target_context not in {SHARED, None}:
         return False
@@ -198,3 +209,32 @@ def test_only_infrastructure_uses_shared_infrastructure() -> None:
     assert not allowed("data_pipeline.domain.enrich.models", files)
     assert not allowed("data_pipeline.application.enrich.download", files)
     assert allowed("data_pipeline.infrastructure.enrich.files.cache", files)
+
+
+def test_blocks_do_not_import_each_other() -> None:
+    assert not allowed(
+        "data_pipeline.application.fetcher.fetch", "data_pipeline.domain.parser.records"
+    )
+    assert not allowed(
+        "data_pipeline.infrastructure.aggregator.outbox",
+        "data_pipeline.infrastructure.storage.mongo",
+    )
+    assert allowed(
+        "data_pipeline.application.fetcher.fetch", "data_pipeline.domain.shared.protocol"
+    )
+
+
+def test_legacy_contexts_may_use_blocks_until_removed() -> None:
+    assert allowed(
+        "data_pipeline.application.crawl.page_pipeline",
+        "data_pipeline.domain.parser.extract.article",
+    )
+    assert not allowed("data_pipeline.domain.parser.records", "data_pipeline.domain.crawl.models")
+
+
+def test_api_module_uses_only_its_block() -> None:
+    assert allowed("data_pipeline.api.fetcher", "data_pipeline.application.fetcher.fetch")
+    assert allowed("data_pipeline.api.fetcher", "data_pipeline.api.common")
+    assert allowed("data_pipeline.api.fetcher", "data_pipeline.domain.shared.protocol")
+    assert allowed("data_pipeline.api.fetcher", "data_pipeline.bootstrap")
+    assert not allowed("data_pipeline.api.fetcher", "data_pipeline.application.parser.parse")
