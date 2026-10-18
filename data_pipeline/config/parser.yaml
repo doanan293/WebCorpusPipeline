@@ -1,0 +1,6 @@
+# Đọc nội dung (khối 1 trên slide): nhận POST /parse, bóc tách rồi gửi sang Tổng hợp (POST /add).
+port: 6600
+llamaparse: false                 # bật để gửi trang PDF không có lớp chữ sang LlamaParse (cần khoá trong .env)
+cache_dir: data/enrichment/cache  # kết quả LlamaParse đã trả tiền, dùng lại được
+cloud_poll_seconds: 5
+cloud_timeout_seconds: 1800

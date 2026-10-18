@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import Protocol
+from pathlib import Path
+from typing import Any, Protocol
+
+from data_pipeline.domain.parser.models import DownloadedFile, LocalResult, ParseResult
 
 
 class CloudJobLog(Protocol):
@@ -18,3 +21,27 @@ class CloudJobLog(Protocol):
         status: str = "accepted",
         payload: str | None = None,
     ) -> None: ...
+
+
+class LocalParser(Protocol):
+    def parse(self, file: DownloadedFile) -> LocalResult: ...
+
+
+class CloudParser(Protocol):
+    def parse(
+        self, document_url: str, file: DownloadedFile, local: LocalResult, missing: list[int]
+    ) -> ParseResult: ...
+
+
+class ParseCache(Protocol):
+    def read(self, key: str) -> ParseResult | None: ...
+
+    def write(self, key: str, result: ParseResult) -> Path: ...
+
+    def path_for(self, key: str) -> Path: ...
+
+
+class AggregatorClient(Protocol):
+    async def send(self, record: dict[str, Any]) -> bool:
+        """Hand one record to the aggregator block's ``/add``."""
+        ...

@@ -9,7 +9,9 @@ from data_pipeline.application.crawl.asset_responses import AssetResponses
 from data_pipeline.application.crawl.discovery_pipeline import DiscoveryPipeline
 from data_pipeline.application.crawl.page_pipeline import PagePipeline
 from data_pipeline.application.enrich import ports
+from data_pipeline.application.fetcher import ports as fetcher_ports
 from data_pipeline.application.hosts import ports as hosts_ports
+from data_pipeline.application.parser import ports as parser_ports
 from tests.fakes.controller import FakeClock, FakeDownloader, FakeUrlQueue
 from tests.fakes.corpus import FakeCorpusDatabase, FakePublisher
 from tests.fakes.crawl import (
@@ -23,7 +25,9 @@ from tests.fakes.enrich import (
     FakeLocalParser,
     FakeTransport,
 )
+from tests.fakes.fetcher import FakeGetter, FakeParserClient, FakeRenderer
 from tests.fakes.hosts import FakeBrowser, FakeProber, MemoryReports
+from tests.fakes.parser import FakeAggregatorClient, FakeCloud, MemoryParseCache
 
 
 def _never(*_: object) -> Any:
@@ -145,3 +149,21 @@ def test_controller_fakes_satisfy_their_ports() -> None:
     _check(queue, controller_ports.UrlQueue)
     _check(downloader, controller_ports.Downloader)
     _check(clock, controller_ports.Clock)
+
+
+def test_parser_and_fetcher_fakes_satisfy_their_ports() -> None:
+    aggregator: parser_ports.AggregatorClient = FakeAggregatorClient()
+    cache: parser_ports.ParseCache = MemoryParseCache()
+    cloud: parser_ports.CloudParser = FakeCloud(_never)
+    getter: fetcher_ports.PageGetter = FakeGetter({})
+    renderer: fetcher_ports.Renderer = FakeRenderer()
+    client: fetcher_ports.ParserClient = FakeParserClient()
+    for instance, port in (
+        (aggregator, parser_ports.AggregatorClient),
+        (cache, parser_ports.ParseCache),
+        (cloud, parser_ports.CloudParser),
+        (getter, fetcher_ports.PageGetter),
+        (renderer, fetcher_ports.Renderer),
+        (client, fetcher_ports.ParserClient),
+    ):
+        _check(instance, port)
