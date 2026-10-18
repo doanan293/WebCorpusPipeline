@@ -21,3 +21,9 @@ def test_add_known_url_keeps_schedule() -> None:
     clock.t = 10.0
     assert add_urls(queue, ["https://hust.edu.vn/a"], clock) == AddResult(0, 1, 0)
     assert queue.rows["https://hust.edu.vn/a"].next_due_at == 99.0
+
+
+def test_add_accepts_url_on_non_default_port() -> None:
+    queue, clock = FakeUrlQueue(), FakeClock(0.0)
+    assert add_urls(queue, ["http://127.0.0.1:5000/a"], clock) == AddResult(1, 0, 0)
+    assert queue.rows["http://127.0.0.1:5000/a"].host == "127.0.0.1"

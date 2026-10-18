@@ -7,9 +7,8 @@ from typing import Any
 from data_pipeline.application.aggregator.ports import ContentOwners, SeenUrls, Target
 from data_pipeline.domain.aggregator.batching import UrlBatcher
 from data_pipeline.domain.aggregator.content import content_key
-from data_pipeline.domain.aggregator.links import candidate_urls
+from data_pipeline.domain.aggregator.links import candidate_urls, canonical_url
 from data_pipeline.domain.aggregator.records import duplicate_stub
-from data_pipeline.domain.shared.url import canonicalize_url
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +17,7 @@ class Scope:
 
     allowed_hosts: frozenset[str]
     allowed_suffixes: tuple[str, ...]
+    allowed_ports: frozenset[int] = frozenset()
 
 
 async def aggregate(
@@ -32,7 +32,7 @@ async def aggregate(
 ) -> None:
     """Store one record (a stub when another URL owns its text) and queue its new links."""
     url = record["url"]
-    page_url = canonicalize_url(url, check_traps=False)[0]
+    page_url = canonical_url(url, scope.allowed_ports)[0]
     if page_url is not None:
         seen.add_new([page_url])
     key = content_key(record["content"])
@@ -43,6 +43,7 @@ async def aggregate(
         source_url=url,
         allowed_hosts=scope.allowed_hosts,
         allowed_suffixes=scope.allowed_suffixes,
+        allowed_ports=scope.allowed_ports,
     )
     for batch in batcher.add(seen.add_new(links), now):
         await deliver("controller", {"urls": batch})

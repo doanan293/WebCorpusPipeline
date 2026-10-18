@@ -58,12 +58,13 @@ def create_service(
     *,
     seed_urls: Sequence[str],
     allowed_hosts: frozenset[str] = frozenset(),
+    allowed_ports: frozenset[int] = frozenset(),
     closers: Sequence[Callable[[], Awaitable[None]]] = (),
 ) -> web.Application:
     """``create_app`` that aggregates, plus the seeding, batching and outbox loops."""
     stats = Stats()
     batcher = UrlBatcher(config.batch_size, config.batch_seconds)
-    scope = Scope(allowed_hosts, config.allowed_suffixes)
+    scope = Scope(allowed_hosts, config.allowed_suffixes, allowed_ports)
 
     async def send(target: Target, payload: dict[str, Any]) -> None:
         stats.incr(f"to_{target}")

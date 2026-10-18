@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from data_pipeline.application.controller.ports import Clock, UrlQueue
 from data_pipeline.domain.controller.kinds import url_kind
 from data_pipeline.domain.controller.models import UrlKind
+from data_pipeline.domain.shared.links import normalize_url
 from data_pipeline.domain.shared.url import canonicalize_url
 
 
@@ -21,7 +23,11 @@ def add_urls(queue: UrlQueue, urls: Sequence[str], clock: Clock) -> AddResult:
     items: dict[str, tuple[str, str, UrlKind]] = {}
     rejected = 0
     for raw in urls:
-        url, host, _reason = canonicalize_url(raw, check_traps=False)
+        url, host, reason = canonicalize_url(raw, check_traps=False)
+        if url is None and reason == "non_default_port":
+            # Any group may run a site on its own port; only the aggregator filters by scope.
+            url = normalize_url(raw)
+            host = urlsplit(url).hostname if url else None
         if url is None or host is None:
             rejected += 1
             continue

@@ -28,3 +28,19 @@ def test_candidates_keep_hust_pages_and_documents() -> None:
         allowed_hosts=frozenset(),
         allowed_suffixes=("hust.edu.vn",),
     ) == ["https://soict.hust.edu.vn/a", "https://hust.edu.vn/f.pdf", "https://hust.edu.vn/b"]
+
+
+def test_non_default_port_needs_allowed_port() -> None:
+    links = [("http://127.0.0.1:5000/a", "A")]
+
+    def candidates(ports: frozenset[int]) -> list[str]:
+        return candidate_urls(
+            links,
+            source_url="http://127.0.0.1:5000/",
+            allowed_hosts=frozenset({"127.0.0.1"}),
+            allowed_suffixes=(),
+            allowed_ports=ports,
+        )
+
+    assert candidates(frozenset()) == []
+    assert candidates(frozenset({5000})) == ["http://127.0.0.1:5000/a"]
