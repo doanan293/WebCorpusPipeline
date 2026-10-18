@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
-from itertools import islice
+from collections.abc import Sequence
 from pathlib import Path
 
 from data_pipeline.infrastructure.shared.sqlite import connect, transaction
@@ -34,18 +33,3 @@ class SqliteAggregatorState:
                 "SELECT url FROM content_owners WHERE content_id = ?", (content_id,)
             ).fetchone()
         return owner
-
-    def import_seen(self, urls: Iterable[str]) -> int:
-        """Record known URLs in bulk (one-off batch-crawl import); return how many are new."""
-        return self._bulk("INSERT OR IGNORE INTO seen_urls VALUES (?)", ((url,) for url in urls))
-
-    def import_owners(self, pairs: Iterable[tuple[str, str]]) -> int:
-        return self._bulk("INSERT OR IGNORE INTO content_owners VALUES (?, ?)", pairs)
-
-    def _bulk(self, sql: str, rows: Iterable[tuple[str, ...]]) -> int:
-        before = self.db.total_changes
-        iterator = iter(rows)
-        while batch := list(islice(iterator, 10_000)):
-            with transaction(self.db):
-                self.db.executemany(sql, batch)
-        return self.db.total_changes - before

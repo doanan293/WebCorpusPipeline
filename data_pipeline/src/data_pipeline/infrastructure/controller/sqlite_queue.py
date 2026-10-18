@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
-from itertools import islice
+from collections.abc import Sequence
 from pathlib import Path
 
 from data_pipeline.application.controller.ports import QueueCounts
@@ -80,18 +79,3 @@ class SqliteUrlQueue:
             "SELECT COUNT(*), COALESCE(SUM(next_due_at <= ?), 0) FROM urls", (now,)
         ).fetchone()
         return QueueCounts(total=total, due=due)
-
-    def import_rows(self, rows: Iterable[QueuedUrl]) -> int:
-        """Insert rows not yet known, 10 000 per transaction (one-off import of the batch crawl)."""
-        before = self.db.total_changes
-        iterator = iter(rows)
-        while batch := list(islice(iterator, 10_000)):
-            with transaction(self.db):
-                self.db.executemany(
-                    "INSERT OR IGNORE INTO urls VALUES (?, ?, ?, ?, ?, ?)",
-                    [
-                        (r.url, r.host, r.kind, r.next_due_at, r.last_sent_at, r.attempts)
-                        for r in batch
-                    ],
-                )
-        return self.db.total_changes - before
