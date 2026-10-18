@@ -7,7 +7,17 @@ from typing import NoReturn
 import typer
 
 from data_pipeline import bootstrap
-from data_pipeline.cli import context, corpus, crawl, domains, enrich, errors, eval, serve
+from data_pipeline.cli import (
+    context,
+    corpus,
+    crawl,
+    domains,
+    enrich,
+    errors,
+    eval,
+    reextract,
+    serve,
+)
 
 app = typer.Typer(
     name="data-pipeline",
@@ -21,6 +31,7 @@ app.add_typer(corpus.app, name="corpus")
 app.add_typer(domains.app, name="domains")
 app.add_typer(eval.app, name="eval")
 app.add_typer(serve.app, name="serve")
+app.command("reextract")(reextract.reextract)
 
 
 @app.callback()

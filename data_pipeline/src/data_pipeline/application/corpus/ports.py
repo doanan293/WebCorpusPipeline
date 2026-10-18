@@ -1,44 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any, Protocol
 
-from data_pipeline.domain.corpus.graph import Edge
 from data_pipeline.domain.corpus.manifest import Fingerprint
-
-type ExportDocuments = Callable[[Path], Path]
-"""Writes ``documents.jsonl`` and ``extraction-report.json`` into the folder it is given."""
-
-
-class EnrichmentCounts(Protocol):
-    @property
-    def pending(self) -> int: ...
-
-    @property
-    def cloud_failed(self) -> int: ...
-
-    @property
-    def quota_blocked(self) -> int: ...
-
-
-class EnrichmentStatus(Protocol):
-    """How far enrichment of the crawl has got (satisfied by the enrich work state)."""
-
-    def inventory_done(self, source_key: str) -> bool: ...
-
-    def summary(self) -> EnrichmentCounts: ...
-
-    def pending_parse(self) -> Iterable[object]: ...
 
 
 class CorpusFiles(Protocol):
-    """The file system as the corpus use cases see it."""
-
-    def articles_path(self, source: Path) -> Path: ...
+    """Reading, writing and swapping in the files of a corpus package."""
 
     def read_jsonl(self, path: Path) -> Iterator[dict[str, Any]]: ...
+
+    def write_jsonl(self, path: Path, rows: Iterable[dict[str, Any]]) -> int: ...
 
     def read_json(self, path: Path) -> Any: ...
 
@@ -65,34 +40,20 @@ class CorpusFiles(Protocol):
     def install_copy(self, folder: Path, destination: Path) -> None: ...
 
 
-class EdgeIndex(Protocol):
-    """Deduplicates edges and image URLs, then writes them sorted."""
-
-    def add(self, edges: list[Edge], images: list[str]) -> None: ...
-
-    def write(self, output: Path) -> dict[str, int]: ...
-
-
-type EdgeIndexFactory = Callable[[Path], AbstractContextManager[EdgeIndex]]
-"""Opens an edge index whose scratch data lives in the given output folder."""
-
-
 class CorpusDatabase(Protocol):
-    def dataset(self, snapshot_id: str) -> dict[str, Any] | None: ...
+    """The slide's ``html``, ``other`` and ``graph`` collections."""
 
-    def put_dataset(self, doc: dict[str, Any]) -> None: ...
+    def iter_collection(self, name: str) -> Iterator[dict[str, Any]]: ...
 
-    def set_dataset_fields(self, snapshot_id: str, fields: dict[str, Any]) -> None: ...
+    def load(self, name: str, docs: Iterable[dict[str, Any]]) -> int:
+        """Upsert ``docs`` (by ``url``; graph edges by ``src`` and ``dest``); return how many."""
+        ...
+
+    def find_edges(
+        self, *, src: str | None, dest: str | None, limit: int
+    ) -> list[dict[str, Any]]: ...
 
     def ensure_indexes(self) -> None: ...
-
-    def replace_many(self, collection: str, docs: Iterable[dict[str, Any]]) -> int: ...
-
-    def delete_other_snapshots(self, collection: str, keep: str) -> int: ...
-
-    def find_links(
-        self, snapshot_id: str, field: str, url: str, limit: int
-    ) -> list[dict[str, Any]]: ...
 
 
 class DatasetPublisher(Protocol):

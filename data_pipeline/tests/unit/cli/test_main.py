@@ -161,7 +161,7 @@ def test_mongo_error_is_one_line(
 
     monkeypatch.setattr(bootstrap, "connect", unreachable)
 
-    assert main(["corpus", "prune-mongo", "--keep", "s"]) == 1
+    assert main(["corpus", "query", "--url", "https://h/"]) == 1
     err = capsys.readouterr().err.strip()
     assert (
         err == "Error: ServerSelectionTimeoutError: localhost:27017: [Errno 111] Connection refused"
@@ -176,5 +176,5 @@ def test_called_process_error_shows_stderr(
 
     monkeypatch.setattr(bootstrap, "connect", failing)
 
-    assert main(["corpus", "prune-mongo", "--keep", "s"]) == 1
+    assert main(["corpus", "query", "--url", "https://h/"]) == 1
     assert "source file could not be loaded" in capsys.readouterr().err

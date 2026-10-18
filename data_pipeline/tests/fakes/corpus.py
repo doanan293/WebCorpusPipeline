@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 from collections import Counter, defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -12,55 +12,38 @@ from data_pipeline.domain.shared.errors import ExternalFailure
 
 
 class FakeCorpusDatabase:
-    """Collections as dicts of documents keyed by ``_id``; counts writes per collection."""
+    """The slide's collections in memory: ``html``/``other`` keyed by url, ``graph`` by (src, dest)."""
 
     def __init__(self) -> None:
-        self.collections: defaultdict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+        self.collections: defaultdict[str, dict[Any, dict[str, Any]]] = defaultdict(dict)
         self.writes: Counter[str] = Counter()
         self.indexed = False
 
-    def dataset(self, snapshot_id: str) -> dict[str, Any] | None:
-        return self.collections["datasets"].get(snapshot_id)
+    @staticmethod
+    def _key(name: str, doc: dict[str, Any]) -> Any:
+        return (doc["src"], doc["dest"]) if name == "graph" else doc["url"]
 
-    def put_dataset(self, doc: dict[str, Any]) -> None:
-        self.collections["datasets"][doc["_id"]] = doc
+    def iter_collection(self, name: str) -> Iterator[dict[str, Any]]:
+        return iter([dict(doc) for doc in self.collections[name].values()])
 
-    def set_dataset_fields(self, snapshot_id: str, fields: dict[str, Any]) -> None:
-        doc = self.dataset(snapshot_id)
-        if doc is not None:
-            doc.update(fields)
+    def load(self, name: str, docs: Iterable[dict[str, Any]]) -> int:
+        written = 0
+        for doc in docs:
+            self.collections[name][self._key(name, doc)] = dict(doc)
+            written += 1
+        self.writes[name] += written
+        return written
+
+    def find_edges(self, *, src: str | None, dest: str | None, limit: int) -> list[dict[str, Any]]:
+        found = [
+            edge
+            for edge in self.collections["graph"].values()
+            if (src is None or edge["src"] == src) and (dest is None or edge["dest"] == dest)
+        ]
+        return sorted(found, key=lambda edge: (edge["src"], edge["dest"]))[:limit]
 
     def ensure_indexes(self) -> None:
         self.indexed = True
-
-    def replace_many(self, collection: str, docs: Iterable[dict[str, Any]]) -> int:
-        written = 0
-        for doc in docs:
-            self.collections[collection][doc["_id"]] = dict(doc)
-            written += 1
-        self.writes[collection] += written
-        return written
-
-    def delete_other_snapshots(self, collection: str, keep: str) -> int:
-        field = "_id" if collection == "datasets" else "snapshot_id"
-        docs = self.collections[collection]
-        gone = [key for key, doc in docs.items() if doc.get(field) != keep]
-        for key in gone:
-            del docs[key]
-        return len(gone)
-
-    def find_links(
-        self, snapshot_id: str, field: str, url: str, limit: int
-    ) -> list[dict[str, Any]]:
-        found = sorted(
-            (
-                doc
-                for doc in self.collections["links"].values()
-                if doc.get("snapshot_id") == snapshot_id and doc.get(field) == url
-            ),
-            key=lambda doc: str(doc["_id"]),
-        )
-        return [{k: v for k, v in doc.items() if k != "_id"} for doc in found[:limit]]
 
 
 class FakePublisher:

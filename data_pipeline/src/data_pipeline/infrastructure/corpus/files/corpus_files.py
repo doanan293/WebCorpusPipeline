@@ -5,7 +5,7 @@ import json
 import os
 import shutil
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -25,13 +25,18 @@ def sha256_file(path: Path) -> str:
 class LocalCorpusFiles:
     """The ``CorpusFiles`` port on the local disk."""
 
-    def articles_path(self, source: Path) -> Path:
-        return source / "articles.jsonl" if source.is_dir() else source
-
     def read_jsonl(self, path: Path) -> Iterator[dict[str, Any]]:
         with path.open(encoding="utf-8") as stream:
             for line in stream:
                 yield json.loads(line)
+
+    def write_jsonl(self, path: Path, rows: Iterable[dict[str, Any]]) -> int:
+        written = 0
+        with path.open("w", encoding="utf-8") as stream:
+            for row in rows:
+                stream.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+                written += 1
+        return written
 
     def read_json(self, path: Path) -> Any:
         return json.loads(path.read_text())

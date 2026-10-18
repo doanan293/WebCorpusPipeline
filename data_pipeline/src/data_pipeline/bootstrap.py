@@ -23,10 +23,6 @@ if TYPE_CHECKING:
         CorpusDatabase,
         CorpusFiles,
         DatasetPublisher,
-        EdgeIndexFactory,
-        EnrichmentCounts,
-        EnrichmentStatus,
-        ExportDocuments,
     )
     from data_pipeline.application.crawl.ports import CrawlEngine, CrawlStorage
     from data_pipeline.application.enrich.ports import (
@@ -42,6 +38,7 @@ if TYPE_CHECKING:
     from data_pipeline.application.fetcher.ports import Renderer
     from data_pipeline.application.hosts.ports import AuditReports, BrowserProber, HostProber
     from data_pipeline.application.parser.parse import DocumentReaders
+    from data_pipeline.application.parser.ports import RawPages
     from data_pipeline.application.storage.ports import CorpusStore
     from data_pipeline.domain.aggregator.config import AggregatorConfig
     from data_pipeline.domain.controller.models import ControllerConfig
@@ -184,12 +181,6 @@ def corpus_files() -> CorpusFiles:
     return LocalCorpusFiles()
 
 
-def edge_index() -> EdgeIndexFactory:
-    from data_pipeline.infrastructure.corpus.graph_index import open_edge_index
-
-    return open_edge_index
-
-
 def dataset_publisher() -> DatasetPublisher:
     from data_pipeline.infrastructure.corpus.kaggle_cli import KaggleCli
 
@@ -204,16 +195,6 @@ def mongo_database(settings: Settings) -> Iterator[CorpusDatabase]:
         yield MongoCorpusDatabase(client[settings.mongo_database])
     finally:
         client.close()
-
-
-def export_documents(uow: EnrichUnitOfWork) -> ExportDocuments:
-    """The enrich export, handed to corpus packaging (corpus may not import enrich)."""
-    from data_pipeline.application.enrich.export import export_enrichment
-
-    def export(folder: Path) -> Path:
-        return export_enrichment(uow.inventory, uow.parses, uow.summary(), folder)
-
-    return export
 
 
 # -- domains ----------------------------------------------------------------------------------
@@ -239,27 +220,6 @@ def audit_reports(all_path: Path, active_path: Path, report_path: Path) -> Audit
     from data_pipeline.infrastructure.hosts.report_files import FileAuditReports
 
     return FileAuditReports(all_path, active_path, report_path)
-
-
-class _EnrichmentStatus:
-    """The corpus's view of an enrich unit of work (corpus may not import enrich)."""
-
-    def __init__(self, uow: EnrichUnitOfWork) -> None:
-        self.uow = uow
-
-    def inventory_done(self, source_key: str) -> bool:
-        return self.uow.inventory.inventory_done(source_key)
-
-    def summary(self) -> EnrichmentCounts:
-        return self.uow.summary()
-
-    def pending_parse(self) -> Iterator[object]:
-        return self.uow.parses.pending_parse()
-
-
-def enrichment_status(uow: EnrichUnitOfWork) -> EnrichmentStatus:
-    """How far enrichment has got, as the corpus packaging asks it."""
-    return _EnrichmentStatus(uow)
 
 
 # -- controller -------------------------------------------------------------------------------
@@ -416,3 +376,9 @@ def service_client(storage_url: str, controller_url: str) -> HttpServiceClient:
     from data_pipeline.infrastructure.aggregator.service_client import HttpServiceClient
 
     return HttpServiceClient(storage_url, controller_url)
+
+
+def raw_pages(crawl: Path) -> RawPages:
+    from data_pipeline.infrastructure.parser.raw_pages import SqliteRawPages
+
+    return SqliteRawPages(crawl)

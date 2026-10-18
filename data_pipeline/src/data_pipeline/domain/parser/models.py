@@ -51,3 +51,13 @@ def jsonable(value: Any) -> Any:
     if isinstance(value, dict):
         return {k: jsonable(v) for k, v in value.items()}
     return value
+
+
+@dataclass(frozen=True, slots=True)
+class StoredPage:
+    """An HTML body the batch crawl kept on disk, as ``reextract`` reads it."""
+
+    url: str
+    final_url: str
+    content_type: str
+    body: bytes

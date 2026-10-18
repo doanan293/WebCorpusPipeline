@@ -5,18 +5,8 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-# Files a corpus package may hold besides manifest.json, in manifest order.
-PAYLOAD = (
-    "articles.jsonl",
-    "urls.txt",
-    "README.json",
-    "documents.jsonl",
-    "images.jsonl",
-    "links.jsonl",
-    "extraction-report.json",
-)
-# Copied unchanged from the crawl output.
-SOURCE_FILES = ("articles.jsonl", "urls.txt", "README.json")
+# Files a corpus package holds besides manifest.json: one per Mongo collection of the slide.
+PAYLOAD = ("html.jsonl", "other.jsonl", "graph.jsonl")
 MANIFEST = "manifest.json"
 
 type Fingerprint = tuple[str, int]

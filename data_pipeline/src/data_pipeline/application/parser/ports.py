@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Protocol
 
-from data_pipeline.domain.parser.models import DownloadedFile, LocalResult, ParseResult
+from data_pipeline.domain.parser.models import DownloadedFile, LocalResult, ParseResult, StoredPage
 
 
 class CloudJobLog(Protocol):
@@ -44,4 +45,10 @@ class ParseCache(Protocol):
 class AggregatorClient(Protocol):
     async def send(self, record: dict[str, Any]) -> bool:
         """Hand one record to the aggregator block's ``/add``."""
+        ...
+
+
+class RawPages(Protocol):
+    def iter(self) -> Iterator[StoredPage]:
+        """Every stored HTML page, one at a time."""
         ...

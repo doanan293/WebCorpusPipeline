@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 type ParseOutcome = Literal["sent", "unparsable", "unsent"]
 
 
-def _charset(content_type: str) -> str | None:
+def charset_of(content_type: str) -> str | None:
     for part in content_type.split(";")[1:]:
         key, _, value = part.strip().partition("=")
         if key.lower() == "charset" and value:
@@ -56,7 +56,7 @@ async def parse_payload(
 ) -> ParseOutcome:
     """Extract one downloaded page or document and send the record to the aggregator."""
     if fmt == "html":
-        analysis = await asyncio.to_thread(analyze_article, body, url, _charset(content_type))
+        analysis = await asyncio.to_thread(analyze_article, body, url, charset_of(content_type))
         record = html_record(url, analysis)
     else:
         doc_format = document_format(url, content_type)
