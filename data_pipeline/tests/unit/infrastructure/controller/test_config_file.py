@@ -41,3 +41,10 @@ def test_config_rejects_negative_delay(tmp_path: Path) -> None:
     )
     with pytest.raises(ConfigError, match="host_delay_seconds"):
         load_controller_config(path)
+
+
+def test_config_rejects_downloader_without_scheme(tmp_path: Path) -> None:
+    path = tmp_path / "c.yaml"
+    path.write_text("downloaders: ['10.0.0.11:8800']\ndatabase: q.sqlite3\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match=r"10\.0\.0\.11:8800"):
+        load_controller_config(path)

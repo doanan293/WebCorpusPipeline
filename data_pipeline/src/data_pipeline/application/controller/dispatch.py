@@ -6,7 +6,7 @@ from data_pipeline.application.controller.ports import Clock, Downloader, UrlQue
 from data_pipeline.domain.controller.models import ControllerConfig
 from data_pipeline.domain.controller.rotation import NodeRotation
 from data_pipeline.domain.controller.scheduling import after_failure, after_success
-from data_pipeline.domain.shared.protocol import IDLE
+from data_pipeline.domain.shared.protocol import BUSY, IDLE
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +35,9 @@ class Dispatcher:
                 self.rotation.rest(node, now + self.config.node_cooldown_seconds)
                 continue
             if status != IDLE:
+                if status != BUSY:
+                    # A slide node answers "đang chờ" or "đang bận"; say what came instead.
+                    log.warning("unexpected ping status from %s: %r", node, status)
                 continue
             self.rotation.used(node)
             if await self.downloader.load(node, item.url):

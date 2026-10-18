@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
+
+import pytest
 
 from data_pipeline.application.controller.add_urls import add_urls
 from data_pipeline.application.controller.dispatch import Dispatcher
@@ -80,3 +83,12 @@ def test_dispatch_does_not_ping_without_due_url() -> None:
     dispatcher, _, downloader, _ = _setup({"a": IDLE}, [])
     assert _steps(dispatcher, 1) == [False]
     assert downloader.pings == []
+
+
+def test_unexpected_ping_status_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    dispatcher, _, downloader, _ = _setup({"a": "dang cho"}, ["https://a.hust.edu.vn/1"])
+    with caplog.at_level(logging.WARNING):
+        assert _steps(dispatcher, 1) == [False]
+    assert downloader.loads == []
+    assert "unexpected ping status" in caplog.text
+    assert "dang cho" in caplog.text

@@ -18,15 +18,19 @@ repos:
     hooks:
       - id: ruff-check
         args: [--fix]
-        files: ^data_pipeline/
+        files: ^(data_pipeline|dieu_khien)/
       - id: ruff-format
-        files: ^data_pipeline/
+        files: ^(data_pipeline|dieu_khien)/
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.12.13
     hooks:
       - id: uv-lock
         args: [--project, data_pipeline]
         files: ^data_pipeline/(pyproject\.toml|uv\.lock)$
+      - id: uv-lock
+        name: uv-lock (dieu_khien)
+        args: [--project, dieu_khien]
+        files: ^dieu_khien/(pyproject\.toml|uv\.lock)$
   - repo: local
     hooks:
       - id: pyrefly
@@ -41,4 +45,17 @@ repos:
         language: system
         pass_filenames: false
         files: ^data_pipeline/
+        stages: [pre-push]
+      - id: pyrefly-dieu-khien
+        name: pyrefly check (dieu_khien)
+        entry: uv run --directory dieu_khien pyrefly check
+        language: system
+        pass_filenames: false
+        files: ^dieu_khien/.*\.py$
+      - id: pytest-dieu-khien
+        name: pytest (dieu_khien)
+        entry: uv run --directory dieu_khien pytest -q
+        language: system
+        pass_filenames: false
+        files: ^dieu_khien/
         stages: [pre-push]

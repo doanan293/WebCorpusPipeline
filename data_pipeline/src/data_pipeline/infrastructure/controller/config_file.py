@@ -34,6 +34,10 @@ def load_controller_config(path: Path) -> ControllerConfig:
         msg = "downloaders must list at least one download node URL"
         raise ConfigError(msg)
     nodes = tuple(str(node).rstrip("/") for node in cast("list[object]", downloaders))
+    for node in nodes:
+        if not node.startswith(("http://", "https://")):
+            msg = f"downloaders: {node} must be a URL such as http://10.0.0.11:8800"
+            raise ConfigError(msg)
     if "database" not in values:
         msg = "database is required"
         raise ConfigError(msg)
