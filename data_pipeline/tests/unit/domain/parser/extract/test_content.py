@@ -31,7 +31,13 @@ def test_extract_html_accepts_bytes_with_xml_encoding_declaration() -> None:
 
 def test_discover_html_accepts_bytes_with_xml_encoding_declaration() -> None:
     assert discover_html(DECLARED_UTF8_HTML, "https://site.test/article", "utf-8") == [
-        {"url": "https://site.test/tin-moi", "text": "Tin mới", "kind": "html", "rel": []}
+        {
+            "url": "https://site.test/tin-moi",
+            "text": "Tin mới",
+            "kind": "html",
+            "rel": [],
+            "sentence": "Tin mới",
+        }
     ]
 
 
@@ -117,12 +123,14 @@ def test_discovery_includes_media_and_srcset_but_discards_transients() -> None:
             "text": "Article",
             "kind": "html",
             "rel": [],
+            "sentence": "Article",
         },
         {
             "url": "https://assets.site.test/article?id=2",
             "text": "Article",
             "kind": "html",
             "rel": [],
+            "sentence": "Article",
         },
         {
             "url": "https://assets.site.test/v1/hero.jpg?size=large",

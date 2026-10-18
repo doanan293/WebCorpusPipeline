@@ -74,3 +74,34 @@ def test_other_record() -> None:
         "out-links": [],
         "content_id": content_id_for("Van ban"),
     }
+
+
+def test_out_links_carry_the_sentence_holding_the_link() -> None:
+    page = (
+        "<html><head><meta charset='utf-8'><title>T</title></head><body><article><h1>T</h1>"
+        "<p>Mọi thông tin xem tại <a href='/tb'>trang thông báo</a> của trường.</p>"
+        "</article></body></html>"
+    ).encode()
+    record = html_record("https://hust.edu.vn/a", analyze_article(page, "https://hust.edu.vn/a"))
+    assert [
+        "https://hust.edu.vn/tb",
+        "Mọi thông tin xem tại trang thông báo của trường.",
+    ] in record["out-links"]
+
+
+def test_stored_article_without_sentences_keeps_its_labels() -> None:
+    article: dict[str, Any] = {
+        "text": "body",
+        "observed_refs": [
+            {"url": "https://h/x", "text": "X", "kind": "page", "rel": []},
+            {
+                "url": "https://h/y",
+                "text": "Y",
+                "sentence": "Xem Y nhé.",
+                "kind": "page",
+                "rel": [],
+            },
+        ],
+    }
+    record = record_from_article("https://h/", article)
+    assert record["out-links"] == [["https://h/x", "X"], ["https://h/y", "Xem Y nhé."]]

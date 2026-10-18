@@ -98,3 +98,37 @@ def test_labels_computed_only_for_href_src(monkeypatch: pytest.MonkeyPatch) -> N
     discoveries_from_root(root, "https://a.test/")
 
     assert sorted(calls) == ["a", "img"]
+
+
+def _sentences(body: str) -> dict[str, str]:
+    root = lxml_html.fromstring(f"<html><body>{body}</body></html>")
+    return {
+        item["url"]: item["sentence"]
+        for item in discoveries_from_root(root, "https://a.test/")
+        if "sentence" in item
+    }
+
+
+def test_link_in_running_text_carries_its_whole_sentence() -> None:
+    sentences = _sentences(
+        "<p>Hạn nộp hồ sơ là 25/10. Sinh viên xem <a href='/tb'>thông báo học bổng</a> "
+        "trước ngày 20! Mọi thắc mắc gửi phòng CTSV.</p>"
+    )
+    assert sentences["https://a.test/tb"] == "Sinh viên xem thông báo học bổng trước ngày 20!"
+
+
+def test_link_alone_in_its_block_keeps_its_label() -> None:
+    sentences = _sentences(
+        "<ul><li><a href='/'>Trang chủ</a></li></ul>"
+        "<div class='pages'><a href='/?p=2'>2</a> <a href='/?p=3'>3</a></div>"
+        "<p><a href='/img'><img src='/x.png'></a></p>"
+    )
+    assert sentences["https://a.test/"] == "Trang chủ"
+    assert sentences["https://a.test/?p=2"] == "2"
+    assert sentences["https://a.test/img"] == ""
+
+
+def test_overlong_block_falls_back_to_the_label() -> None:
+    filler = "chu " * 300
+    sentences = _sentences(f"<td>{filler}<a href='/x'>Xem</a> {filler}</td>")
+    assert sentences["https://a.test/x"] == "Xem"

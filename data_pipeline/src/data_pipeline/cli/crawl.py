@@ -20,25 +20,27 @@ app = typer.Typer(help="Crawl with the five blocks in one process.", no_args_is_
 seeds_app = typer.Typer(help="Where crawls start and which hosts they spread over.")
 
 
-def _under_root(paths: ProjectPaths, path: Path) -> Path:
+def under_root(paths: ProjectPaths, path: Path) -> Path:
     return path if path.is_absolute() else paths.root / path
 
 
-def _aggregator(paths: ProjectPaths) -> AggregatorConfig:
+def aggregator_settings(paths: ProjectPaths) -> AggregatorConfig:
     config = bootstrap.aggregator_config(paths.root / "config" / "aggregator.yaml")
     return AggregatorConfig(
         port=config.port,
-        seeds_file=_under_root(paths, config.seeds_file),
-        initial_scope_file=_under_root(paths, config.initial_scope_file),
+        seeds_file=under_root(paths, config.seeds_file),
+        initial_scope_file=under_root(paths, config.initial_scope_file),
         batch_size=config.batch_size,
         batch_seconds=config.batch_seconds,
         outbox_retry_seconds=config.outbox_retry_seconds,
-        database=_under_root(paths, config.database),
-        outbox=_under_root(paths, config.outbox),
+        database=under_root(paths, config.database),
+        outbox=under_root(paths, config.outbox),
     )
 
 
-def _parts(paths: ProjectPaths, aggregator: AggregatorConfig, database: Path) -> runner.CrawlParts:
+def build_parts(
+    paths: ProjectPaths, aggregator: AggregatorConfig, database: Path
+) -> runner.CrawlParts:
     fetcher = bootstrap.fetcher_config(paths.root / "config" / "fetcher.yaml")
     parser = bootstrap.parser_config(paths.root / "config" / "parser.yaml")
     settings = bootstrap.load_settings(paths)
@@ -56,13 +58,13 @@ def _parts(paths: ProjectPaths, aggregator: AggregatorConfig, database: Path) ->
     )
 
 
-def _close(parts: runner.CrawlParts) -> None:
+def close_parts(parts: runner.CrawlParts) -> None:
     parts.store.close()
     parts.queue.close()
     parts.state.close()
 
 
-def _initial_scope(aggregator: AggregatorConfig) -> frozenset[str]:
+def initial_scope(aggregator: AggregatorConfig) -> frozenset[str]:
     path = aggregator.initial_scope_file
     return bootstrap.hostnames(path) if path.exists() else frozenset()
 
@@ -95,15 +97,15 @@ def run(
         context.pick(config, paths.root / "config" / "crawl.yaml"),
         paths.root / "config" / "controller.yaml",
     )
-    aggregator = _aggregator(paths)
-    database = _under_root(paths, crawl_config.controller.database)
+    aggregator = aggregator_settings(paths)
+    database = under_root(paths, crawl_config.controller.database)
     start = _check(bootstrap.seeds(context.pick(seeds, aggregator.seeds_file)))
-    initial = _initial_scope(aggregator)
+    initial = initial_scope(aggregator)
     with (
         bootstrap.state_lease(database, "data-pipeline crawl"),
         bootstrap.state_lease(aggregator.database, "data-pipeline crawl"),
     ):
-        parts = _parts(paths, aggregator, database)
+        parts = build_parts(paths, aggregator, database)
 
         async def go() -> runner.CrawlSummary:
             stop = asyncio.Event()
@@ -128,7 +130,7 @@ def run(
         try:
             summary = asyncio.run(go())
         finally:
-            _close(parts)
+            close_parts(parts)
     print(
         f"fetched {summary.sent}, stored {summary.stored}, failed {summary.failed}, "
         f"{summary.queued_due} urls still due"
@@ -149,17 +151,17 @@ def add(
     crawl_config = bootstrap.crawl_config(
         paths.root / "config" / "crawl.yaml", paths.root / "config" / "controller.yaml"
     )
-    aggregator = _aggregator(paths)
-    database = _under_root(paths, crawl_config.controller.database)
+    aggregator = aggregator_settings(paths)
+    database = under_root(paths, crawl_config.controller.database)
     with (
         bootstrap.state_lease(database, "data-pipeline seeds"),
         bootstrap.state_lease(aggregator.database, "data-pipeline seeds"),
     ):
-        parts = _parts(paths, aggregator, database)
+        parts = build_parts(paths, aggregator, database)
         try:
-            new = asyncio.run(runner.add_seeds(parts, seeds, _initial_scope(aggregator)))
+            new = asyncio.run(runner.add_seeds(parts, seeds, initial_scope(aggregator)))
         finally:
-            _close(parts)
+            close_parts(parts)
     known = len(seeds.urls) - new
     print(f"{new} new urls queued, {known} already known; seeds cover {len(seeds.hosts)} hosts")
     return 0

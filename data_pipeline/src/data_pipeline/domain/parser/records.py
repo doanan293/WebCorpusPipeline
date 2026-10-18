@@ -38,7 +38,10 @@ def record_from_article(url: str, article: Mapping[str, Any]) -> dict[str, Any]:
         "content": text,
         "intro": str(article.get("summary") or ""),
         "out-links": [
-            [ref["url"], ref.get("text") or ""] for ref in article.get("observed_refs", [])
+            # The slide's link text is the sentence holding the link; older stored articles have
+            # only the link's own label.
+            [ref["url"], ref.get("sentence") or ref.get("text") or ""]
+            for ref in article.get("observed_refs", [])
         ],
     }
     for name in _EXTRA_FIELDS:

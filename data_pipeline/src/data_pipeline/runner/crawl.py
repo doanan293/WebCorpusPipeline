@@ -17,6 +17,8 @@ from data_pipeline.application.controller.ports import Clock, UrlQueue
 from data_pipeline.application.fetcher.fetch import fetch_and_forward
 from data_pipeline.application.fetcher.ports import PageGetter, Renderer
 from data_pipeline.application.parser.parse import DocumentReaders
+from data_pipeline.application.parser.ports import RawPages
+from data_pipeline.application.parser.reextract import reextract
 from data_pipeline.application.storage.ports import CorpusStore
 from data_pipeline.domain.aggregator.config import AggregatorConfig
 from data_pipeline.domain.aggregator.seeds import Seeds
@@ -212,3 +214,23 @@ async def add_seeds(
     runtime.adopt_initial_scope(initial_scope)  # first, or a first seed would narrow the scope
     await runtime.add_seeds(seeds)
     return parts.queue.counts(parts.clock.now()).total - before
+
+
+async def reextract_here(
+    parts: CrawlParts, pages: RawPages, initial_scope: frozenset[str] = frozenset()
+) -> int:
+    """``reextract`` in one process: records go through the aggregator's work into the store."""
+    client = DirectServiceClient(parts.store, parts.queue, parts.clock, parts.now_iso)
+    runtime = AggregatorRuntime(
+        parts.aggregator,
+        parts.state,
+        parts.outbox,
+        client,
+        Scope(frozenset()),
+        clock=time.monotonic,
+    )
+    runtime.adopt_initial_scope(initial_scope)
+    sent = await reextract(pages, DirectAggregatorClient(runtime))
+    await runtime.shutdown()  # the last new links: into the outbox, then queued just below
+    await runtime.flush()
+    return sent

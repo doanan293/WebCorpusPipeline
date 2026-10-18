@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import re
 from pathlib import PurePosixPath
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 from urllib.parse import urlsplit
 
 from lxml import etree
@@ -121,6 +122,40 @@ class HtmlDiscovery(TypedDict):
     text: str
     kind: str
     rel: list[str]
+    sentence: NotRequired[str]  # links only: the sentence holding the link (the slide's link text)
+
+
+# Blocks of running text: a link inside one is quoted with the sentence around it.
+_TEXT_BLOCKS = frozenset(
+    {"p", "li", "td", "th", "dd", "dt", "blockquote", "figcaption", "caption"}
+    | {f"h{level}" for level in range(1, 7)}
+)
+_SENTENCE_END = re.compile(r"(?<=[.!?…])\s+")
+_MAX_SENTENCE = 400
+
+
+def anchor_sentence(element: etree._Element, label: str) -> str:
+    """The whole sentence holding a link ("câu hoàn thiện chứa thẻ a" on the slide).
+
+    Only within a block of running text; a link alone in its block (a menu item, a page number)
+    or in a block too long to be a sentence keeps its own label.
+    """
+    if not label:
+        return label
+    block = next(
+        (
+            ancestor
+            for ancestor in element.iterancestors()
+            if isinstance(ancestor.tag, str) and ancestor.tag.lower() in _TEXT_BLOCKS
+        ),
+        None,
+    )
+    if block is None:
+        return label
+    for sentence in _SENTENCE_END.split(normalized_text(list(block.itertext()))):
+        if label in sentence:
+            return sentence if len(sentence) <= _MAX_SENTENCE else label
+    return label
 
 
 _TRANSIENT_MIMES = frozenset(
@@ -200,6 +235,7 @@ def discoveries_from_root(root: etree._Element, base_url: str) -> list[HtmlDisco
         rel: tuple[str, ...] = (),
         *,
         kind_hint: str | None = None,
+        sentence: str | None = None,
     ) -> None:
         normalized = normalize_url(value, base_url)
         if normalized is None:
@@ -210,14 +246,15 @@ def discoveries_from_root(root: etree._Element, base_url: str) -> list[HtmlDisco
         sorted_rel = tuple(sorted(rel))
         identity = (normalized, text, kind, sorted_rel)
         if identity not in seen:
-            discoveries.append(
-                {
-                    "url": normalized,
-                    "text": text,
-                    "kind": kind,
-                    "rel": list(sorted_rel),
-                }
-            )
+            discovery: HtmlDiscovery = {
+                "url": normalized,
+                "text": text,
+                "kind": kind,
+                "rel": list(sorted_rel),
+            }
+            if sentence is not None:
+                discovery["sentence"] = sentence
+            discoveries.append(discovery)
             seen.add(identity)
 
     for element in root.iter():
@@ -233,7 +270,14 @@ def discoveries_from_root(root: etree._Element, base_url: str) -> list[HtmlDisco
         if tag == "link" and not _is_navigation_link(relation, element):
             continue
         text = _element_label(element)
-        if tag in {"a", "area", "link"} and element.get("href"):
+        if tag in {"a", "area"} and element.get("href"):
+            add(
+                element.get("href", ""),
+                text,
+                tuple(sorted(relation)),
+                sentence=anchor_sentence(element, text),
+            )
+        if tag == "link" and element.get("href"):
             add(element.get("href", ""), text, tuple(sorted(relation)))
         if tag in _SRC_TAGS and element.get("src"):
             add(element.get("src", ""), text, (), kind_hint="file")
