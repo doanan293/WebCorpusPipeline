@@ -36,6 +36,8 @@ uv run data-pipeline corpus pull --no-load  # chỉ tải
 ```
 
 `pull` tải đúng phiên bản đã ghim, tự chuyển sang tải từng file khi endpoint gói không dùng được cho dataset lớn,
-kiểm tra khớp `snapshot_id` của lock, rồi upsert `html`/`other` theo `url` và `graph` theo (`src`, `dest`, `text`). Phiên
-bản đang ghim là định dạng cũ (trước khi tách khối) nên chưa có `html/other/graph.jsonl`: cần công bố phiên bản
-mới và cập nhật lock.
+kiểm tra khớp `snapshot_id` của lock, rồi upsert `html`/`other` theo `url` và `graph` theo (`src`, `dest`, `text`).
+
+Phiên bản đang ghim là **v3** (19/10/2026): định dạng của slide sau khi tách khối, gồm `html.jsonl` (141.353 trang),
+`other.jsonl` (5.860 tài liệu), `graph.jsonl` (8.251.443 liên kết, văn bản là câu chứa liên kết), snapshot
+`58c536de…`. Các phiên bản 1–2 trên Kaggle là định dạng cũ của pipeline Scrapy.
