@@ -104,4 +104,4 @@ Bản crawl trước khi tách khối vẫn nằm trên đĩa, chỉ đọc:
 |---|---|
 | `data/crawl/state/index.sqlite3`, `data/crawl/html/` | `data-pipeline reextract` (bóc lại từ HTML đã lưu rồi lưu lại qua các khối trong một tiến trình; `--aggregator URL` để gửi sang dịch vụ Tổng hợp) |
 | `data/enrichment/cache/` | cache LlamaParse của khối Đọc nội dung |
-| `data/crawl/` còn lại, `data/enrichment/state.sqlite3`, `data/corpus/latest/` (định dạng cũ) | đã chuyển sang các khối bằng script một lần; có thể xoá khi không cần đối chiếu nữa |
+| `data/crawl/` còn lại, `data/enrichment/state.sqlite3` (định dạng cũ) | đã chuyển sang các khối bằng script một lần; có thể xoá khi không cần đối chiếu nữa |
