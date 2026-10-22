@@ -69,15 +69,7 @@ search-path = ["src", "."]
 python-interpreter-path = ".venv/bin/python"
 
 [tool.vulture]
-# Run: uvx vulture@2.14. Names below are called by Typer, Scrapy or the standard library by
-# convention, or read through dataclasses.asdict into JSON, so vulture cannot see their callers.
-paths = ["src"]
+# Run: uvx vulture@2.14. QueuedUrl.last_sent_at is filled from the SQLite row, never read by name.
+paths = ["src", "demo"]
 min_confidence = 60
-ignore_names = [
-  "_load_project_env", "verify", "import_mongo", "prune_mongo", "pull", "discover", "download",
-  "extract", "reconcile_job", "extraction", "outgoing",
-  "from_crawler", "process_request", "process_response", "process_exception", "dont_filter",
-  "body_length",
-  "downloaded", "transferred_bytes", "referrers",
-  "row_factory", "check_hostname", "verify_mode",
-]
+ignore_names = ["last_sent_at"]

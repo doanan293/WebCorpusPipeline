@@ -1,60 +1,40 @@
 import pytest
 
-from dieu_khien.domain.shared.url import (
-    UrlDecision,
-    UrlPolicy,
-    canonicalize_url,
-    classify_frontier_trap,
-)
+from dieu_khien.domain.shared.url import canonicalize_url
 
 
-def test_exact_host_and_tracking_cleanup() -> None:
-    decision = UrlPolicy(frozenset({"example.com"})).decide(
-        "HTTPS://EXAMPLE.COM:443/a/../b?utm_source=x&z=2&a=1#top"
+def test_one_spelling_per_url() -> None:
+    assert canonicalize_url("HTTPS://EXAMPLE.COM:443/a/../b?utm_source=x&z=2&a=1#top") == (
+        "https://example.com/b?a=1&z=2",
+        "example.com",
     )
-    assert decision == UrlDecision(True, "https://example.com/b?a=1&z=2", None)
-
-
-@pytest.mark.parametrize(
-    ("url", "reason"),
-    [
-        ("https://x.example.com/", "host_out_of_scope"),
-        ("https://user:secret@example.com/", "credentials_or_missing_host"),
-        ("https://example.com:99999/", "invalid_port"),
-        ("https://example.com/logout", "logout_path"),
-        ("https://example.com/search?q=x", "search_trap"),
-        ("https://example.com/calendar/2099/12", "calendar_trap"),
-        ("https://example.com/a/a/a/a", "repeated_path_trap"),
-    ],
-)
-def test_rejected_urls_have_stable_reasons(url: str, reason: str) -> None:
-    assert UrlPolicy(frozenset({"example.com"})).decide(url).reason == reason
-
-
-def test_content_and_policy_share_canonical_form() -> None:
-    raw = "https://EXAMPLE.com/a/../b?utm_source=x&z=2&a=1#part"
-    policy_url = UrlPolicy(frozenset({"example.com"})).decide(raw).canonical_url
-    assert canonicalize_url(raw)[0] == policy_url == "https://example.com/b?a=1&z=2"
 
 
 def test_tracking_parameters_do_not_create_distinct_urls() -> None:
-    first, _, _ = canonicalize_url("https://a.test/news?id=7&utm_source=x")
-    second, _, _ = canonicalize_url("https://a.test/news?fbclid=y&id=7")
-    assert first == second == "https://a.test/news?id=7"
+    first = canonicalize_url("https://a.test/news?id=7&utm_source=x&PHPSESSID=1")
+    second = canonicalize_url("https://a.test/news?fbclid=y&id=7")
+    assert first == second == ("https://a.test/news?id=7", "a.test")
+
+
+def test_non_default_port_is_kept() -> None:
+    assert canonicalize_url("http://127.0.0.1:5000/a") == ("http://127.0.0.1:5000/a", "127.0.0.1")
+    assert canonicalize_url("http://[::1]:8000/") == ("http://[::1]:8000/", "::1")
 
 
 @pytest.mark.parametrize(
-    ("url", "reason"),
+    "url",
     [
-        ("https://a.test/wp-json/wp/v2/posts", "api_endpoint_trap"),
-        ("https://a.test/search?q=admission", "search_trap"),
-        ("https://a.test/events/calendar.ics", "calendar_export_trap"),
-        ("https://a.test/news/feed", "feed_trap"),
-        ("https://a.test/article/print", "action_endpoint_trap"),
+        "mailto:x@hust.edu.vn",
+        "ftp://hust.edu.vn/a",
+        "https://user:secret@example.com/",
+        "https://example.com:99999/",
+        "https:///no-host",
+        "not a url",
+        "https://a.test/?" + "&".join(f"k{i}=1" for i in range(51)),
     ],
 )
-def test_frontier_traps(url: str, reason: str) -> None:
-    assert classify_frontier_trap(url) == reason
+def test_not_a_web_address(url: str) -> None:
+    assert canonicalize_url(url) is None
 
 
 @pytest.mark.parametrize(
@@ -62,4 +42,4 @@ def test_frontier_traps(url: str, reason: str) -> None:
     ["https://a.test/x?abc", "https://a.test/index.php?/news/1", "https://a.test/x?a=1&flag"],
 )
 def test_canonicalize_keeps_valueless_keys_and_slashes(url: str) -> None:
-    assert canonicalize_url(url)[0] == url
+    assert canonicalize_url(url) == (url, "a.test")

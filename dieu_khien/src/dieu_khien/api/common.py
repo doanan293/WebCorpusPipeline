@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 import signal
-from collections import Counter
-from collections.abc import Callable, Coroutine, Sequence
 from typing import Any
 
 from aiohttp import web
@@ -34,36 +31,13 @@ async def json_object(request: web.Request) -> dict[str, Any]:
     return body
 
 
-class Stats:
-    """Counters a block reports every half minute."""
-
-    def __init__(self) -> None:
-        self.counts: Counter[str] = Counter()
-
-    def incr(self, key: str) -> None:
-        self.counts[key] += 1
-
-
-async def stats_loop(name: str, stats: Stats, every: float = 30.0) -> None:
-    while True:
-        await asyncio.sleep(every)
-        line = " ".join(f"{key}={value}" for key, value in sorted(stats.counts.items()))
-        log.info("%s stats: %s", name, line or "idle")
-
-
-def run(
-    app: web.Application,
-    port: int,
-    background: Sequence[Callable[[], Coroutine[Any, Any, None]]] = (),
-) -> None:
-    """Serve ``app`` on every interface with ``background`` loops beside it until SIGTERM/SIGINT."""
+def run(app: web.Application, port: int) -> None:
+    """Serve ``app`` on every interface until SIGTERM/SIGINT."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
-    asyncio.run(_serve(app, port, background))
+    asyncio.run(_serve(app, port))
 
 
-async def _serve(
-    app: web.Application, port: int, background: Sequence[Callable[[], Coroutine[Any, Any, None]]]
-) -> None:
+async def _serve(app: web.Application, port: int) -> None:
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", port).start()  # noqa: S104 -- a service inside a container
@@ -72,13 +46,7 @@ async def _serve(
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)
-    tasks = [asyncio.create_task(job()) for job in background]
     try:
         await stop.wait()
     finally:
-        for task in tasks:
-            task.cancel()
-        for task in tasks:
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await task
         await runner.cleanup()

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from dieu_khien.domain.controller.models import ControllerConfig, QueuedUrl, UrlKind
-from dieu_khien.domain.controller.scheduling import after_failure, after_success, spread
+from dieu_khien.domain.controller.scheduling import after_failure, after_success
 
 DAY = 86400.0
 PERIODS: dict[UrlKind, float] = {"hub": 1.0, "page": 7.0, "document": 30.0}
@@ -42,10 +42,3 @@ def test_after_failure_backs_off_one_period_at_max() -> None:
 def test_after_failure_at_max_with_zero_period_waits_a_day() -> None:
     config = _config(recrawl_days={**PERIODS, "page": 0.0})
     assert after_failure(_item(4), 50.0, config) == (50.0 + DAY, 0)
-
-
-def test_spread_is_stable_and_inside_period() -> None:
-    first = spread("https://x/1", 100.0, DAY)
-    assert first == spread("https://x/1", 100.0, DAY)
-    assert 100.0 <= first < 100.0 + DAY
-    assert first != spread("https://x/2", 100.0, DAY)

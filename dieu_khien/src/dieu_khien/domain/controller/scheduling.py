@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping
 
 from dieu_khien.domain.controller.models import ControllerConfig, QueuedUrl, UrlKind
 
 DAY_SECONDS = 86400.0
-_SPREAD_STEPS = 10**6
 
 
 def after_success(now: float, kind: UrlKind, recrawl_days: Mapping[UrlKind, float]) -> float | None:
@@ -27,12 +25,3 @@ def after_failure(
         return now, attempts
     later = after_success(now, item.kind, config.recrawl_days)
     return (later if later is not None else now + DAY_SECONDS), 0
-
-
-def spread(url: str, start: float, period_seconds: float) -> float:
-    """A point in ``[start, start + period)`` fixed by the URL.
-
-    Imported URLs get spread over their period instead of all falling due at once.
-    """
-    digest = int.from_bytes(hashlib.sha256(url.encode("utf-8")).digest()[:8])
-    return start + (digest % _SPREAD_STEPS) / _SPREAD_STEPS * period_seconds

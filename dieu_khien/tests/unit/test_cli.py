@@ -20,7 +20,7 @@ def test_serve_runs_add_on_the_configured_port(
 ) -> None:
     served: list[tuple[web.Application, int]] = []
 
-    def fake_run(app: web.Application, port: int, background: object = ()) -> None:
+    def fake_run(app: web.Application, port: int) -> None:
         served.append((app, port))
 
     monkeypatch.setattr(common, "run", fake_run)
@@ -40,3 +40,13 @@ def test_bad_config_exits_2_with_the_reason(
 ) -> None:
     assert cli.main(["serve", "--config", str(_config(tmp_path, "port: 5200\n"))]) == 2
     assert "downloaders" in capsys.readouterr().err
+
+
+def test_unwritable_database_exits_2_with_the_reason(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    blocker = tmp_path / "file"
+    blocker.write_text("", encoding="utf-8")
+    config = _config(tmp_path, f"downloaders: [http://n:8800]\ndatabase: {blocker / 'q.sqlite3'}\n")
+    assert cli.main(["serve", "--config", str(config)]) == 2
+    assert "database" in capsys.readouterr().err

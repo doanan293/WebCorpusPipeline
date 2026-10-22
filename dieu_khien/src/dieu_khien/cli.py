@@ -20,14 +20,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         config = bootstrap.controller_config(args.config)
+        queue = bootstrap.url_queue(config.database)
     except ConfigError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
     app = server.create_service(
-        bootstrap.url_queue(config.database),
-        bootstrap.downloader(config),
-        bootstrap.system_clock(),
-        config,
+        queue, bootstrap.downloader(config), bootstrap.system_clock(), config
     )
     common.run(app, config.port)
     return 0
