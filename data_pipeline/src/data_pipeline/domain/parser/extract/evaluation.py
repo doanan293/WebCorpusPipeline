@@ -1,22 +1,31 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from data_pipeline.domain.parser.extract.article import analyze_article
+
+
+@dataclass(frozen=True, slots=True)
+class Fixture:
+    """A sample page and what extraction should find in it (``url``, ``title``, ``text``)."""
+
+    name: str
+    html: bytes
+    expected: Mapping[str, Any]
 
 
 def _tokens(value: str) -> set[str]:
     return {item for item in value.lower().split() if item}
 
 
-def evaluate(fixtures: Path, output: Path) -> dict[str, Any]:
+def evaluate(fixtures: Iterable[Fixture]) -> dict[str, Any]:
+    """Token precision, recall and F1 of the extracted text, and whether the title matches."""
     rows: list[dict[str, Any]] = []
-    for expected_path in sorted(fixtures.glob("*.json")):
-        expected = json.loads(expected_path.read_text())
-        html = (expected_path.with_suffix(".html")).read_bytes()
-        actual = analyze_article(html, expected.get("url", "https://fixture.test/")).article
+    for fixture in fixtures:
+        expected = fixture.expected
+        actual = analyze_article(fixture.html, expected.get("url", "https://fixture.test/")).article
         gold = _tokens(str(expected.get("text", "")))
         pred = _tokens(str(actual.get("text", "")))
         inter = len(gold & pred)
@@ -25,18 +34,15 @@ def evaluate(fixtures: Path, output: Path) -> dict[str, Any]:
         f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0
         rows.append(
             {
-                "fixture": expected_path.name,
+                "fixture": fixture.name,
                 "precision": precision,
                 "recall": recall,
                 "f1": f1,
                 "title_ok": actual.get("title") == expected.get("title"),
             }
         )
-    result = {
+    return {
         "fixtures": len(rows),
         "rows": rows,
         "mean_f1": sum(x["f1"] for x in rows) / len(rows) if rows else 0,
     }
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
-    return result

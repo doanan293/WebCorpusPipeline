@@ -34,6 +34,11 @@ IO_MODULES = frozenset(
     }
 )
 
+# pathlib methods and builtins that touch the file system; domain code takes the bytes instead.
+FILE_CALLS = frozenset(
+    {"open", "read_text", "read_bytes", "write_text", "write_bytes", "mkdir", "unlink", "glob"}
+)
+
 
 def module_name(path: Path) -> str:
     parts = path.relative_to(SRC).with_suffix("").parts
@@ -122,6 +127,27 @@ def test_domain_modules_do_no_io() -> None:
         if placement(module)[0] == "domain"
         for imported in sorted(imported_modules(path))
         if imported.split(".")[0] in IO_MODULES
+    ]
+    assert violations == []
+
+
+def file_calls(path: Path) -> set[str]:
+    calls: set[str] = set()
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Call):
+            func = node.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+            if name in FILE_CALLS:
+                calls.add(name)
+    return calls
+
+
+def test_domain_modules_touch_no_files() -> None:
+    violations = [
+        f"{module} calls {call}"
+        for module, path in all_modules()
+        if placement(module)[0] == "domain"
+        for call in sorted(file_calls(path))
     ]
     assert violations == []
 
