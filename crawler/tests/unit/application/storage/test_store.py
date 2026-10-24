@@ -94,3 +94,13 @@ def test_document_nobody_links_to_has_empty_origin() -> None:
     store = FakeCorpusStore()
     store_record(_other("https://a/seed.pdf"), store, "t1")
     assert store.collections["other"]["https://a/seed.pdf"]["origin"] == ""
+
+
+def test_intros_are_written_in_one_batch_for_stored_targets_only() -> None:
+    store = FakeCorpusStore()
+    store_record(_html("https://a/b"), store, "t1")
+    store_record(_html("https://a/c"), store, "t2")
+    store.intro_batches.clear()
+    links = [("https://a/b", "B"), ("https://a/c", "C"), ("https://x/elsewhere", "X")]
+    store_record(_html("https://a/", links), store, "t3")
+    assert store.intro_batches == [{"https://a/": "", "https://a/b": "B", "https://a/c": "C"}]

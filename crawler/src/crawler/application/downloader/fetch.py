@@ -54,13 +54,13 @@ async def fetch_and_forward(
         if access.outcome != "public":
             return "blocked"
         if access.use_playwright:
-            fetched = page
             try:
                 page = await renderer.render(page.final_url)
             except FetchError:
                 return "failed"
-            # The browser's copy has no HTTP validators; keep those of the plain download.
-            page = dataclasses.replace(page, etag=fetched.etag, last_modified=fetched.last_modified)
+            # No validators: those of the plain download describe the JS shell, and a 304 on the
+            # shell must not stop the page from being rendered again.
+            page = dataclasses.replace(page, etag=None, last_modified=None)
             access = classify_access(
                 status=page.status, url=page.final_url, html=_html_text(page), rendered=True
             )

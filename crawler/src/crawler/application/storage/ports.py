@@ -22,12 +22,16 @@ class CorpusStore(Protocol):
         """Make ``edges`` the only graph edges leaving ``src``."""
         ...
 
-    def incoming_intros(self, dest: str) -> list[str]:
-        """The link text (``intro``) of every ``graph`` edge pointing at ``dest``."""
+    def existing_html(self, urls: list[str]) -> set[str]:
+        """Those of ``urls`` that have an ``html`` record."""
         ...
 
-    def set_intro(self, url: str, intro: str) -> bool:
-        """Set ``html.intro`` of ``url``; ``False`` when no such record exists."""
+    def link_texts(self, dests: list[str]) -> dict[str, dict[str, int]]:
+        """For each of ``dests``: how often each text (``intro``) of its incoming edges occurs."""
+        ...
+
+    def set_intros(self, intros: dict[str, str]) -> None:
+        """Set ``html.intro`` of each URL (all records exist)."""
         ...
 
     def add_pictures(self, rows: list[dict[str, Any]]) -> None:

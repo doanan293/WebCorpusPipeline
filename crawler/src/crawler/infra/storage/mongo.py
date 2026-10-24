@@ -66,24 +66,39 @@ class MongoCorpusStore:
 
         self._guard(replace)
 
-    def incoming_intros(self, dest: str) -> list[str]:
-        found: list[str] = []
+    def existing_html(self, urls: list[str]) -> set[str]:
+        found: set[str] = set()
         self._guard(
-            lambda: found.extend(
-                str(edge.get("intro") or "")
-                for edge in self.db.graph.find({"dest": dest}, {"intro": 1, "_id": 0})
+            lambda: found.update(
+                str(doc["url"])
+                for doc in self.db.html.find({"url": {"$in": urls}}, {"url": 1, "_id": 0})
             )
         )
         return found
 
-    def set_intro(self, url: str, intro: str) -> bool:
-        matched: list[int] = []
-        self._guard(
-            lambda: matched.append(
-                self.db.html.update_one({"url": url}, {"$set": {"intro": intro}}).matched_count
-            )
-        )
-        return bool(matched and matched[0])
+    def link_texts(self, dests: list[str]) -> dict[str, dict[str, int]]:
+        """Counted in Mongo: one row per distinct (dest, text), not one per edge."""
+        counts: dict[str, dict[str, int]] = {}
+
+        def run() -> None:
+            pipeline: list[dict[str, Any]] = [
+                {"$match": {"dest": {"$in": dests}}},
+                {"$group": {"_id": {"d": "$dest", "i": "$intro"}, "n": {"$sum": 1}}},
+            ]
+            for row in self.db.graph.aggregate(pipeline, allowDiskUse=True):
+                texts = counts.setdefault(str(row["_id"]["d"]), {})
+                texts[str(row["_id"].get("i") or "")] = int(row["n"])
+
+        if dests:
+            self._guard(run)
+        return counts
+
+    def set_intros(self, intros: dict[str, str]) -> None:
+        writes = [
+            UpdateOne({"url": url}, {"$set": {"intro": intro}}) for url, intro in intros.items()
+        ]
+        if writes:
+            self._guard(lambda: self.db.html.bulk_write(writes, ordered=False))
 
     def add_pictures(self, rows: list[dict[str, Any]]) -> None:
         if not rows:

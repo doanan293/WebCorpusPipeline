@@ -119,3 +119,23 @@ def test_forwarded_page_names_the_queued_url_and_keeps_validators() -> None:
     )
     assert reader.requested == ["https://h/x"]
     assert (reader.sent[0][0].etag, reader.sent[0][0].last_modified) == ('"v2"', "Mon")
+
+
+def test_rendered_page_carries_no_validators() -> None:
+    # The validators of a JS shell say nothing about the rendered content: a 304 on the shell
+    # must not stop the page from being rendered again.
+    shell = Fetched(
+        "https://h/app", 200, "text/html; charset=utf-8", SHELL, etag='"shell"', last_modified="Mon"
+    )
+    rendered = Fetched("https://h/app", 200, "text/html; charset=utf-8", ARTICLE)
+    reader = FakeReaderClient()
+    outcome = asyncio.run(
+        fetch_and_forward(
+            "https://h/app",
+            FakeGetter({"https://h/app": shell}),
+            FakeRenderer({"https://h/app": rendered}),
+            reader,
+        )
+    )
+    assert outcome == "forwarded"
+    assert (reader.sent[0][0].etag, reader.sent[0][0].last_modified) == (None, None)

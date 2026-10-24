@@ -17,6 +17,7 @@ class FakeCorpusStore:
             "picture": {},
         }
         self.graph: list[dict[str, Any]] = []
+        self.intro_batches: list[dict[str, str]] = []
         self.down = False
         self.reject = False
 
@@ -33,15 +34,21 @@ class FakeCorpusStore:
             raise StoreUnavailableError(_DOWN)
         self.graph = [edge for edge in self.graph if edge["src"] != src] + edges
 
-    def incoming_intros(self, dest: str) -> list[str]:
-        return [edge["intro"] for edge in self.graph if edge["dest"] == dest]
+    def existing_html(self, urls: list[str]) -> set[str]:
+        return {url for url in urls if url in self.collections["html"]}
 
-    def set_intro(self, url: str, intro: str) -> bool:
-        doc = self.collections["html"].get(url)
-        if doc is None:
-            return False
-        doc["intro"] = intro
-        return True
+    def link_texts(self, dests: list[str]) -> dict[str, dict[str, int]]:
+        counts: dict[str, dict[str, int]] = {}
+        for edge in self.graph:
+            if edge["dest"] in dests:
+                texts = counts.setdefault(edge["dest"], {})
+                texts[edge["intro"]] = texts.get(edge["intro"], 0) + 1
+        return counts
+
+    def set_intros(self, intros: dict[str, str]) -> None:
+        self.intro_batches.append(dict(intros))
+        for url, intro in intros.items():
+            self.collections["html"][url]["intro"] = intro
 
     def add_pictures(self, rows: list[dict[str, Any]]) -> None:
         for row in rows:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from urllib.parse import urlsplit
 
 import pytest
 from aiohttp import web
@@ -8,7 +9,7 @@ from aiohttp.test_utils import TestServer
 
 from crawler.application.storage.ports import ImageFetchError, ImageResult
 from crawler.domain.storage.pictures import MAX_PICTURE_BYTES
-from crawler.infra.storage.image_getter import AiohttpImageGetter
+from crawler.infra.storage.image_getter import AiohttpImageGetter, Check
 
 
 def _site() -> web.Application:
@@ -22,19 +23,32 @@ def _site() -> web.Application:
         await asyncio.sleep(2)
         return web.Response(body=b"late", content_type="image/png")
 
+    async def to_private(request: web.Request) -> web.Response:
+        raise web.HTTPFound(f"http://127.0.0.1:{request.url.port}/i.png")
+
     app = web.Application()
+    app.router.add_get("/to-private", to_private)
     app.router.add_get("/i.png", image)
     app.router.add_get("/huge.jpg", huge)
     app.router.add_get("/slow.png", slow)
     return app
 
 
-def _get(path: str) -> ImageResult:
+async def _allow(_: str) -> None:
+    return None
+
+
+async def _reject_ip_literal(url: str) -> None:
+    if urlsplit(url).hostname == "127.0.0.1":
+        raise ImageFetchError("non_public_address")
+
+
+def _get(path: str, check: Check = _allow, host: str = "127.0.0.1") -> ImageResult:
     async def scenario() -> ImageResult:
         async with TestServer(_site(), host="127.0.0.1") as server:
-            getter = AiohttpImageGetter(timeout_seconds=0.5)
+            getter = AiohttpImageGetter(timeout_seconds=0.5, check=check)
             try:
-                return await getter.get(f"http://127.0.0.1:{server.port}{path}")
+                return await getter.get(f"http://{host}:{server.port}{path}")
             finally:
                 await getter.close()
 
@@ -52,3 +66,13 @@ def test_reading_stops_past_the_limit() -> None:
 def test_timeout_is_a_fetch_error() -> None:
     with pytest.raises(ImageFetchError, match="timeout"):
         _get("/slow.png")
+
+
+def test_default_check_refuses_a_private_address() -> None:
+    with pytest.raises(ImageFetchError, match="non_public_address"):
+        asyncio.run(AiohttpImageGetter().get("http://127.0.0.1/x.png"))
+
+
+def test_redirect_to_a_private_address_is_refused() -> None:
+    with pytest.raises(ImageFetchError, match="non_public_address"):
+        _get("/to-private", check=_reject_ip_literal, host="localhost")
