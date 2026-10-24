@@ -8,7 +8,7 @@ from crawler.domain.corpus.records import (
 
 
 def test_collections_follow_the_slide() -> None:
-    assert CORPUS_COLLECTIONS == ("html", "other", "graph")
+    assert CORPUS_COLLECTIONS == ("html", "picture", "other", "graph")
     assert collection_file("graph") == "graph.jsonl"
 
 

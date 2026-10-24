@@ -31,7 +31,7 @@ def make_corpus(folder: Path) -> Path:
     snapshot = hashlib.sha256(
         json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
-    manifest: dict[str, object] = {"schema_version": "1.0", "snapshot_id": snapshot, "files": files}
+    manifest: dict[str, object] = {"schema_version": "2.0", "snapshot_id": snapshot, "files": files}
     (folder / "manifest.json").write_text(json.dumps(manifest))
     return folder
 

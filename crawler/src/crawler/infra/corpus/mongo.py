@@ -50,7 +50,7 @@ class MongoCorpusDatabase:
         return list(cursor.limit(limit))
 
     def ensure_indexes(self) -> None:
-        for name in ("html", "other"):
+        for name in ("html", "picture", "other"):
             self.db[name].create_index([("url", ASCENDING)], unique=True)
         self.db.graph.create_index([("src", ASCENDING)])
         self.db.graph.create_index([("dest", ASCENDING)])

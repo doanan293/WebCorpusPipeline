@@ -3,7 +3,7 @@ from __future__ import annotations
 from urllib.parse import urldefrag
 
 # The slide's Mongo collections, which are also the files of a corpus package.
-CORPUS_COLLECTIONS = ("html", "other", "graph")
+CORPUS_COLLECTIONS = ("html", "picture", "other", "graph")
 
 
 def collection_file(name: str) -> str:

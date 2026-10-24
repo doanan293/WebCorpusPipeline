@@ -21,7 +21,7 @@ def test_load_corpus_fills_every_collection(tmp_path: Path) -> None:
     source.load("graph", [{"src": "https://h/a", "dest": "https://h/b", "text": "B"}])
     corpus = package_corpus(source, FILES, tmp_path / "corpus")
     target = FakeCorpusDatabase()
-    assert load_corpus(corpus, target, FILES) == {"html": 1, "other": 0, "graph": 1}
+    assert load_corpus(corpus, target, FILES) == {"html": 1, "picture": 0, "other": 0, "graph": 1}
     assert target.indexed
     assert list(target.collections["html"]) == ["https://h/a"]
 
