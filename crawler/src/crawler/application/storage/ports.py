@@ -28,6 +28,18 @@ class CorpusStore(Protocol):
         """Set ``html.intro`` of ``url``; ``False`` when no such record exists."""
         ...
 
+    def add_pictures(self, rows: list[dict[str, Any]]) -> None:
+        """Insert ``picture`` records whose ``url`` is new; stored ones stay as they are."""
+        ...
+
+    def first_linking_page(self, dest: str) -> str:
+        """Of the pages linking to ``dest``, the one stored first; ``""`` when none links to it."""
+        ...
+
+    def origin(self, url: str) -> str | None:
+        """The ``origin`` already stored on the ``other`` record of ``url``, if any."""
+        ...
+
     def touch(self, url: str, checked_at: str) -> None:
         """Set only ``checked_at`` on the ``html`` or ``other`` record of ``url``."""
         ...

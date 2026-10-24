@@ -51,3 +51,46 @@ def test_unchanged_only_touches_checked_at() -> None:
     store_record({"url": "https://a/b", "change": "not_modified"}, store, "t3")
     doc = store.collections["html"]["https://a/b"]
     assert (doc["content"], doc["checked_at"], doc["changed_at"]) == ("v1", "t3", "t1")
+
+
+def _other(url: str, content: str = "chữ") -> dict[str, Any]:
+    return {"url": url, "format": "docx", "title": "", "content": content, "out-links": []}
+
+
+def test_pictures_and_document_origin() -> None:
+    store = FakeCorpusStore()
+    first = _html("https://a/p1", [("https://a/d.docx", "Tải")])
+    store_record({**first, "images": ["https://a/i.jpg"]}, store, "t1")
+    store_record(
+        {
+            **_html("https://a/p2", [("https://a/d.docx", "Tải")]),
+            "images": ["https://a/i.jpg", "https://a/j.png"],
+        },
+        store,
+        "t2",
+    )
+    store_record(_other("https://a/d.docx"), store, "t3")
+    pic = store.collections["picture"]["https://a/i.jpg"]
+    assert (pic["origin"], pic["format"], pic["b64"], pic["error"]) == (
+        "https://a/p1",
+        "jpg",
+        "",
+        None,
+    )
+    assert store.collections["picture"]["https://a/j.png"]["origin"] == "https://a/p2"
+    assert store.collections["other"]["https://a/d.docx"]["origin"] == "https://a/p1"
+
+
+def test_document_origin_survives_a_rewrite() -> None:
+    store = FakeCorpusStore()
+    store_record(_html("https://a/p1", [("https://a/d.docx", "Tải")]), store, "t1")
+    store_record(_other("https://a/d.docx", "v1"), store, "t2")
+    store_record(_html("https://a/p1"), store, "t3")  # the link is gone now
+    store_record(_other("https://a/d.docx", "v2"), store, "t4")
+    assert store.collections["other"]["https://a/d.docx"]["origin"] == "https://a/p1"
+
+
+def test_document_nobody_links_to_has_empty_origin() -> None:
+    store = FakeCorpusStore()
+    store_record(_other("https://a/seed.pdf"), store, "t1")
+    assert store.collections["other"]["https://a/seed.pdf"]["origin"] == ""

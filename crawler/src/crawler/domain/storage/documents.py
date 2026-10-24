@@ -10,7 +10,7 @@ HTML_FIELDS = (
     "url", "format", "title", "content", "intro", "published_at", "modified_at", "author",
     "language", "headings", "content_blocks", "images", "content_id", "duplicate_of",
 )  # fmt: skip
-OTHER_FIELDS = ("url", "format", "content", "title", "content_id")
+OTHER_FIELDS = ("url", "format", "origin", "content", "title", "content_id")
 
 
 @dataclass(frozen=True, slots=True)

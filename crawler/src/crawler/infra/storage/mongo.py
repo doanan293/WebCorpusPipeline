@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from bson import ObjectId
-from pymongo import ASCENDING, MongoClient
+from pymongo import ASCENDING, MongoClient, UpdateOne
 from pymongo.database import Database
 from pymongo.errors import (
     ConnectionFailure,
@@ -85,6 +85,32 @@ class MongoCorpusStore:
         )
         return bool(matched and matched[0])
 
+    def add_pictures(self, rows: list[dict[str, Any]]) -> None:
+        if not rows:
+            return
+        writes = [
+            UpdateOne({"url": row["url"]}, {"$setOnInsert": row}, upsert=True)
+            for row in {row["url"]: row for row in rows}.values()
+        ]
+        self._guard(lambda: self.db.picture.bulk_write(writes, ordered=False))
+
+    def first_linking_page(self, dest: str) -> str:
+        found: list[str] = []
+
+        def run() -> None:
+            sources = self.db.graph.distinct("src", {"dest": dest})
+            first = self.db.html.find_one({"url": {"$in": sources}}, {"url": 1}, sort=[("_id", 1)])
+            found.append(str(first["url"]) if first else "")
+
+        self._guard(run)
+        return found[0] if found else ""
+
+    def origin(self, url: str) -> str | None:
+        found: list[dict[str, Any] | None] = []
+        self._guard(lambda: found.append(self.db.other.find_one({"url": url}, {"origin": 1})))
+        doc = found[0] if found else None
+        return None if doc is None or "origin" not in doc else str(doc["origin"])
+
     def touch(self, url: str, checked_at: str) -> None:
         def run() -> None:
             for name in ("html", "other"):
@@ -102,7 +128,7 @@ class MongoCorpusStore:
 
     def ensure_indexes(self) -> None:
         def create() -> None:
-            for collection in ("html", "other"):
+            for collection in ("html", "other", "picture"):
                 self.db[collection].create_index([("url", ASCENDING)], unique=True)
             self.db.graph.create_index([("src", ASCENDING)])
             self.db.graph.create_index([("dest", ASCENDING)])

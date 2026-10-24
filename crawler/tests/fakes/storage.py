@@ -11,7 +11,11 @@ _DOWN = "mongo unavailable"
 
 class FakeCorpusStore:
     def __init__(self) -> None:
-        self.collections: dict[str, dict[str, dict[str, Any]]] = {"html": {}, "other": {}}
+        self.collections: dict[str, dict[str, dict[str, Any]]] = {
+            "html": {},
+            "other": {},
+            "picture": {},
+        }
         self.graph: list[dict[str, Any]] = []
         self.down = False
         self.reject = False
@@ -38,6 +42,19 @@ class FakeCorpusStore:
             return False
         doc["intro"] = intro
         return True
+
+    def add_pictures(self, rows: list[dict[str, Any]]) -> None:
+        for row in rows:
+            self.collections["picture"].setdefault(row["url"], row)
+
+    def first_linking_page(self, dest: str) -> str:
+        sources = {edge["src"] for edge in self.graph if edge["dest"] == dest}
+        # Dict order stands in for Mongo's _id order: the page stored first comes first.
+        return next((url for url in self.collections["html"] if url in sources), "")
+
+    def origin(self, url: str) -> str | None:
+        doc = self.collections["other"].get(url)
+        return None if doc is None else doc.get("origin")
 
     def touch(self, url: str, checked_at: str) -> None:
         for name in ("html", "other"):
