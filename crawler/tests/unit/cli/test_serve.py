@@ -193,7 +193,7 @@ def test_serve_merger_refuses_when_state_is_held(
     assert served == []
 
 
-def test_serve_resolves_state_paths_under_the_data_pipeline_root(
+def test_serve_resolves_state_paths_under_the_project_root(
     project: ProjectPaths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     served: list[object] = []

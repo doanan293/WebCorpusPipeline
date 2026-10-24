@@ -6,5 +6,5 @@ initial_scope_file: config/domains/active.txt   # host của crawl cũ, nạp v�
 batch_size: 500
 batch_seconds: 1.0
 outbox_retry_seconds: 30
-database: data/state/merger.sqlite3   # dùng chung với `data-pipeline crawl run`
+database: data/state/merger.sqlite3   # dùng chung với `crawler crawl run`
 outbox: data/state/outbox.jsonl

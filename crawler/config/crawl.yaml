@@ -1,4 +1,4 @@
-# `data-pipeline crawl run`: năm khối trong một tiến trình. Đọc config/mediator.yaml (lịch, crawl lại,
+# `crawler crawl run`: năm khối trong một tiến trình. Đọc config/mediator.yaml (lịch, crawl lại,
 # hàng đợi dùng chung) rồi ghi đè bằng các khoá dưới đây. Mặc định theo nhịp của pipeline Scrapy cũ.
 workers: 64                        # số URL tải song song (thay cho các node downloader)
 per_host_concurrency: 4            # số URL của một host đang tải cùng lúc

@@ -44,7 +44,6 @@ def test_record_from_stored_article_uses_observed_refs() -> None:
     article: dict[str, Any] = {
         "title": None,
         "text": " body ",
-        "summary": None,
         "observed_refs": [{"url": "https://h/x", "text": "X", "kind": "page", "rel": []}],
         "assets": [
             {"url": "https://h/i.png", "role": "inline_image"},

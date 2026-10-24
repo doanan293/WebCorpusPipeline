@@ -175,12 +175,3 @@ def _iso_date(raw: str | None, field: str, warnings: list[str]) -> str | None:
     if raw and parsed is None:
         warnings.append(f"unparsed_date:{field}")
     return parsed
-
-
-def extract_summary(root: etree._Element) -> str | None:
-    summaries = extract_meta_content(
-        root, "name", ("description", "og:description", "twitter:description")
-    )
-    if not summaries:
-        summaries = extract_meta_content(root, "property", ("description", "og:description"))
-    return summaries[0] if summaries else None

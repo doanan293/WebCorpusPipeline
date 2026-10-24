@@ -48,7 +48,7 @@ def test_meta_author_and_modified_and_canonical() -> None:
     assert result.article["canonical_url"] == "https://a.test/canonical-path"
     assert result.article["author"] == "Nguyen Van A"
     assert result.article["modified_at"] == "2026-09-08T10:00:00+00:00"
-    assert result.article["summary"] == "A brief summary"
+    assert "summary" not in result.article  # intro now comes from the links, not the meta tag
 
 
 def test_time_datetime_extracts_published_at_when_meta_absent() -> None:

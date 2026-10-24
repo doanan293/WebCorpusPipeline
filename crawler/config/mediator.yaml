@@ -15,4 +15,4 @@ node_cooldown_seconds: 30          # node lỗi thì tạm bỏ qua chừng này
 max_attempts: 5
 tick_seconds: 0.5
 recrawl_days: {hub: 1, page: 7, document: 30}   # 0 = không crawl lại
-database: data/state/mediator.sqlite3   # dùng chung với `data-pipeline crawl run`
+database: data/state/mediator.sqlite3   # dùng chung với `crawler crawl run`

@@ -18,7 +18,6 @@ from crawler.domain.reader.extract.metadata import (
     extract_language,
     extract_modified_at,
     extract_published_at,
-    extract_summary,
     extract_title,
     parse_article_html,
 )
@@ -48,7 +47,6 @@ def analyze_article(source: bytes | str, url: str, encoding: str | None = None) 
     author = extract_author(root)
     published_at = extract_published_at(root, content_el, warnings)
     modified_at = extract_modified_at(root, warnings)
-    summary = extract_summary(root)
 
     assets_list = extract_assets(content_el, base_url, warnings)
     assets: tuple[ArticleAsset, ...] = tuple(assets_list)
@@ -79,7 +77,6 @@ def analyze_article(source: bytes | str, url: str, encoding: str | None = None) 
         "author": author,
         "published_at": published_at,
         "modified_at": modified_at,
-        "summary": summary,
         "content_html": content_html,
         "headings": headings,
         "content_blocks": content_blocks,
