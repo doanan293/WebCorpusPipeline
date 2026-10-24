@@ -1,0 +1,107 @@
+# Schema dữ liệu
+
+Nơi duy nhất mô tả dữ liệu mà các khối lưu lại. Bản ghi các khối gửi nhau (`POST /add`, `/parse`, ...) mô tả ở
+[server/README.md](../../server/README.md#giao-diện).
+
+| Nơi lưu | Khối ghi | Nội dung |
+|---|---|---|
+| MongoDB `html`, `other`, `graph` | storage | [collection](#mongodb) |
+| `data/state/mediator.sqlite3` | mediator | [hàng đợi và lịch crawl lại](#mediator-mediatorsqlite3) |
+| `data/state/merger.sqlite3`, `data/state/outbox.jsonl` | merger | [URL đã biết, chủ nội dung, outbox](#merger-mergersqlite3-outboxjsonl) |
+| `data/enrichment/cache/` | reader | kết quả LlamaParse đã trả tiền, khoá theo `sha256` tệp, trang và phiên bản reader |
+| `data/corpus/<phiên bản>/` | `corpus package` | [gói corpus](#gói-corpus) |
+
+## MongoDB
+
+Cơ sở dữ liệu `information_retrieval` (đổi bằng `MONGODB_DATABASE`). Ba collection theo slide; các trường in
+đậm là trường của slide, còn lại là trường thêm.
+
+### `html`
+
+Mỗi trang HTML một document, khoá duy nhất `url`.
+
+| Trường | Kiểu | Ý nghĩa |
+|---|---|---|
+| **`url`** | string | URL cuối của trang |
+| **`format`** | string | luôn `"html"` |
+| **`title`** | string | tiêu đề; `""` nếu không tìm được |
+| **`content`** | string | văn bản của khối nội dung chính; `""` với trang trùng |
+| **`intro`** | string | đoạn giới thiệu (meta description); `""` nếu không có |
+| `published_at`, `modified_at` | string \| null | ngày đăng, ngày sửa (ISO 8601) |
+| `author` | string \| null | tác giả |
+| `language` | string \| null | ngôn ngữ khai báo của trang |
+| `headings` | list | `{level, text, heading_path}` |
+| `content_blocks` | list | các khối `heading`, `paragraph`, `list`, `table`, `figure`, ... kèm `heading_path` |
+| `images` | list[string] | URL ảnh trong khối nội dung |
+| `content_id` | string | `sha256` của văn bản đã bỏ khoảng trắng hai đầu |
+| `duplicate_of` | string | có khi văn bản trùng với trang khác: URL của trang chủ sở hữu văn bản |
+| `updated_at` | string | lần ghi gần nhất (UTC, ISO 8601) |
+
+### `other`
+
+Mỗi tài liệu (pdf, docx, xlsx, pptx, ...) một document, khoá duy nhất `url`.
+
+| Trường | Kiểu | Ý nghĩa |
+|---|---|---|
+| **`url`** | string | URL của tài liệu |
+| **`format`** | string | đuôi tài liệu, vd. `pdf`, `docx`; `bin` khi không xác định được |
+| **`content`** | string | văn bản bóc tách, các trang/slide/sheet nối bằng dòng trống |
+| `title` | string | `""` (tài liệu chưa có tiêu đề riêng) |
+| `content_id` | string | như `html` |
+| `updated_at` | string | lần ghi gần nhất |
+
+### `graph`
+
+Mỗi liên kết (thẻ `a`, `area`, `link rel=next/alternate`) một document; ảnh và tài nguyên nhúng không phải
+liên kết, chúng nằm ở `html.images`. Một trang có mỗi cặp (`dest`, `text`) một lần. Khi trang được ghi lại, cạnh
+mới được ghi trước rồi các cạnh cũ khác của nó mới bị xoá (dừng giữa chừng chỉ để thừa cạnh, không bao giờ mất hết).
+Trang trùng nội dung (`duplicate_of`) vẫn có cạnh, nhưng link của nó không được crawl tiếp.
+
+| Trường | Kiểu | Ý nghĩa |
+|---|---|---|
+| **`src`** | string | trang chứa liên kết |
+| **`dest`** | string | đích của liên kết (trang, tài liệu, hoặc ngoài miền) |
+| `text` | string | văn bản liên kết theo slide: **câu hoàn chỉnh chứa thẻ `a`** khi liên kết nằm trong đoạn văn (`p`, `li`, `td`, tiêu đề, ...); chữ của chính thẻ `a` khi nó đứng riêng (menu, số trang) hoặc khối quá dài (trên 400 ký tự) |
+
+Index: `url` (unique) trên `html` và `other`; `src` và `dest` trên `graph`.
+
+## mediator (`mediator.sqlite3`)
+
+| Bảng | Cột |
+|---|---|
+| `urls` | `url` (khoá, đã chuẩn hoá), `host`, `kind` (`hub` \| `page` \| `document`), `next_due_at` (epoch giây; `NULL` = không gửi lại), `last_sent_at`, `attempts` |
+| `hosts` | `host` (khoá), `last_sent_at` (lần gửi gần nhất vào host đó; khoảng chờ hiện tính trong bộ nhớ) |
+| `lease` | người đang ghi trạng thái (`services mediator@...` hoặc `data-pipeline crawl@...`) và nhịp tim |
+
+## merger (`merger.sqlite3`, `outbox.jsonl`)
+
+| Nơi | Nội dung |
+|---|---|
+| bảng `seen_urls` | `url`: mọi URL đã biết (đã gửi sang mediator hoặc đã nhận bản ghi) |
+| bảng `content_owners` | `content_id` (khoá), `url`: trang đầu tiên có văn bản đó (theo URL cuối sau redirect) |
+| bảng `scope_hosts` | `host`: các host được lan (host của mọi mầm, cộng host của crawl cũ nạp một lần) |
+| bảng `lease` | người đang ghi trạng thái và nhịp tim |
+| `outbox.jsonl` | mỗi dòng `{"id", "target": "storage" \| "mediator", "payload"}`: request chưa gửi được |
+| `outbox.dead.jsonl` | request khối kia từ chối hẳn (`4xx`), giữ lại để xem, không gửi lại |
+
+## Gói corpus
+
+`data-pipeline corpus package --output data/corpus/<phiên bản>` xuất ba collection ra:
+
+| Tệp | Nội dung |
+|---|---|
+| `html.jsonl`, `other.jsonl`, `graph.jsonl` | mỗi dòng một document của collection cùng tên (không có `_id`) |
+| `manifest.json` | `schema_version`, `snapshot_id` (sha256 của danh sách tệp), `files` (`sha256`, `size` mỗi tệp), `counts` (số dòng) |
+
+`corpus verify` kiểm tra `sha256`, kích thước và tệp lạ; `corpus pull` tải bản được pin trong
+`config/corpus.lock.json`, kiểm tra rồi nạp vào MongoDB.
+
+## Dữ liệu của bản crawl lô cũ
+
+Bản crawl trước khi tách khối vẫn nằm trên đĩa, chỉ đọc:
+
+| Thư mục | Dùng cho |
+|---|---|
+| `data/crawl/state/index.sqlite3`, `data/crawl/html/` | `data-pipeline reextract` (bóc lại từ HTML đã lưu rồi lưu lại qua các khối trong một tiến trình; `--merger URL` để gửi sang dịch vụ merger) |
+| `data/enrichment/cache/` | cache LlamaParse của khối reader |
+| `data/crawl/` còn lại, `data/enrichment/state.sqlite3` (định dạng cũ) | đã chuyển sang các khối bằng script một lần; có thể xoá khi không cần đối chiếu nữa |

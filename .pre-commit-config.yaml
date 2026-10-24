@@ -1,5 +1,5 @@
 default_install_hook_types: [pre-commit, pre-push]
-exclude: ^(data_pipeline/data/|lucene/)
+exclude: ^(crawler/core/data/|lucene/)
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -18,61 +18,44 @@ repos:
     hooks:
       - id: ruff-check
         args: [--fix]
-        files: ^(data_pipeline|dich_vu|dieu_khien)/
+        files: ^crawler/(core|server)/
       - id: ruff-format
-        files: ^(data_pipeline|dich_vu|dieu_khien)/
+        files: ^crawler/(core|server)/
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.12.13
     hooks:
       - id: uv-lock
-        args: [--project, data_pipeline]
-        files: ^data_pipeline/(pyproject\.toml|uv\.lock)$
+        args: [--project, crawler/core]
+        files: ^crawler/core/(pyproject\.toml|uv\.lock)$
       - id: uv-lock
-        name: uv-lock (dich_vu)
-        args: [--project, dich_vu]
-        files: ^dich_vu/(pyproject\.toml|uv\.lock)$
-      - id: uv-lock
-        name: uv-lock (dieu_khien)
-        args: [--project, dieu_khien]
-        files: ^dieu_khien/(pyproject\.toml|uv\.lock)$
+        name: uv-lock (server)
+        args: [--project, crawler/server]
+        files: ^crawler/server/(pyproject\.toml|uv\.lock)$
   - repo: local
     hooks:
       - id: pyrefly
         name: pyrefly check
-        entry: uv run --directory data_pipeline pyrefly check
+        entry: uv run --directory crawler/core pyrefly check
         language: system
         pass_filenames: false
-        files: ^data_pipeline/.*\.py$
+        files: ^crawler/core/.*\.py$
       - id: pytest
         name: pytest
-        entry: uv run --directory data_pipeline pytest -q
+        entry: uv run --directory crawler/core pytest -q
         language: system
         pass_filenames: false
-        files: ^data_pipeline/
+        files: ^crawler/core/
         stages: [pre-push]
-      - id: pyrefly-dich-vu
-        name: pyrefly check (dich_vu)
-        entry: uv run --directory dich_vu pyrefly check
+      - id: pyrefly-services
+        name: pyrefly check (server)
+        entry: uv run --directory crawler/server pyrefly check
         language: system
         pass_filenames: false
-        files: ^(dich_vu|data_pipeline/src)/.*\.py$
-      - id: pytest-dich-vu
-        name: pytest (dich_vu)
-        entry: uv run --directory dich_vu pytest -q
+        files: ^crawler/(server|core/src)/.*\.py$
+      - id: pytest-services
+        name: pytest (server)
+        entry: uv run --directory crawler/server pytest -q
         language: system
         pass_filenames: false
-        files: ^(dich_vu|data_pipeline)/
-        stages: [pre-push]
-      - id: pyrefly-dieu-khien
-        name: pyrefly check (dieu_khien)
-        entry: uv run --directory dieu_khien pyrefly check
-        language: system
-        pass_filenames: false
-        files: ^dieu_khien/.*\.py$
-      - id: pytest-dieu-khien
-        name: pytest (dieu_khien)
-        entry: uv run --directory dieu_khien pytest -q
-        language: system
-        pass_filenames: false
-        files: ^dieu_khien/
+        files: ^crawler/(server|core)/
         stages: [pre-push]

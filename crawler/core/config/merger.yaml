@@ -1,0 +1,10 @@
+# merger (khối 4 trên slide): nhận POST /add từ reader,
+# gửi bản ghi sang storage và URL mới sang mediator.
+port: 3300
+seeds_file: config/domains/active.txt   # mầm: mỗi dòng một host (bắt đầu từ trang chủ) hoặc một URL
+initial_scope_file: config/domains/active.txt   # host của crawl cũ, nạp vào phạm vi một lần khi chưa có
+batch_size: 500
+batch_seconds: 1.0
+outbox_retry_seconds: 30
+database: data/state/merger.sqlite3   # dùng chung với `data-pipeline crawl run`
+outbox: data/state/outbox.jsonl

@@ -1,7 +1,0 @@
-# Đọc nội dung (khối 1 trên slide): nhận POST /parse, bóc tách rồi gửi sang Tổng hợp (POST /add).
-port: 6600
-llamaparse: true                  # trang PDF không có lớp chữ (scan) gửi sang LlamaParse; khoá LLAMAPARSE_KEY1..n trong .env
-cache_dir: data/enrichment/cache  # kết quả LlamaParse đã trả tiền, dùng lại được
-cloud_poll_seconds: 5
-cloud_timeout_seconds: 1800
-document_workers: 8             # số tài liệu (pdf, docx, ...) đọc cùng lúc
