@@ -38,3 +38,14 @@ def test_validate_record_accepts_slide_example() -> None:
 )
 def test_validate_record_rejects(bad: object) -> None:
     assert isinstance(validate_record(bad), str)
+
+
+def test_validate_record_accepts_the_short_notices_of_a_recrawl() -> None:
+    notice = {"url": "https://h/a", "requested_url": "https://h/a", "format": "not_modified"}
+    assert validate_record(notice) == notice
+    touch = {"url": "https://h/a", "change": "unchanged"}
+    assert validate_record(touch) == touch
+    assert (
+        validate_record({"url": "https://h/a", "change": "modified"}) == "format must be a string"
+    )
+    assert validate_record({"url": "", "change": "unchanged"}) == "url must not be empty"

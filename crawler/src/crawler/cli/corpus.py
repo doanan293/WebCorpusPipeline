@@ -27,7 +27,7 @@ CorpusOption = Annotated[Path, typer.Option(help="Directory holding a packaged c
 def package(
     output: Annotated[Path, typer.Option(help="Directory to write the corpus package to.")],
 ) -> int:
-    """Export the html, other and graph collections of MongoDB into a versioned corpus."""
+    """Export the html, picture, other and graph collections of MongoDB into a versioned corpus."""
     from crawler.application.corpus import package as corpus_package
 
     with bootstrap.mongo_database(context.build_settings()) as db:

@@ -23,7 +23,7 @@ def connect(uri: str) -> MongoClient[dict[str, Any]]:
 
 
 class MongoCorpusStore:
-    """The ``CorpusStore`` port over the slide's ``html``, ``other`` and ``graph`` collections."""
+    """The ``CorpusStore`` port over the html, picture, other and graph collections."""
 
     def __init__(self, db: Database[dict[str, Any]]) -> None:
         self.db = db

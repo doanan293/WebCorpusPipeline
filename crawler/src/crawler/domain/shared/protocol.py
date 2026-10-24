@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from crawler.domain.shared.change import UNCHANGED
+
 IDLE = "đang chờ"
 BUSY = "đang bận"
 ACCEPTED = "đã nhận"
@@ -15,11 +17,17 @@ _PAIR = 2
 def validate_record(value: object) -> dict[str, Any] | str:
     """The record with ``out-links`` as ``(url, text)`` pairs, or why it is not one.
 
-    Unknown keys are kept: a block takes the fields it knows and ignores the rest.
+    Unknown keys are kept: a block takes the fields it knows and ignores the rest. Two short
+    notices of a recrawl pass as they are: a 304 (``format: not_modified``, reader to merger) and
+    an unchanged visit (``change: unchanged`` or ``not_modified``, merger to storage).
     """
     if not isinstance(value, dict):
         return "body must be a JSON object"
     record: dict[str, Any] = dict(value)
+    if record.get("format") == "not_modified" or record.get("change") in UNCHANGED:
+        if not isinstance(record.get("url"), str):
+            return "url must be a string"
+        return record if record["url"] else "url must not be empty"
     for name in _TEXT_FIELDS:
         if not isinstance(record.get(name), str):
             return f"{name} must be a string"

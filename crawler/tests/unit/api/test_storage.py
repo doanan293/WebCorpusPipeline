@@ -57,3 +57,10 @@ def test_too_large_document_is_rejected_with_422() -> None:
     status, body = _post(store, RECORD)
     assert status == 422
     assert isinstance(body, dict) and "error" in body
+
+
+def test_add_unchanged_only_touches_the_record() -> None:
+    store = FakeCorpusStore()
+    assert _post(store, RECORD)[0] == 200
+    assert _post(store, {"url": RECORD["url"], "change": "unchanged"}) == (200, {"status": "ok"})
+    assert store.collections["html"][RECORD["url"]]["checked_at"] != ""

@@ -70,7 +70,10 @@ def pull_corpus(
             raise ValueError(msg)
         corpus = manifests[0].parent
         report = verify_corpus(corpus, files)
-        if not report["valid"] or report["snapshot_id"] != lock.get("snapshot_id"):
+        if not report["valid"]:
+            msg = f"downloaded corpus is invalid: {'; '.join(report['errors'])}"
+            raise ValueError(msg)
+        if report["snapshot_id"] != lock.get("snapshot_id"):
             msg = "downloaded corpus does not match pinned lock"
             raise ValueError(msg)
         files.install_copy(corpus, destination)

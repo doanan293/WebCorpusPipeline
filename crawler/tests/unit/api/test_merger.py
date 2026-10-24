@@ -117,3 +117,14 @@ def test_seeds_already_known_are_duplicates(tmp_path: Path) -> None:
         "SELECT next_due_at FROM urls WHERE url = 'https://hust.edu.vn/'"
     ).fetchone()
     assert row == (9e12,)
+
+
+def test_add_accepts_a_not_modified_notice() -> None:
+    notice = {
+        "url": "https://hust.edu.vn/a",
+        "requested_url": "https://hust.edu.vn/a",
+        "format": "not_modified",
+    }
+    status, seen = _post(notice)
+    assert status == 200
+    assert seen == [notice]

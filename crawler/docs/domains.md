@@ -5,12 +5,12 @@
 | File | Nội dung |
 |---|---|
 | `all.txt` | mọi hostname ứng viên (một dòng một host) |
-| `active.txt` | host còn trả nội dung công khai; merger lấy trang chủ của chúng làm URL mầm (`hosts_file` trong `config/merger.yaml`) và chỉ coi chúng cùng `*.hust.edu.vn` là trong miền |
+| `active.txt` | host còn trả nội dung công khai; merger lấy trang chủ của chúng làm URL mầm (`seeds_file` trong `config/merger.yaml`) và chỉ lan link trong đúng các host đó |
 | `status.jsonl` | báo cáo thăm dò từng host (`active`, `reason`, `status`, `final_url`, `title`, `error`, …) |
 
 ```bash
-uv run data-pipeline domains audit            # thăm dò DNS/HTTP, ghi lại all.txt, active.txt và status.jsonl
-uv run data-pipeline domains audit --no-browser --workers 16 --timeout 10
+uv run crawler domains audit       # thăm dò DNS/HTTP, ghi lại all.txt, active.txt và status.jsonl
+uv run crawler domains audit --no-browser --workers 16 --timeout 10
 ```
 
 `audit` thăm dò từng host (DNS an toàn, HTTP, theo dõi chuyển hướng cùng phạm vi, phát hiện trang mặc định,

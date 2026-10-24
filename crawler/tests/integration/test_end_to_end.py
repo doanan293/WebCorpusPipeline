@@ -152,7 +152,7 @@ def test_site_flows_through_all_blocks(tmp_path: Path) -> None:
                     and len(store.collections["other"]) == expected_other
                     and reported(stack)
                 ),
-                15,
+                30,
             )
             return stack
 

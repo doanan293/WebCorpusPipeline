@@ -116,3 +116,12 @@ def test_missing_metadata_key_is_a_clear_error(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Kaggle metadata missing: license_name"):
         publish_corpus(corpus, write_config(tmp_path, license_name=None), FakePublisher(), FILES)
+
+
+def test_pull_names_an_old_schema_version(tmp_path: Path) -> None:
+    source = make_corpus(tmp_path / "remote")
+    manifest = json.loads((source / "manifest.json").read_text())
+    (source / "manifest.json").write_text(json.dumps({**manifest, "schema_version": "1.0"}))
+
+    with pytest.raises(ValueError, match=r"schema_version 1\.0 is not 2\.0"):
+        pull_corpus(write_lock(tmp_path, source), tmp_path / "pulled", FakePublisher(source), FILES)
