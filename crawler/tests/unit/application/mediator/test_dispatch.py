@@ -13,6 +13,7 @@ from crawler.application.mediator.dispatch import Dispatcher
 from crawler.application.mediator.ports import LoadResult
 from crawler.domain.mediator.models import MediatorConfig
 from crawler.domain.shared.protocol import BUSY, IDLE
+from crawler.domain.shared.validators import Validators
 from tests.fakes.mediator import FakeClock, FakeDownloader, FakeUrlQueue
 
 DAY = 86400.0
@@ -156,3 +157,12 @@ def test_per_host_concurrency_allows_parallel_requests() -> None:
     downloader.busy_after_load = True
     assert _steps(dispatcher, 3) == [True, True, False]
     assert dispatcher.in_flight() == 2
+
+
+def test_dispatch_sends_the_validators_it_kept() -> None:
+    dispatcher, queue, downloader, _ = _setup({"n1": IDLE}, ["https://hust.edu.vn/a"])
+    queue.reschedule(
+        "https://hust.edu.vn/a", next_due_at=0.0, interval_days=7.0, etag='"e"', last_modified=None
+    )
+    assert _steps(dispatcher, 1) == [True]
+    assert downloader.validators == [Validators('"e"', None)]

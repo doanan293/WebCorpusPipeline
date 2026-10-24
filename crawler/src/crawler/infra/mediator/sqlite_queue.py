@@ -14,7 +14,10 @@ CREATE TABLE IF NOT EXISTS urls (
     kind TEXT NOT NULL,
     next_due_at REAL,
     last_sent_at REAL,
-    attempts INTEGER NOT NULL DEFAULT 0
+    attempts INTEGER NOT NULL DEFAULT 0,
+    etag TEXT,
+    last_modified TEXT,
+    interval_days REAL
 );
 CREATE INDEX IF NOT EXISTS urls_next_due ON urls (next_due_at);
 CREATE TABLE IF NOT EXISTS hosts (
@@ -24,12 +27,24 @@ CREATE TABLE IF NOT EXISTS hosts (
 """
 
 
+_ADDED_COLUMNS = (("etag", "TEXT"), ("last_modified", "TEXT"), ("interval_days", "REAL"))
+_COLUMNS = (
+    "url, host, kind, next_due_at, last_sent_at, attempts, etag, last_modified, interval_days"
+)
+
+
 class SqliteUrlQueue:
     """The ``UrlQueue`` port over one SQLite file; every write commits at once."""
 
     def __init__(self, path: Path) -> None:
         self.db = connect(path)
         self.db.executescript(_SCHEMA)
+        # Queue files from before change-aware recrawls lack these columns.
+        present = {row[1] for row in self.db.execute("PRAGMA table_info(urls)")}
+        with transaction(self.db):
+            for column, kind in _ADDED_COLUMNS:
+                if column not in present:
+                    self.db.execute(f"ALTER TABLE urls ADD COLUMN {column} {kind}")
 
     def close(self) -> None:
         self.db.close()
@@ -48,7 +63,7 @@ class SqliteUrlQueue:
         marks = ", ".join("?" * len(excluded))
         row = self.db.execute(
             f"""
-            SELECT url, host, kind, next_due_at, last_sent_at, attempts
+            SELECT {_COLUMNS}
             FROM urls
             WHERE next_due_at <= ? {f"AND host NOT IN ({marks})" if excluded else ""}
             ORDER BY next_due_at
@@ -78,6 +93,28 @@ class SqliteUrlQueue:
         self.db.execute(
             "UPDATE urls SET attempts = ?, next_due_at = ? WHERE url = ?",
             (attempts, next_due_at, url),
+        )
+
+    def get(self, url: str) -> QueuedUrl | None:
+        row = self.db.execute(
+            f"SELECT {_COLUMNS} FROM urls WHERE url = ?",  # noqa: S608 -- constant column list
+            (url,),
+        ).fetchone()
+        return QueuedUrl(*row) if row else None
+
+    def reschedule(
+        self,
+        url: str,
+        *,
+        next_due_at: float,
+        interval_days: float,
+        etag: str | None,
+        last_modified: str | None,
+    ) -> None:
+        self.db.execute(
+            "UPDATE urls SET next_due_at = ?, interval_days = ?, etag = ?, last_modified = ? "
+            "WHERE url = ?",
+            (next_due_at, interval_days, etag, last_modified, url),
         )
 
     def counts(self, now: float) -> QueueCounts:

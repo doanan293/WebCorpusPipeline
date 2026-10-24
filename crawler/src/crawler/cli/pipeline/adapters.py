@@ -21,6 +21,7 @@ from crawler.application.storage.ports import (
 from crawler.application.storage.store import store_record
 from crawler.domain.downloader.models import Fetched
 from crawler.domain.shared.protocol import BUSY, IDLE
+from crawler.domain.shared.validators import Validators
 
 log = logging.getLogger(__name__)
 
@@ -32,7 +33,9 @@ class LocalNodes:
     chờ" again only once its URL has been stored.
     """
 
-    def __init__(self, work: Callable[[str], Awaitable[object]], names: Sequence[str]) -> None:
+    def __init__(
+        self, work: Callable[[str, Validators | None], Awaitable[object]], names: Sequence[str]
+    ) -> None:
         self.work = work
         self.names = list(names)
         self.running: dict[str, tuple[str, asyncio.Task[object]]] = {}
@@ -41,10 +44,10 @@ class LocalNodes:
     async def ping(self, node: str) -> str | None:
         return BUSY if node in self.running else IDLE
 
-    async def load(self, node: str, url: str) -> LoadResult:
+    async def load(self, node: str, url: str, validators: Validators | None = None) -> LoadResult:
         if node in self.running:
             return "busy"
-        task = asyncio.create_task(self._run(url))
+        task = asyncio.create_task(self._run(url, validators))
         self.running[node] = (url, task)
         task.add_done_callback(lambda _: self._done(node))
         return "accepted"
@@ -53,9 +56,9 @@ class LocalNodes:
         self.running.pop(node, None)
         self.finished.set()
 
-    async def _run(self, url: str) -> object:
+    async def _run(self, url: str, validators: Validators | None) -> object:
         try:
-            return await self.work(url)
+            return await self.work(url, validators)
         except Exception:
             log.exception("crawl of %s crashed", url)
             return "crashed"

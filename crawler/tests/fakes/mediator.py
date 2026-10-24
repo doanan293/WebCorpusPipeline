@@ -8,6 +8,7 @@ from dataclasses import replace
 from crawler.application.mediator.ports import LoadResult, QueueCounts
 from crawler.domain.mediator.models import QueuedUrl, UrlKind
 from crawler.domain.shared.protocol import BUSY
+from crawler.domain.shared.validators import Validators
 
 
 class FakeClock:
@@ -51,6 +52,26 @@ class FakeUrlQueue:
     def mark_failed(self, url: str, attempts: int, next_due_at: float | None) -> None:
         self.rows[url] = replace(self.rows[url], next_due_at=next_due_at, attempts=attempts)
 
+    def get(self, url: str) -> QueuedUrl | None:
+        return self.rows.get(url)
+
+    def reschedule(
+        self,
+        url: str,
+        *,
+        next_due_at: float,
+        interval_days: float,
+        etag: str | None,
+        last_modified: str | None,
+    ) -> None:
+        self.rows[url] = replace(
+            self.rows[url],
+            next_due_at=next_due_at,
+            interval_days=interval_days,
+            etag=etag,
+            last_modified=last_modified,
+        )
+
     def has_due(self, now: float) -> bool:
         return self.counts(now).due > 0
 
@@ -81,14 +102,16 @@ class FakeDownloader:
         self.load_results = load_results or {}
         self.busy_after_load = False
         self.loads: list[tuple[str, str]] = []
+        self.validators: list[Validators | None] = []
         self.pings: list[str] = []
 
     async def ping(self, node: str) -> str | None:
         self.pings.append(node)
         return self.statuses.get(node)
 
-    async def load(self, node: str, url: str) -> LoadResult:
+    async def load(self, node: str, url: str, validators: Validators | None = None) -> LoadResult:
         result = self.load_results.get(node, "accepted")
+        self.validators.append(validators)
         if result == "accepted":
             self.loads.append((node, url))
             if self.busy_after_load:

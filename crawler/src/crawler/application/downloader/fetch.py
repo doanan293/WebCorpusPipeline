@@ -7,7 +7,8 @@ from typing import Literal
 from crawler.application.downloader.ports import PageGetter, ReaderClient, Renderer
 from crawler.domain.downloader.access import classify_access
 from crawler.domain.downloader.formats import payload_format
-from crawler.domain.downloader.models import Fetched, FetchError, Validators
+from crawler.domain.downloader.models import Fetched, FetchError
+from crawler.domain.shared.validators import Validators
 
 type FetchOutcome = Literal["forwarded", "not_modified", "blocked", "skipped", "failed", "unsent"]
 

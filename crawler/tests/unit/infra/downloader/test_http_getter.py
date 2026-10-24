@@ -7,7 +7,8 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 
-from crawler.domain.downloader.models import DownloaderConfig, Fetched, FetchError, Validators
+from crawler.domain.downloader.models import DownloaderConfig, Fetched, FetchError
+from crawler.domain.shared.validators import Validators
 from crawler.infra.downloader.http_getter import (
     AiohttpPageGetter,
     public_address_check,

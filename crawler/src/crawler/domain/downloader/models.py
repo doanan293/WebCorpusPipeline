@@ -23,14 +23,6 @@ class Fetched:
 
 
 @dataclass(frozen=True, slots=True)
-class Validators:
-    """What the last download of a URL said, sent back as a conditional request (304 if same)."""
-
-    etag: str | None
-    last_modified: str | None
-
-
-@dataclass(frozen=True, slots=True)
 class DownloaderConfig:
     port: int = 8800
     user_agent: str = DEFAULT_USER_AGENT

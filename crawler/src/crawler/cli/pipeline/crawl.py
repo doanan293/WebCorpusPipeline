@@ -29,6 +29,7 @@ from crawler.cli.pipeline.adapters import (
 from crawler.domain.mediator.models import CrawlConfig
 from crawler.domain.merger.config import MergerConfig
 from crawler.domain.merger.seeds import Seeds
+from crawler.domain.shared.validators import Validators
 
 log = logging.getLogger(__name__)
 
@@ -105,8 +106,8 @@ async def crawl(
     )
     reader = DirectReaderClient(parts.readers, DirectMergerClient(runtime))
 
-    async def work(url: str) -> object:
-        outcome = await fetch_and_forward(url, parts.getter, parts.renderer, reader)
+    async def work(url: str, validators: Validators | None) -> object:
+        outcome = await fetch_and_forward(url, parts.getter, parts.renderer, reader, validators)
         counts[outcome] += 1
         return outcome
 

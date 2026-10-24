@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from crawler.domain.downloader.models import Fetched, Validators
+from crawler.domain.downloader.models import Fetched
+from crawler.domain.shared.validators import Validators
 
 
 class PageGetter(Protocol):

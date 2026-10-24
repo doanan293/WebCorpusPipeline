@@ -6,7 +6,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from crawler.api.downloader import create_app
 from crawler.application.downloader.fetch import FetchOutcome
-from crawler.domain.downloader.models import Validators
+from crawler.domain.shared.validators import Validators
 
 
 def test_ping_idle() -> None:

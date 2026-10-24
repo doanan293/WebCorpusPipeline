@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from crawler.domain.mediator.models import QueuedUrl, UrlKind
+from crawler.domain.shared.validators import Validators
 
 type LoadResult = Literal["accepted", "busy", "failed"]
 
@@ -28,6 +29,20 @@ class UrlQueue(Protocol):
 
     def mark_failed(self, url: str, attempts: int, next_due_at: float | None) -> None: ...
 
+    def get(self, url: str) -> QueuedUrl | None: ...
+
+    def reschedule(
+        self,
+        url: str,
+        *,
+        next_due_at: float,
+        interval_days: float,
+        etag: str | None,
+        last_modified: str | None,
+    ) -> None:
+        """Set the URL's next visit and period, and the validators of its last download."""
+        ...
+
     def counts(self, now: float) -> QueueCounts: ...
 
     def has_due(self, now: float) -> bool:
@@ -42,7 +57,7 @@ class Downloader(Protocol):
         """The node's ``/ping`` status, or ``None`` when it cannot be reached."""
         ...
 
-    async def load(self, node: str, url: str) -> LoadResult:
+    async def load(self, node: str, url: str, validators: Validators | None = None) -> LoadResult:
         """Send one URL to the node's ``/load``: 2xx accepted, 409 busy, anything else failed."""
         ...
 

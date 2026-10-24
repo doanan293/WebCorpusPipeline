@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 from crawler.infra.mediator.sqlite_queue import SqliteUrlQueue
@@ -49,3 +50,31 @@ def test_has_due(tmp_path: Path) -> None:
     queue.add([("https://a/1", "a", "page")], 5.0)
     assert not queue.has_due(4.0)
     assert queue.has_due(5.0)
+
+
+def test_old_queue_file_gains_the_new_columns(tmp_path: Path) -> None:
+    path = tmp_path / "q.sqlite3"
+    old = sqlite3.connect(path)
+    old.executescript(
+        "CREATE TABLE urls (url TEXT PRIMARY KEY, host TEXT NOT NULL, kind TEXT NOT NULL,"
+        " next_due_at REAL, last_sent_at REAL, attempts INTEGER NOT NULL DEFAULT 0);"
+        "INSERT INTO urls VALUES ('https://h/a', 'h', 'page', 5.0, NULL, 0);"
+    )
+    old.commit()
+    old.close()
+    queue = SqliteUrlQueue(path)
+    row = queue.get("https://h/a")
+    assert row is not None and (row.next_due_at, row.etag, row.interval_days) == (5.0, None, None)
+    queue.reschedule(
+        "https://h/a", next_due_at=9.0, interval_days=14.0, etag='"e"', last_modified="Mon"
+    )
+    queue.close()
+    again = SqliteUrlQueue(path).get("https://h/a")
+    assert again is not None
+    assert (again.next_due_at, again.interval_days, again.etag, again.last_modified) == (
+        9.0,
+        14.0,
+        '"e"',
+        "Mon",
+    )
+    assert SqliteUrlQueue(path).get("https://h/none") is None

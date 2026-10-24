@@ -4,8 +4,10 @@ import hashlib
 from collections.abc import Mapping
 
 from crawler.domain.mediator.models import MediatorConfig, QueuedUrl, UrlKind
+from crawler.domain.shared.change import Change
 
 DAY_SECONDS = 86400.0
+MAX_RECRAWL_DAYS = 90.0
 _SPREAD_STEPS = 10**6
 
 
@@ -34,3 +36,21 @@ def spread(url: str, start: float, period_seconds: float) -> float:
     """
     digest = int.from_bytes(hashlib.sha256(url.encode("utf-8")).digest()[:8])
     return start + (digest % _SPREAD_STEPS) / _SPREAD_STEPS * period_seconds
+
+
+def adapt_interval(
+    kind: UrlKind, current: float | None, change: Change, recrawl_days: Mapping[UrlKind, float]
+) -> float:
+    """The next recrawl period after a visit found ``change``.
+
+    Hubs (front and listing pages) stay at their base period: new articles show up there. Other
+    pages back off while unchanged (doubling, up to 90 days) and come closer when they change
+    (halving, never below their base period).
+    """
+    base = recrawl_days[kind]
+    if kind == "hub" or change == "new" or base <= 0:
+        return base
+    period = current or base
+    if change == "modified":
+        return max(period / 2, base)
+    return min(period * 2, max(MAX_RECRAWL_DAYS, base))

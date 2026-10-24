@@ -5,6 +5,7 @@ from pathlib import Path
 
 from crawler.cli.pipeline.adapters import DirectServiceClient, LocalNodes
 from crawler.domain.shared.protocol import BUSY, IDLE
+from crawler.domain.shared.validators import Validators
 from crawler.infra.mediator.sqlite_queue import SqliteUrlQueue
 from tests.fakes.mediator import FakeClock
 from tests.fakes.storage import FakeCorpusStore
@@ -21,7 +22,7 @@ RECORD: dict[str, object] = {
 def test_local_nodes_report_busy_when_full() -> None:
     release = asyncio.Event()
 
-    async def work(url: str) -> object:
+    async def work(url: str, _: Validators | None) -> object:
         await release.wait()
         return "forwarded"
 
@@ -41,7 +42,7 @@ def test_local_nodes_report_busy_when_full() -> None:
 
 
 def test_local_nodes_close_returns_cancelled_urls() -> None:
-    async def work(url: str) -> object:
+    async def work(url: str, _: Validators | None) -> object:
         await asyncio.sleep(60)
         return "forwarded"
 

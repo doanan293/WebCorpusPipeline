@@ -41,3 +41,33 @@ def test_add_bad_body_is_400(body: str) -> None:
     assert status == 400
     assert isinstance(answer, dict) and "error" in answer
     assert queue.rows == {}
+
+
+def test_report_updates_schedule() -> None:
+    queue = FakeUrlQueue()
+    queue.add([("https://hust.edu.vn/a", "hust.edu.vn", "page")], 0.0)
+
+    async def scenario() -> list[tuple[int, object]]:
+        async with TestClient(TestServer(create_app(queue, FakeClock(0.0)))) as client:
+            good = await client.post(
+                "/report",
+                json={
+                    "reports": [
+                        {
+                            "url": "https://hust.edu.vn/a",
+                            "change": "unchanged",
+                            "etag": None,
+                            "last_modified": None,
+                        }
+                    ]
+                },
+            )
+            bad = await client.post("/report", json={"reports": [{"url": 1}]})
+            return [
+                (good.status, await good.json()),
+                (bad.status, (await bad.json()).keys() and "error"),
+            ]
+
+    assert asyncio.run(scenario()) == [(200, {"updated": 1}), (400, "error")]
+    row = queue.get("https://hust.edu.vn/a")
+    assert row is not None and row.interval_days == 14.0

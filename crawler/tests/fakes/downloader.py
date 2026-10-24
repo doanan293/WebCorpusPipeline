@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from crawler.domain.downloader.models import Fetched, FetchError, Validators
+from crawler.domain.downloader.models import Fetched, FetchError
+from crawler.domain.shared.validators import Validators
 
 
 class FakeGetter:

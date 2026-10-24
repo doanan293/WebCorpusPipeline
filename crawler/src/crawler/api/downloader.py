@@ -11,8 +11,8 @@ from aiohttp import web
 from crawler.api.common import Stats, error, json_object, json_response, stats_loop
 from crawler.application.downloader.fetch import FetchOutcome, fetch_and_forward
 from crawler.application.downloader.ports import PageGetter, ReaderClient, Renderer
-from crawler.domain.downloader.models import Validators
 from crawler.domain.shared.protocol import ACCEPTED, BUSY, IDLE
+from crawler.domain.shared.validators import Validators
 
 log = logging.getLogger(__name__)
 

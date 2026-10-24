@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 
 from crawler.application.downloader.fetch import fetch_and_forward
-from crawler.domain.downloader.models import Fetched, Validators
+from crawler.domain.downloader.models import Fetched
+from crawler.domain.shared.validators import Validators
 from tests.fakes.downloader import FakeGetter, FakeReaderClient, FakeRenderer
 
 ARTICLE = (

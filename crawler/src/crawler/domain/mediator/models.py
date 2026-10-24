@@ -18,6 +18,9 @@ class QueuedUrl:
     next_due_at: float | None
     last_sent_at: float | None
     attempts: int
+    etag: str | None = None
+    last_modified: str | None = None
+    interval_days: float | None = None  # the current recrawl period, adapted to the page's changes
 
 
 @dataclass(frozen=True, slots=True)

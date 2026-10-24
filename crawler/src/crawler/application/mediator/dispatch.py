@@ -11,6 +11,7 @@ from crawler.domain.mediator.rotation import NodeRotation
 from crawler.domain.mediator.scheduling import after_failure, after_success
 from crawler.domain.mediator.throttle import HostThrottle
 from crawler.domain.shared.protocol import BUSY, IDLE
+from crawler.domain.shared.validators import Validators
 
 log = logging.getLogger(__name__)
 
@@ -82,7 +83,12 @@ class Dispatcher:
                     log.warning("unexpected ping status from %s: %r", node, status)
                 continue
             self.rotation.used(node)
-            result = await self.downloader.load(node, item.url)
+            validators = (
+                Validators(item.etag, item.last_modified)
+                if item.etag or item.last_modified
+                else None
+            )
+            result = await self.downloader.load(node, item.url, validators)
             if result == "busy":
                 continue  # taken by someone else between ping and load; try the next node
             if result == "accepted":

@@ -5,6 +5,7 @@ from http import HTTPStatus
 import aiohttp
 
 from crawler.application.mediator.ports import LoadResult
+from crawler.domain.shared.validators import Validators
 
 
 class HttpDownloader:
@@ -33,11 +34,16 @@ class HttpDownloader:
         status = body.get("status") if isinstance(body, dict) else None
         return status if isinstance(status, str) else None
 
-    async def load(self, node: str, url: str) -> LoadResult:
+    async def load(self, node: str, url: str, validators: Validators | None = None) -> LoadResult:
+        body: dict[str, str] = {"url": url}
+        if validators is not None and validators.etag:
+            body["etag"] = validators.etag
+        if validators is not None and validators.last_modified:
+            body["last_modified"] = validators.last_modified
         try:
             async with self._session().post(
                 f"{node}/load",
-                json={"url": url},
+                json=body,
                 timeout=aiohttp.ClientTimeout(total=self.load_timeout),
             ) as response:
                 if response.status == HTTPStatus.CONFLICT:

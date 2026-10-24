@@ -3,7 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from crawler.domain.mediator.models import MediatorConfig, QueuedUrl, UrlKind
-from crawler.domain.mediator.scheduling import after_failure, after_success, spread
+from crawler.domain.mediator.scheduling import (
+    MAX_RECRAWL_DAYS,
+    adapt_interval,
+    after_failure,
+    after_success,
+    spread,
+)
 
 DAY = 86400.0
 PERIODS: dict[UrlKind, float] = {"hub": 1.0, "page": 7.0, "document": 30.0}
@@ -49,3 +55,15 @@ def test_spread_is_stable_and_inside_period() -> None:
     assert first == spread("https://x/1", 100.0, DAY)
     assert 100.0 <= first < 100.0 + DAY
     assert first != spread("https://x/2", 100.0, DAY)
+
+
+def test_adapt_interval() -> None:
+    days: dict[UrlKind, float] = {"hub": 1.0, "page": 7.0, "document": 30.0}
+    assert adapt_interval("hub", 1.0, "unchanged", days) == 1.0
+    assert adapt_interval("hub", None, "modified", days) == 1.0
+    assert adapt_interval("page", None, "unchanged", days) == 14.0
+    assert adapt_interval("page", 14.0, "not_modified", days) == 28.0
+    assert adapt_interval("page", 80.0, "unchanged", days) == MAX_RECRAWL_DAYS == 90.0
+    assert adapt_interval("page", 14.0, "modified", days) == 7.0
+    assert adapt_interval("page", 8.0, "modified", days) == 7.0
+    assert adapt_interval("document", 120.0, "new", days) == 30.0

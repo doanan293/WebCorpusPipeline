@@ -1,11 +1,11 @@
-"""mediator (block 3, port 5200): ``POST /add`` plus the loop that feeds the download nodes."""
+"""mediator (block 3, port 5200): ``POST /add``, ``POST /report`` and the loop feeding the nodes."""
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 
 from aiohttp import web
 
@@ -13,14 +13,19 @@ from crawler.api.common import error, json_object, json_response
 from crawler.application.mediator.add_urls import add_urls
 from crawler.application.mediator.dispatch import Dispatcher, run_dispatch
 from crawler.application.mediator.ports import Clock, Downloader, UrlQueue
-from crawler.domain.mediator.models import MediatorConfig
+from crawler.application.mediator.report import report_outcomes, valid_report
+from crawler.domain.mediator.models import DEFAULT_RECRAWL_DAYS, MediatorConfig, UrlKind
 
 log = logging.getLogger(__name__)
 
 SUMMARY_SECONDS = 30.0
 
 
-def create_app(queue: UrlQueue, clock: Clock) -> web.Application:
+def create_app(
+    queue: UrlQueue,
+    clock: Clock,
+    recrawl_days: Mapping[UrlKind, float] = DEFAULT_RECRAWL_DAYS,
+) -> web.Application:
     async def add(request: web.Request) -> web.Response:
         body = await json_object(request)
         urls = body.get("urls")
@@ -35,8 +40,17 @@ def create_app(queue: UrlQueue, clock: Clock) -> web.Application:
             }
         )
 
+    async def report(request: web.Request) -> web.Response:
+        """What each visit found (new, modified, unchanged, not_modified), from the merger."""
+        body = await json_object(request)
+        reports = body.get("reports")
+        if not isinstance(reports, list) or not all(valid_report(item) for item in reports):
+            return error(400, "reports must be a list of {url, change, etag, last_modified}")
+        return json_response({"updated": report_outcomes(queue, reports, recrawl_days, clock)})
+
     app = web.Application(client_max_size=16 * 1024 * 1024)
     app.router.add_post("/add", add)
+    app.router.add_post("/report", report)
     return app
 
 
@@ -44,7 +58,7 @@ def create_service(
     queue: UrlQueue, downloader: Downloader, clock: Clock, config: MediatorConfig
 ) -> web.Application:
     """``create_app`` with the dispatch and summary loops running for the app's lifetime."""
-    app = create_app(queue, clock)
+    app = create_app(queue, clock, config.recrawl_days)
     dispatcher = Dispatcher(queue, downloader, clock, config)
 
     async def background(_: web.Application) -> AsyncIterator[None]:

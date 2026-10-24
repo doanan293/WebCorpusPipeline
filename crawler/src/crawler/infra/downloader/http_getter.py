@@ -8,7 +8,8 @@ from urllib.parse import urljoin, urlsplit
 import aiohttp
 
 from crawler.domain.downloader.formats import payload_format
-from crawler.domain.downloader.models import DownloaderConfig, Fetched, FetchError, Validators
+from crawler.domain.downloader.models import DownloaderConfig, Fetched, FetchError
+from crawler.domain.shared.validators import Validators
 from crawler.infra.shared.network import (
     NonPublicAddressError,
     resolve_public_hostname,
