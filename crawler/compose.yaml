@@ -18,6 +18,8 @@ services:
   mongoose:  # Mongo (6)
     image: mongo:8.0
     restart: unless-stopped
+    # WiredTiger takes about half the machine's RAM by default; 2 GB is plenty for this corpus.
+    command: ["--wiredTigerCacheSizeGB", "2"]
     ports:
       - "127.0.0.1:27017:27017"
     volumes:
