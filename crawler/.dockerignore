@@ -1,10 +1,7 @@
-# The services image needs only these; core/data holds gigabytes of crawl state.
+# The image needs only these; data/ holds gigabytes of crawl state.
 *
-!core/pyproject.toml
-!core/uv.lock
-!core/src
-!core/config
-!server/pyproject.toml
-!server/uv.lock
-!server/src
+!pyproject.toml
+!uv.lock
+!src
+!config
 **/__pycache__

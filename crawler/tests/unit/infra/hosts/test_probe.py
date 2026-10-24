@@ -1,0 +1,903 @@
+import socket
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any, override
+
+import pytest
+
+from crawler.domain.hosts.models import ProbeAttempt, ProbeResult
+from crawler.infra.hosts import http_probe as domain_probe
+from crawler.infra.hosts.http_probe import fetch_url, probe_host
+from crawler.infra.shared.network import NonPublicAddressError, resolve_hostname
+
+
+def test_probe_digest_ignores_the_serving_hostname() -> None:
+    def probe(hostname: str) -> ProbeResult:
+        return probe_host(
+            hostname,
+            timeout=1,
+            attempts=1,
+            resolve=lambda value: None,
+            fetch=lambda url, timeout: ProbeAttempt(
+                status=200,
+                final_url=url,
+                content_type="text/html",
+                body=(
+                    b"<title>Same site</title><a href='https://"
+                    + hostname.encode()
+                    + b"/news'>News</a>"
+                ),
+            ),
+        )
+
+    first = probe("short.hust.edu.vn")
+    second = probe("www.short.hust.edu.vn")
+
+    assert first.content_digest == second.content_digest
+
+
+def test_probe_digest_ignores_non_visible_dynamic_markup() -> None:
+    def probe(hostname: str, nonce: str) -> ProbeResult:
+        return probe_host(
+            hostname,
+            timeout=1,
+            attempts=1,
+            resolve=lambda value: None,
+            fetch=lambda url, timeout: ProbeAttempt(
+                status=200,
+                final_url=url,
+                content_type="text/html",
+                body=(
+                    b"<title>Same site</title><main><h1>Public news</h1>"
+                    b"<p>The same substantive public content is available here.</p></main>"
+                    + f"<script>window.nonce='{nonce}'</script>".encode()
+                ),
+            ),
+        )
+
+    first = probe("short.hust.edu.vn", "first-token")
+    second = probe("www.short.hust.edu.vn", "second-token")
+
+    assert first.content_digest == second.content_digest
+
+
+def test_script_only_aliases_are_inactive_and_ignore_dynamic_script_content() -> None:
+    def probe(hostname: str, nonce: str) -> ProbeResult:
+        return probe_host(
+            hostname,
+            timeout=1,
+            attempts=1,
+            resolve=lambda value: None,
+            fetch=lambda url, timeout: ProbeAttempt(
+                status=200,
+                final_url=url,
+                content_type="text/html",
+                body=(
+                    b"<title>Internal portal</title><div id='root'></div>"
+                    + f"<script>boot('{nonce}')</script>".encode()
+                ),
+            ),
+        )
+
+    first = probe("short.hust.edu.vn", "first-token")
+    second = probe("www.short.hust.edu.vn", "second-token")
+
+    assert (first.active, first.reason) == (False, "javascript_shell")
+    assert (second.active, second.reason) == (False, "javascript_shell")
+    assert first.content_digest == second.content_digest
+
+
+def test_probe_rejects_non_public_dns_before_fetching() -> None:
+    calls: list[str] = []
+
+    def reject_private(hostname: str) -> None:
+        raise NonPublicAddressError("192.168.50.254")
+
+    def record_fetch(url: str, timeout: float) -> ProbeAttempt:
+        calls.append(url)
+        return ProbeAttempt()
+
+    result = probe_host(
+        "internal.hust.edu.vn",
+        timeout=1,
+        attempts=1,
+        resolve=reject_private,
+        fetch=record_fetch,
+    )
+
+    assert result.active is False
+    assert result.reason == "non_public_address"
+    assert calls == []
+
+
+def private_answers(*args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
+    return [(socket.AF_INET, 0, 0, "", ("192.168.50.254", 443))]
+
+
+def test_resolve_hostname_rejects_private_addresses(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        private_answers,
+    )
+
+    with pytest.raises(NonPublicAddressError, match=r"192\.168\.50\.254"):
+        resolve_hostname("internal.hust.edu.vn")
+
+
+def test_resolve_hostname_has_a_hard_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    def delayed_resolution(*args: Any, **kwargs: Any):
+        time.sleep(0.05)
+        return [
+            (socket.AF_INET, 0, 0, "", ("203.0.113.10", 443)),
+        ]
+
+    monkeypatch.setattr(socket, "getaddrinfo", delayed_resolution)
+
+    with pytest.raises(TimeoutError, match="DNS resolution timed out"):
+        resolve_hostname("slow.hust.edu.vn", timeout=0.01)
+
+
+def test_probe_finds_public_content_from_same_host_sitemap() -> None:
+    calls: list[str] = []
+
+    def fetch(url: str, timeout: float) -> ProbeAttempt:
+        calls.append(url)
+        if url == "https://example.hust.edu.vn/":
+            return ProbeAttempt(
+                status=200,
+                final_url=url,
+                content_type="text/html",
+                body=b'<title>Login</title><form><input type="password"></form>',
+            )
+        if url == "https://example.hust.edu.vn/sitemap.xml":
+            return ProbeAttempt(
+                status=200,
+                final_url=url,
+                content_type="application/xml",
+                body=(b"<urlset><url><loc>https://example.hust.edu.vn/news</loc></url></urlset>"),
+            )
+        if url == "https://example.hust.edu.vn/news":
+            return ProbeAttempt(
+                status=200,
+                final_url=url,
+                content_type="text/html",
+                body=b"<title>News</title><h1>Public research news</h1>",
+            )
+        return ProbeAttempt(error="unexpected URL")
+
+    result = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=1,
+        resolve=lambda hostname: None,
+        fetch=fetch,
+    )
+
+    assert result.active is True
+    assert result.final_url == "https://example.hust.edu.vn/news"
+    assert calls == [
+        "https://example.hust.edu.vn/",
+        "https://example.hust.edu.vn/sitemap.xml",
+        "https://example.hust.edu.vn/news",
+    ]
+
+
+def test_probe_finds_public_sitemap_content_behind_script_shell_root() -> None:
+    def fetch(url: str, timeout: float) -> ProbeAttempt:
+        if url == "https://example.hust.edu.vn/":
+            return ProbeAttempt(
+                status=200,
+                final_url=url,
+                content_type="text/html",
+                body=b"<title>Portal</title><div id='root'></div><script>boot()</script>",
+            )
+        if url == "https://example.hust.edu.vn/sitemap.xml":
+            return ProbeAttempt(
+                status=200,
+                final_url=url,
+                content_type="application/xml",
+                body=(b"<urlset><url><loc>https://example.hust.edu.vn/news</loc></url></urlset>"),
+            )
+        if url == "https://example.hust.edu.vn/news":
+            return ProbeAttempt(
+                status=200,
+                final_url=url,
+                content_type="text/html",
+                body=b"<title>News</title><h1>Public research news</h1>",
+            )
+        return ProbeAttempt(status=404, final_url=url, body=b"not found")
+
+    result = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=1,
+        resolve=lambda hostname: None,
+        fetch=fetch,
+    )
+
+    assert result.active is True
+    assert result.final_url == "https://example.hust.edu.vn/news"
+
+
+def test_probe_does_not_follow_placeholder_vendor_links() -> None:
+    calls: list[str] = []
+
+    def fetch(url: str, timeout: float) -> ProbeAttempt:
+        calls.append(url)
+        if url == "https://example.hust.edu.vn/":
+            return ProbeAttempt(
+                status=200,
+                final_url=url,
+                content_type="text/html",
+                body=(b"<title>Apache Tomcat/10.1.55</title><a href='/docs/'>Documentation</a>"),
+            )
+        if url.endswith("/sitemap.xml"):
+            return ProbeAttempt(status=404, final_url=url, body=b"not found")
+        return ProbeAttempt(
+            status=200,
+            final_url=url,
+            content_type="text/html",
+            body=b"<title>Apache Tomcat Documentation</title><h1>Documentation</h1>",
+        )
+
+    result = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=1,
+        resolve=lambda hostname: None,
+        fetch=fetch,
+    )
+
+    assert (result.active, result.reason) == (False, "placeholder")
+    assert "https://example.hust.edu.vn/docs/" not in calls
+
+
+def test_probe_rejects_login_only_redirect_with_non_login_title() -> None:
+    def fetch(url: str, timeout: float) -> ProbeAttempt:
+        if url.endswith("/sitemap.xml"):
+            return ProbeAttempt(status=404, final_url=url, body=b"not found")
+        return ProbeAttempt(
+            status=200,
+            final_url="https://example.hust.edu.vn/Account/Login.aspx",
+            content_type="text/html",
+            body=(b'<title>Student portal</title><form><input type="password"></form>'),
+        )
+
+    result = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=1,
+        resolve=lambda hostname: None,
+        fetch=fetch,
+    )
+
+    assert result.active is False
+    assert result.reason == "login_only"
+
+
+def test_probe_does_not_treat_login_page_assets_as_public_content() -> None:
+    calls: list[str] = []
+
+    def fetch(url: str, timeout: float) -> ProbeAttempt:
+        calls.append(url)
+        if url.endswith("/sitemap.xml"):
+            return ProbeAttempt(status=404, final_url=url, body=b"not found")
+        if url.endswith("/styles/site.css"):
+            return ProbeAttempt(
+                status=200,
+                final_url=url,
+                content_type="text/css",
+                body=b"body { color: black; }",
+            )
+        return ProbeAttempt(
+            status=200,
+            final_url="https://example.hust.edu.vn/login",
+            content_type="text/html",
+            body=(
+                b"<title>Login</title>"
+                b'<link rel="stylesheet" href="/styles/site.css">'
+                b'<a href="/forgot">Forgot password</a>'
+                b'<form><input type="password"></form>'
+            ),
+        )
+
+    result = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=1,
+        resolve=lambda hostname: None,
+        fetch=fetch,
+    )
+
+    assert result.active is False
+    assert result.reason == "login_only"
+    assert "https://example.hust.edu.vn/styles/site.css" not in calls
+    assert "https://example.hust.edu.vn/forgot" not in calls
+
+
+def test_probe_rejects_login_path_without_standard_password_input() -> None:
+    def fetch(url: str, timeout: float) -> ProbeAttempt:
+        if url.endswith("/sitemap.xml"):
+            return ProbeAttempt(status=404, final_url=url, body=b"not found")
+        return ProbeAttempt(
+            status=200,
+            final_url="https://example.hust.edu.vn/login_page.php",
+            content_type="text/html",
+            body=b"<title>Portal</title><form><div id='password-control'></div></form>",
+        )
+
+    result = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=1,
+        resolve=lambda hostname: None,
+        fetch=fetch,
+    )
+
+    assert result.active is False
+    assert result.reason == "login_only"
+
+
+def test_probe_follows_javascript_redirect_for_canonical_host_detection() -> None:
+    calls: list[str] = []
+
+    def fetch(url: str, timeout: float) -> ProbeAttempt:
+        calls.append(url)
+        if url == "https://alias.hust.edu.vn/":
+            return ProbeAttempt(
+                status=200,
+                final_url=url,
+                content_type="text/html",
+                body=(
+                    b"<html><script>window.location = "
+                    b"'https://canonical.hust.edu.vn';</script></html>"
+                ),
+            )
+        if url == "https://canonical.hust.edu.vn":
+            return ProbeAttempt(
+                status=200,
+                final_url="https://canonical.hust.edu.vn/",
+                content_type="text/html",
+                body=b"<title>Canonical public site</title><h1>News</h1>",
+            )
+        return ProbeAttempt(error="unexpected URL")
+
+    result = probe_host(
+        "alias.hust.edu.vn",
+        timeout=1,
+        attempts=1,
+        resolve=lambda hostname: None,
+        fetch=fetch,
+    )
+
+    assert result.active is True
+    assert result.final_url == "https://canonical.hust.edu.vn/"
+    assert calls == [
+        "https://alias.hust.edu.vn/",
+        "https://canonical.hust.edu.vn",
+    ]
+
+
+def test_probe_rejects_client_redirect_to_non_public_hust_host() -> None:
+    fetched: list[str] = []
+
+    def resolve(hostname: str) -> None:
+        if hostname == "private.hust.edu.vn":
+            msg = "private target"
+            raise NonPublicAddressError(msg)
+
+    def fetch(url: str, timeout: float) -> ProbeAttempt:
+        fetched.append(url)
+        return ProbeAttempt(
+            status=200,
+            final_url=url,
+            content_type="text/html",
+            body=b"<script>location='https://private.hust.edu.vn/'</script>",
+        )
+
+    result = probe_host(
+        "alias.hust.edu.vn",
+        timeout=1,
+        attempts=1,
+        resolve=resolve,
+        fetch=fetch,
+    )
+
+    assert result.active is False
+    assert result.reason == "non_public_address"
+    assert fetched == ["https://alias.hust.edu.vn/"]
+
+
+def test_probe_follows_quoted_meta_refresh_before_classifying() -> None:
+    calls: list[str] = []
+
+    def fetch(url: str, timeout: float) -> ProbeAttempt:
+        calls.append(url)
+        if url == "https://example.hust.edu.vn/":
+            return ProbeAttempt(
+                status=200,
+                final_url=url,
+                content_type="text/html",
+                body=b'<meta http-equiv="refresh" content="0;URL=\'/ui\'">',
+            )
+        if url == "https://example.hust.edu.vn/ui":
+            return ProbeAttempt(
+                status=200,
+                final_url="https://example.hust.edu.vn/ui/",
+                content_type="text/html",
+                body=b"<html ng-app='esxUiApp'><body></body></html>",
+            )
+        return ProbeAttempt(error="unexpected URL")
+
+    result = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=1,
+        resolve=lambda hostname: None,
+        fetch=fetch,
+    )
+
+    assert result.active is False
+    assert result.reason == "service_endpoint"
+    assert calls == [
+        "https://example.hust.edu.vn/",
+        "https://example.hust.edu.vn/ui",
+        "https://example.hust.edu.vn/sitemap.xml",
+    ]
+
+
+def test_event_handler_location_assignment_is_not_a_page_redirect() -> None:
+    body = (
+        b"<title>Public news</title><h1>News</h1>"
+        b"<button onclick=\"window.location='/login'\">Login</button>"
+    )
+    result = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=1,
+        resolve=lambda hostname: None,
+        fetch=lambda url, timeout: ProbeAttempt(
+            status=200,
+            final_url=url,
+            content_type="text/html",
+            body=body,
+        ),
+    )
+
+    assert result.active is True
+    assert result.final_url == "https://example.hust.edu.vn/"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        (
+            b"<title>Public news</title><h1>News</h1>"
+            b"&lt;meta http-equiv='refresh' content='0;url=https://outside.example/'&gt;"
+        ),
+        (
+            b"<title>Public news</title><h1>News</h1>"
+            b"<!-- <meta http-equiv='refresh' content='0;url=https://outside.example/'> -->"
+        ),
+    ],
+)
+def test_non_dom_meta_refresh_text_is_not_followed(body: bytes) -> None:
+    result = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=1,
+        resolve=lambda hostname: None,
+        fetch=lambda url, timeout: ProbeAttempt(
+            status=200,
+            final_url=url,
+            content_type="text/html",
+            body=body,
+        ),
+    )
+
+    assert result.active is True
+    assert result.final_url == "https://example.hust.edu.vn/"
+
+
+def test_probe_reserves_sitemap_budget_after_five_root_links() -> None:
+    def fetch(url: str, timeout: float) -> ProbeAttempt:
+        if url == "https://example.hust.edu.vn/":
+            links = b"".join(f'<a href="/dead-{index}">Dead</a>'.encode() for index in range(5))
+            return ProbeAttempt(
+                status=200,
+                final_url="https://example.hust.edu.vn/login",
+                content_type="text/html",
+                body=b"<title>Login</title><form></form>" + links,
+            )
+        if url == "https://example.hust.edu.vn/sitemap.xml":
+            return ProbeAttempt(
+                status=200,
+                final_url=url,
+                content_type="application/xml",
+                body=b"<urlset><url><loc>https://example.hust.edu.vn/news</loc></url></urlset>",
+            )
+        if url == "https://example.hust.edu.vn/news":
+            return ProbeAttempt(
+                status=200,
+                final_url=url,
+                content_type="text/html",
+                body=b"<title>Public news</title><h1>Research</h1>",
+            )
+        return ProbeAttempt(status=404, final_url=url, body=b"not found")
+
+    result = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=1,
+        resolve=lambda hostname: None,
+        fetch=fetch,
+    )
+
+    assert result.active is True
+    assert result.final_url == "https://example.hust.edu.vn/news"
+
+
+def test_probe_retries_https_then_falls_back_to_http() -> None:
+    calls: list[str] = []
+
+    def resolve(hostname: str) -> None:
+        assert hostname == "example.hust.edu.vn"
+
+    def fetch(url: str, timeout: float) -> ProbeAttempt:
+        calls.append(url)
+        if url.startswith("https://"):
+            return ProbeAttempt(error="connection refused")
+        return ProbeAttempt(
+            status=200,
+            final_url=url,
+            body=b"<title>Working service</title><h1>Public information</h1>",
+        )
+
+    result = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=2,
+        resolve=resolve,
+        fetch=fetch,
+    )
+
+    assert result.active is True
+    assert result.scheme == "http"
+    assert result.title == "Working service"
+    assert calls == [
+        "https://example.hust.edu.vn/",
+        "https://example.hust.edu.vn/",
+        "http://example.hust.edu.vn/",
+    ]
+
+
+def test_probe_retries_temporary_server_error() -> None:
+    responses = iter(
+        [
+            ProbeAttempt(status=503, final_url="https://example.hust.edu.vn/"),
+            ProbeAttempt(
+                status=200,
+                final_url="https://example.hust.edu.vn/",
+                body=b"working",
+            ),
+        ]
+    )
+
+    result = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=2,
+        resolve=lambda hostname: None,
+        fetch=lambda url, timeout: next(responses),
+    )
+
+    assert result.active is True
+    assert result.status == 200
+
+
+def test_probe_retries_rate_limit_but_rejects_persistent_rate_limit() -> None:
+    transient = iter(
+        [
+            ProbeAttempt(status=429, final_url="https://example.hust.edu.vn/"),
+            ProbeAttempt(
+                status=200,
+                final_url="https://example.hust.edu.vn/",
+                body=b"working",
+            ),
+        ]
+    )
+    recovered = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=2,
+        resolve=lambda hostname: None,
+        fetch=lambda url, timeout: next(transient),
+    )
+    limited = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=2,
+        resolve=lambda hostname: None,
+        fetch=lambda url, timeout: ProbeAttempt(
+            status=429,
+            final_url=url,
+            body=b"rate limited",
+        ),
+    )
+
+    assert recovered.active is True
+    assert limited.active is False
+    assert limited.reason == "rate_limited"
+
+
+def test_probe_reports_dns_failure_without_http_attempt() -> None:
+    def fail_dns(hostname: str) -> None:
+        msg = "name not known"
+        raise OSError(msg)
+
+    result = probe_host(
+        "missing.hust.edu.vn",
+        timeout=1,
+        attempts=2,
+        resolve=fail_dns,
+        fetch=lambda url, timeout: pytest.fail("HTTP should not be attempted"),
+    )
+
+    assert result.active is False
+    assert result.reason == "dns_error"
+
+
+def test_probe_retries_transient_dns_failure() -> None:
+    dns_attempts = 0
+
+    def resolve(hostname: str) -> None:
+        nonlocal dns_attempts
+        dns_attempts += 1
+        if dns_attempts == 1:
+            msg = "temporary failure"
+            raise OSError(msg)
+
+    result = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=2,
+        resolve=resolve,
+        fetch=lambda url, timeout: ProbeAttempt(
+            status=200,
+            final_url=url,
+            body=b"working",
+        ),
+    )
+
+    assert dns_attempts == 2
+    assert result.active is True
+
+
+def test_probe_keeps_http_failure_when_fallback_has_transport_errors() -> None:
+    def fetch(url: str, timeout: float) -> ProbeAttempt:
+        if url.startswith("https://"):
+            return ProbeAttempt(
+                status=404,
+                final_url=url,
+                body=b"<title>Not found</title>",
+                error="HTTP Error 404: Not Found",
+            )
+        return ProbeAttempt(error="connection refused")
+
+    result = probe_host(
+        "example.hust.edu.vn",
+        timeout=1,
+        attempts=2,
+        resolve=lambda hostname: None,
+        fetch=fetch,
+    )
+
+    assert result.active is False
+    assert result.reason == "not_found"
+    assert result.scheme == "https"
+    assert result.status == 404
+
+
+def test_fetch_url_reads_bounded_http_response() -> None:
+    seen_user_agents: list[str] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            seen_user_agents.append(self.headers["User-Agent"])
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"<title>Local service</title><p>ok</p>")
+
+        @override
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        attempt = fetch_url(
+            f"http://127.0.0.1:{server.server_port}/",
+            timeout=1,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    assert attempt.status == 200
+    assert attempt.body == b"<title>Local service</title><p>ok</p>"
+    assert seen_user_agents == [
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/140 Safari/537.36"
+    ]
+
+
+def test_fetch_url_follows_cookie_dependent_redirect() -> None:
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if "audit_session=ready" in self.headers.get("Cookie", ""):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.end_headers()
+                self.wfile.write(b"<title>Login</title>")
+                return
+            self.send_response(302)
+            self.send_header("Set-Cookie", "audit_session=ready; Path=/")
+            self.send_header("Location", "/")
+            self.end_headers()
+
+        @override
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        attempt = fetch_url(f"http://127.0.0.1:{server.server_port}/", timeout=1)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    assert attempt.status == 200
+    assert attempt.body == b"<title>Login</title>"
+
+
+def test_fetch_url_does_not_follow_redirect_outside_hust_scope() -> None:
+    requests = 0
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            nonlocal requests
+            requests += 1
+            self.send_response(302)
+            self.send_header("Location", "http://169.254.169.254/latest/meta-data/")
+            self.end_headers()
+
+        @override
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        attempt = fetch_url(f"http://127.0.0.1:{server.server_port}/", timeout=1)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    assert requests == 1
+    assert attempt.status == 302
+    assert attempt.final_url == "http://169.254.169.254/latest/meta-data/"
+    assert attempt.error == "external_redirect"
+
+
+def test_fetch_url_does_not_follow_hust_redirect_to_non_public_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(302)
+            self.send_header("Location", "https://private.hust.edu.vn/")
+            self.end_headers()
+
+        @override
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+    def resolve(hostname: str, timeout: float = 5.0) -> None:
+        assert hostname == "private.hust.edu.vn"
+        msg = "private target"
+        raise NonPublicAddressError(msg)
+
+    monkeypatch.setattr(domain_probe, "resolve_hostname", resolve)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        attempt = fetch_url(f"http://127.0.0.1:{server.server_port}/", timeout=1)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    assert attempt.status == 302
+    assert attempt.final_url == "https://private.hust.edu.vn/"
+    assert attempt.error == "non_public_address"
+
+
+def fail_before_dns(hostname: str, timeout: float = 5.0) -> None:
+    pytest.fail("must reject before DNS")
+
+
+def test_fetch_url_does_not_follow_redirect_to_non_web_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        domain_probe,
+        "resolve_hostname",
+        fail_before_dns,
+    )
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(302)
+            self.send_header("Location", "https://public.hust.edu.vn:2375/")
+            self.end_headers()
+
+        @override
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        attempt = fetch_url(f"http://127.0.0.1:{server.server_port}/", timeout=1)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    assert attempt.status == 302
+    assert attempt.final_url == "https://public.hust.edu.vn:2375/"
+    assert attempt.error == "external_redirect"
+
+
+def test_redirect_loop_is_not_an_active_website() -> None:
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(302)
+            self.send_header("Location", "/")
+            self.end_headers()
+
+        @override
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        local_url = f"http://127.0.0.1:{server.server_port}/"
+        result = probe_host(
+            "loop.hust.edu.vn",
+            timeout=1,
+            attempts=1,
+            resolve=lambda hostname: None,
+            fetch=lambda url, timeout: fetch_url(local_url, timeout),
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    assert result.active is False
+    assert result.reason == "redirect_error"

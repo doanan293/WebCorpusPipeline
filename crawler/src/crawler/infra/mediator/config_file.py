@@ -1,0 +1,129 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import replace
+from pathlib import Path
+from typing import Any, cast
+
+import yaml
+
+from crawler.domain.mediator.models import (
+    DEFAULT_RECRAWL_DAYS,
+    CrawlConfig,
+    MediatorConfig,
+    UrlKind,
+)
+from crawler.domain.shared.errors import ConfigError
+
+_NUMBERS = (
+    "host_delay_seconds",
+    "ping_timeout_seconds",
+    "load_timeout_seconds",
+    "node_cooldown_seconds",
+    "tick_seconds",
+    "autothrottle_start_delay_seconds",
+    "autothrottle_max_delay_seconds",
+    "autothrottle_target_concurrency",
+)
+
+
+def _read_mapping(path: Path) -> dict[str, Any]:
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        msg = f"cannot read {path}: {exc}"
+        raise ConfigError(msg) from exc
+    if not isinstance(raw, dict):
+        msg = f"{path} must hold a mapping"
+        raise ConfigError(msg)
+    return cast("dict[str, Any]", raw)
+
+
+def load_mediator_config(path: Path) -> MediatorConfig:
+    """Read ``mediator.yaml``; a missing or unusable value is a ``ConfigError`` naming it."""
+    return _mediator_config(_read_mapping(path))
+
+
+def load_crawl_config(crawl_path: Path, mediator_path: Path) -> CrawlConfig:
+    """``mediator.yaml`` with the keys of ``crawl.yaml`` on top, run by in-process nodes.
+
+    The one-process crawl follows the mediator's rules; ``crawl.yaml`` only sets its own pace
+    (``workers`` and any mediator key such as ``per_host_concurrency``). ``downloaders`` and
+    ``port`` there are ignored: the nodes are ``workers`` in-process ones and nothing listens.
+    """
+    overrides = _read_mapping(crawl_path)
+    workers = _positive_int("workers", overrides.pop("workers", 16))
+    for ignored in ("downloaders", "port"):
+        overrides.pop(ignored, None)
+    values = {**_read_mapping(mediator_path), **overrides}
+    values["downloaders"] = ["http://in-process"]  # replaced below; keeps validation in one place
+    mediator = _mediator_config(values)
+    nodes = tuple(f"local:{index}" for index in range(workers))
+    return CrawlConfig(workers=workers, mediator=replace(mediator, downloaders=nodes))
+
+
+def _mediator_config(values: dict[str, Any]) -> MediatorConfig:
+    downloaders = values.get("downloaders")
+    if not isinstance(downloaders, list) or not downloaders:
+        msg = "downloaders must list at least one download node URL"
+        raise ConfigError(msg)
+    nodes = tuple(str(node).rstrip("/") for node in cast("list[object]", downloaders))
+    for node in nodes:
+        if not node.startswith(("http://", "https://")):
+            msg = f"downloaders: {node} must be a URL such as http://10.0.0.11:8800"
+            raise ConfigError(msg)
+    if "database" not in values:
+        msg = "database is required"
+        raise ConfigError(msg)
+    numbers: dict[str, float] = {}
+    for name in _NUMBERS:
+        if name in values:
+            numbers[name] = _non_negative(name, values[name])
+    return MediatorConfig(
+        downloaders=nodes,
+        database=Path(str(values["database"])),
+        port=int(_non_negative("port", values.get("port", 5200))),
+        max_attempts=max(1, int(_non_negative("max_attempts", values.get("max_attempts", 5)))),
+        recrawl_days=_recrawl_days(values.get("recrawl_days", DEFAULT_RECRAWL_DAYS)),
+        per_host_concurrency=_positive_int(
+            "per_host_concurrency", values.get("per_host_concurrency", 1)
+        ),
+        autothrottle=_boolean("autothrottle", values.get("autothrottle", True)),
+        **numbers,
+    )
+
+
+def _non_negative(name: str, value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+        msg = f"{name} must be a non-negative number"
+        raise ConfigError(msg)
+    return float(value)
+
+
+def _positive_int(name: str, value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        msg = f"{name} must be a whole number of at least 1"
+        raise ConfigError(msg)
+    return value
+
+
+def _boolean(name: str, value: object) -> bool:
+    if not isinstance(value, bool):
+        msg = f"{name} must be true or false"
+        raise ConfigError(msg)
+    return value
+
+
+def _recrawl_days(value: object) -> dict[UrlKind, float]:
+    if not isinstance(value, Mapping):
+        msg = "recrawl_days must map hub/page/document to days"
+        raise ConfigError(msg)
+    given = cast("Mapping[str, object]", value)
+    unknown = set(given) - set(DEFAULT_RECRAWL_DAYS)
+    if unknown:
+        msg = f"recrawl_days has unknown kinds: {sorted(unknown)}"
+        raise ConfigError(msg)
+    days = dict(DEFAULT_RECRAWL_DAYS)
+    for kind, raw_days in given.items():
+        days[cast("UrlKind", kind)] = _non_negative(f"recrawl_days.{kind}", raw_days)
+    return days

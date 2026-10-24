@@ -1,5 +1,5 @@
 default_install_hook_types: [pre-commit, pre-push]
-exclude: ^(crawler/core/data/|lucene/)
+exclude: ^(crawler/data/|lucene/)
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -18,44 +18,27 @@ repos:
     hooks:
       - id: ruff-check
         args: [--fix]
-        files: ^crawler/(core|server)/
+        files: ^crawler/
       - id: ruff-format
-        files: ^crawler/(core|server)/
+        files: ^crawler/
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.12.13
     hooks:
       - id: uv-lock
-        args: [--project, crawler/core]
-        files: ^crawler/core/(pyproject\.toml|uv\.lock)$
-      - id: uv-lock
-        name: uv-lock (server)
-        args: [--project, crawler/server]
-        files: ^crawler/server/(pyproject\.toml|uv\.lock)$
+        args: [--project, crawler]
+        files: ^crawler/(pyproject\.toml|uv\.lock)$
   - repo: local
     hooks:
       - id: pyrefly
         name: pyrefly check
-        entry: uv run --directory crawler/core pyrefly check
+        entry: uv run --directory crawler pyrefly check
         language: system
         pass_filenames: false
-        files: ^crawler/core/.*\.py$
+        files: ^crawler/.*\.py$
       - id: pytest
         name: pytest
-        entry: uv run --directory crawler/core pytest -q
+        entry: uv run --directory crawler pytest -q
         language: system
         pass_filenames: false
-        files: ^crawler/core/
-        stages: [pre-push]
-      - id: pyrefly-services
-        name: pyrefly check (server)
-        entry: uv run --directory crawler/server pyrefly check
-        language: system
-        pass_filenames: false
-        files: ^crawler/(server|core/src)/.*\.py$
-      - id: pytest-services
-        name: pytest (server)
-        entry: uv run --directory crawler/server pytest -q
-        language: system
-        pass_filenames: false
-        files: ^crawler/(server|core)/
+        files: ^crawler/
         stages: [pre-push]

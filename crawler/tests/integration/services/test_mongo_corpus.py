@@ -1,0 +1,33 @@
+from __future__ import annotations
+
+import os
+import uuid
+
+import pytest
+from pymongo import MongoClient
+
+from crawler.infra.corpus.mongo import MongoCorpusDatabase
+
+pytestmark = pytest.mark.docker
+
+
+def test_load_iter_and_find_edges() -> None:
+    client: MongoClient[dict[str, object]] = MongoClient(
+        os.environ.get("MONGODB_URI", "mongodb://127.0.0.1:27017"), serverSelectionTimeoutMS=3000
+    )
+    name = f"test_{uuid.uuid4().hex}"
+    try:
+        db = MongoCorpusDatabase(client[name])
+        db.ensure_indexes()
+        page = {"url": "https://h/a", "format": "html", "title": "A", "content": "a", "intro": ""}
+        assert db.load("html", [page, {**page, "title": "A2"}]) == 2
+        edges = [{"src": "https://h/a", "dest": "https://h/b", "text": "B"}] * 2
+        # Same page and target, another sentence: a second link, as storage keeps it.
+        edges.append({"src": "https://h/a", "dest": "https://h/b", "text": "Xem B tại đây."})
+        db.load("graph", edges)
+        assert [doc["title"] for doc in db.iter_collection("html")] == ["A2"]
+        assert sorted(
+            edge["text"] for edge in db.find_edges(src="https://h/a", dest=None, limit=10)
+        ) == ["B", "Xem B tại đây."]
+    finally:
+        client.drop_database(name)
