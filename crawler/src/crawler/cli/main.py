@@ -14,6 +14,7 @@ from crawler.cli import (
     domains,
     errors,
     eval,
+    pictures,
     reextract,
     serve,
 )
@@ -29,6 +30,7 @@ app.add_typer(crawl.seeds_app, name="seeds")
 app.add_typer(corpus.app, name="corpus")
 app.add_typer(domains.app, name="domains")
 app.add_typer(eval.app, name="eval")
+app.add_typer(pictures.app, name="pictures")
 app.add_typer(serve.app, name="serve")
 app.command("reextract")(reextract.reextract)
 

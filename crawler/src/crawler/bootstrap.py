@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from crawler.application.merger.ports import MergerState, Outbox
     from crawler.application.reader.parse import DocumentReaders
     from crawler.application.reader.ports import RawPages
-    from crawler.application.storage.ports import CorpusStore
+    from crawler.application.storage.ports import CorpusStore, ImageGetter, PictureStore
     from crawler.domain.downloader.models import DownloaderConfig
     from crawler.domain.mediator.models import CrawlConfig, MediatorConfig
     from crawler.domain.merger.config import MergerConfig
@@ -258,6 +258,19 @@ def corpus_store(uri: str, database: str) -> CorpusStore:
     from crawler.infra.storage.mongo import connect as connect_store
 
     return MongoCorpusStore(connect_store(uri)[database])
+
+
+def picture_store(uri: str, database: str) -> PictureStore:
+    from crawler.infra.storage.mongo import MongoPictureStore
+    from crawler.infra.storage.mongo import connect as connect_store
+
+    return MongoPictureStore(connect_store(uri)[database])
+
+
+def image_getter() -> ImageGetter:
+    from crawler.infra.storage.image_getter import AiohttpImageGetter
+
+    return AiohttpImageGetter()
 
 
 def utc_now_iso() -> str:

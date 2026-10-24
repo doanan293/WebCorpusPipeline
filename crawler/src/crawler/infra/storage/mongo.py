@@ -134,3 +134,35 @@ class MongoCorpusStore:
             self.db.graph.create_index([("dest", ASCENDING)])
 
         self._guard(create)
+
+
+class MongoPictureStore:
+    """The ``PictureStore`` port over the ``picture`` collection."""
+
+    def __init__(self, db: Database[dict[str, Any]]) -> None:
+        self.db = db
+
+    def pending(self, *, retry_errors: bool) -> list[str]:
+        query: dict[str, Any] = {"b64": ""}
+        if not retry_errors:
+            query["error"] = None
+        return [str(doc["url"]) for doc in self.db.picture.find(query, {"url": 1, "_id": 0})]
+
+    def save_picture(
+        self,
+        url: str,
+        *,
+        b64: str,
+        fmt: str,
+        size: int | None,
+        error: str | None,
+        fetched_at: str,
+    ) -> None:
+        fields = {"b64": b64, "size": size, "error": error, "fetched_at": fetched_at}
+        if fmt:
+            fields["format"] = fmt
+        fields["updated_at"] = fetched_at
+        self.db.picture.update_one({"url": url}, {"$set": fields})
+
+    def close(self) -> None:
+        self.db.client.close()

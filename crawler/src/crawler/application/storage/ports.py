@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from crawler.domain.shared.errors import ExternalFailure
@@ -49,3 +51,37 @@ class CorpusStore(Protocol):
     def close(self) -> None:
         """Release the connection (its threads otherwise linger until the process exits)."""
         ...
+
+
+class ImageFetchError(Exception):
+    """An image could not be downloaded; the message is a short reason such as ``timeout``."""
+
+
+@dataclass(frozen=True, slots=True)
+class ImageResult:
+    status: int
+    content_type: str
+    body: bytes  # at most MAX_PICTURE_BYTES + 1 bytes: one more means too large
+
+
+class ImageGetter(Protocol):
+    async def get(self, url: str) -> ImageResult: ...
+
+    async def close(self) -> None: ...
+
+
+class PictureStore(Protocol):
+    def pending(self, *, retry_errors: bool) -> Iterable[str]:
+        """URLs of ``picture`` records without ``b64`` (and without ``error`` unless retrying)."""
+        ...
+
+    def save_picture(
+        self,
+        url: str,
+        *,
+        b64: str,
+        fmt: str,
+        size: int | None,
+        error: str | None,
+        fetched_at: str,
+    ) -> None: ...
