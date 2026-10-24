@@ -1,4 +1,4 @@
-# Các khối dịch vụ (theo slide của thầy)
+# Các khối dịch vụ (theo [slide của thầy](docs/thiet-ke-he-thong.md))
 
 Hệ thống thu thập gồm 5 khối dịch vụ nhỏ và MongoDB. Các khối giao tiếp bằng HTTP và JSON, mỗi khối chạy
 trong một container riêng (cùng một image) bằng lệnh `services serve <khối>` (lõi nằm ở [`crawler/core/`](../core/README.md)).
