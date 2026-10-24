@@ -9,6 +9,7 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS seen_urls (url TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS content_owners (content_id TEXT PRIMARY KEY, url TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS scope_hosts (host TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS fingerprints (url TEXT PRIMARY KEY, fingerprint TEXT NOT NULL);
 """
 
 
@@ -21,6 +22,19 @@ class SqliteMergerState:
 
     def close(self) -> None:
         self.db.close()
+
+    def fingerprint(self, url: str) -> str | None:
+        row = self.db.execute(
+            "SELECT fingerprint FROM fingerprints WHERE url = ?", (url,)
+        ).fetchone()
+        return row[0] if row else None
+
+    def save_fingerprint(self, url: str, fingerprint: str) -> None:
+        self.db.execute(
+            "INSERT INTO fingerprints VALUES (?, ?) "
+            "ON CONFLICT (url) DO UPDATE SET fingerprint = excluded.fingerprint",
+            (url, fingerprint),
+        )
 
     def add_new(self, urls: Sequence[str]) -> list[str]:
         insert = "INSERT OR IGNORE INTO seen_urls VALUES (?)"

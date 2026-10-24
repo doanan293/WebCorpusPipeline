@@ -61,6 +61,7 @@ class MergerRuntime:
             record,
             seen=self.state,
             owners=self.state,
+            fingerprints=self.state,
             deliver=self.send,
             batcher=self.batcher,
             scope=self.scope,

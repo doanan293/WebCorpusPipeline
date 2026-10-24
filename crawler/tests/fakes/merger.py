@@ -13,6 +13,13 @@ class MemoryMergerState:
         self.seen: set[str] = set()
         self.owners: dict[str, str] = {}
         self.hosts: set[str] = set()
+        self.fingerprints: dict[str, str] = {}
+
+    def fingerprint(self, url: str) -> str | None:
+        return self.fingerprints.get(url)
+
+    def save_fingerprint(self, url: str, fingerprint: str) -> None:
+        self.fingerprints[url] = fingerprint
 
     def add_new(self, urls: Sequence[str]) -> list[str]:
         new = [url for url in dict.fromkeys(urls) if url not in self.seen]

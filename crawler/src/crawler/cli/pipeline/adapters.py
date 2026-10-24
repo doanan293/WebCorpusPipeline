@@ -117,6 +117,8 @@ class DirectServiceClient:
         if target == "mediator":
             add_urls(self.queue, payload["urls"], self.clock)
             return "ok"
+        if target == "outcome":
+            return "ok"
         try:
             await asyncio.to_thread(store_record, payload, self.store, self.now_iso())
         except StoreUnavailableError:

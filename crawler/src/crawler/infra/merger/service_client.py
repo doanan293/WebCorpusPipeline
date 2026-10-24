@@ -19,6 +19,7 @@ class HttpServiceClient:
         self.urls: dict[Target, str] = {
             "storage": f"{storage_url.rstrip('/')}/add",
             "mediator": f"{mediator_url.rstrip('/')}/add",
+            "outcome": f"{mediator_url.rstrip('/')}/report",
         }
         self.session: aiohttp.ClientSession | None = None
 

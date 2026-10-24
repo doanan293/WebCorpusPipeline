@@ -26,3 +26,13 @@ def test_scope_hosts_persist_across_restart(tmp_path: Path) -> None:
     state.add_scope_hosts(["soict.hust.edu.vn", "ctsv.hust.edu.vn", "soict.hust.edu.vn"])
     state.close()
     assert SqliteMergerState(path).scope_hosts() == {"soict.hust.edu.vn", "ctsv.hust.edu.vn"}
+
+
+def test_fingerprints_survive_reopening(tmp_path: Path) -> None:
+    path = tmp_path / "m.sqlite3"
+    state = SqliteMergerState(path)
+    assert state.fingerprint("https://h/a") is None
+    state.save_fingerprint("https://h/a", "f1")
+    state.save_fingerprint("https://h/a", "f2")
+    state.close()
+    assert SqliteMergerState(path).fingerprint("https://h/a") == "f2"

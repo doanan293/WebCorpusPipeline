@@ -31,6 +31,7 @@ class _Run:
                 record,
                 seen=self.state,
                 owners=self.state,
+                fingerprints=self.state,
                 deliver=self._deliver,
                 batcher=self.batcher,
                 scope=SCOPE,
@@ -135,3 +136,61 @@ def test_page_without_text_still_spreads() -> None:
     run = _Run()
     run.add(_record("https://hust.edu.vn/", "  ", [("https://hust.edu.vn/next", "N")]))
     assert run.batcher.pending == ["https://hust.edu.vn/next"]
+
+
+def _page(content: str, fingerprint: str | None) -> dict[str, Any]:
+    return {
+        **_record("https://hust.edu.vn/b", content, [("https://hust.edu.vn/c", "C")]),
+        "fingerprint": fingerprint,
+        "requested_url": "https://hust.edu.vn/b?utm=1",
+        "etag": '"x"',
+        "last_modified": None,
+    }
+
+
+def test_first_visit_is_new_and_reported() -> None:
+    run = _Run()
+    run.add(_page("v1", "f1"))
+    assert run.to("storage")[-1]["change"] == "new"
+    assert run.to("outcome") == [
+        {
+            "reports": [
+                {
+                    "url": "https://hust.edu.vn/b?utm=1",
+                    "change": "new",
+                    "etag": '"x"',
+                    "last_modified": None,
+                }
+            ]
+        }
+    ]
+
+
+def test_unchanged_page_is_touched_reported_and_not_spread() -> None:
+    run = _Run()
+    run.add(_page("v1", "f1"))
+    run.batcher.due(10.0)
+    run.add(_page("v1 again", "f1"), now=20.0)
+    assert run.to("storage")[-1] == {"url": "https://hust.edu.vn/b", "change": "unchanged"}
+    assert run.to("outcome")[-1]["reports"][0]["change"] == "unchanged"
+    assert run.batcher.due(30.0) is None
+
+
+def test_modified_page_is_written() -> None:
+    run = _Run()
+    run.add(_page("v1", "f1"))
+    run.add(_page("v2", "f2"))
+    assert (run.to("storage")[-1]["change"], run.to("storage")[-1]["content"]) == ("modified", "v2")
+
+
+def test_not_modified_is_touched_and_reported() -> None:
+    run = _Run()
+    run.add(
+        {
+            "url": "https://hust.edu.vn/b",
+            "requested_url": "https://hust.edu.vn/b",
+            "format": "not_modified",
+        }
+    )
+    assert run.to("storage") == [{"url": "https://hust.edu.vn/b", "change": "not_modified"}]
+    assert run.to("outcome")[0]["reports"][0]["change"] == "not_modified"

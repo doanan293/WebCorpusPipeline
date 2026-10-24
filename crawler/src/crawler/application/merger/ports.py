@@ -4,7 +4,8 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
-type Target = Literal["storage", "mediator"]
+# outcome: what each visit found (new, modified, unchanged, not_modified), for the mediator.
+type Target = Literal["storage", "mediator", "outcome"]
 # ok: accepted; retry: try again later (down, 5xx); dead: refused for good (4xx), never resent.
 type SendResult = Literal["ok", "retry", "dead"]
 
@@ -56,7 +57,15 @@ class ScopeHosts(Protocol):
         ...
 
 
-class MergerState(SeenUrls, ContentOwners, ScopeHosts, Protocol):
+class Fingerprints(Protocol):
+    def fingerprint(self, url: str) -> str | None:
+        """The change fingerprint kept from the page's last visit."""
+        ...
+
+    def save_fingerprint(self, url: str, fingerprint: str) -> None: ...
+
+
+class MergerState(SeenUrls, ContentOwners, ScopeHosts, Fingerprints, Protocol):
     """The memories of the merger, kept by one store."""
 
     def close(self) -> None: ...
