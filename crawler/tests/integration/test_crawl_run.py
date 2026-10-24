@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 import time
 from collections import Counter
 from collections.abc import AsyncIterator
@@ -50,7 +51,7 @@ def _config(workers: int = 4) -> CrawlConfig:
 
 
 def _parts(
-    tmp_path: Path, store: FakeCorpusStore
+    tmp_path: Path, store: FakeCorpusStore, now_iso: str = "now"
 ) -> tuple[CrawlParts, AiohttpPageGetter, SqliteUrlQueue]:
     getter = AiohttpPageGetter(DownloaderConfig(allow_private_addresses=True))
     queue = SqliteUrlQueue(tmp_path / "mediator.sqlite3")
@@ -63,7 +64,7 @@ def _parts(
         renderer=FakeRenderer(),
         readers=DocumentReaders(LocalReaderAdapter(), None, MemoryParseCache(), tmp_path / "s"),
         clock=_Clock(),
-        now_iso=lambda: "now",
+        now_iso=lambda: now_iso,
         merger=MergerConfig(
             database=tmp_path / "merger.sqlite3", batch_seconds=0.02, outbox_retry_seconds=0.2
         ),
@@ -79,9 +80,14 @@ async def _site(hits: Counter[str] | None = None) -> AsyncIterator[tuple[str, in
 
 
 async def _crawl(
-    tmp_path: Path, store: FakeCorpusStore, site: str, port: int, seed: str = "/"
+    tmp_path: Path,
+    store: FakeCorpusStore,
+    site: str,
+    port: int,
+    seed: str = "/",
+    now_iso: str = "now",
 ) -> CrawlSummary:
-    parts, getter, _ = _parts(tmp_path, store)
+    parts, getter, _ = _parts(tmp_path, store, now_iso)
     try:
         return await asyncio.wait_for(
             crawl(
@@ -205,3 +211,25 @@ def test_crawl_does_not_wait_out_whole_ticks(tmp_path: Path) -> None:
     seconds = asyncio.run(scenario())
     assert len(store.collections["html"]) == len(EXPECTED_HTML_PATHS)
     assert seconds < 2.0
+
+
+def test_recrawl_of_unchanged_pages_only_checks_and_backs_off(tmp_path: Path) -> None:
+    store = FakeCorpusStore()
+
+    async def scenario() -> str:
+        async with _site() as (site, port):
+            await _crawl(tmp_path, store, site, port, now_iso="t1")
+            due_now = sqlite3.connect(tmp_path / "mediator.sqlite3")
+            due_now.execute("UPDATE urls SET next_due_at = 0")
+            due_now.commit()
+            due_now.close()
+            await _crawl(tmp_path, store, site, port, now_iso="t2")
+            return site
+
+    site = asyncio.run(scenario())
+    page = store.collections["html"][f"{site}/a"]
+    assert (page["checked_at"], page["changed_at"]) == ("t2", "t1")
+    queue = SqliteUrlQueue(tmp_path / "mediator.sqlite3")
+    article, home = queue.get(f"{site}/a"), queue.get(f"{site}/")
+    assert article is not None and article.interval_days == 14.0
+    assert home is not None and home.interval_days == 1.0

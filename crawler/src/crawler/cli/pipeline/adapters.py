@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
 from crawler.application.mediator.add_urls import add_urls
 from crawler.application.mediator.ports import Clock, LoadResult, UrlQueue
+from crawler.application.mediator.report import report_outcomes
 from crawler.application.merger.ports import SendResult, Target
 from crawler.application.merger.runtime import MergerRuntime
 from crawler.application.reader.parse import Delivery, DocumentReaders, parse_payload
@@ -20,6 +21,7 @@ from crawler.application.storage.ports import (
 )
 from crawler.application.storage.store import store_record
 from crawler.domain.downloader.models import Fetched
+from crawler.domain.mediator.models import DEFAULT_RECRAWL_DAYS, UrlKind
 from crawler.domain.shared.protocol import BUSY, IDLE
 from crawler.domain.shared.validators import Validators
 
@@ -122,18 +124,25 @@ class DirectServiceClient:
     """The merger's ``ServiceClient``: stores records and queues URLs here."""
 
     def __init__(
-        self, store: CorpusStore, queue: UrlQueue, clock: Clock, now_iso: Callable[[], str]
+        self,
+        store: CorpusStore,
+        queue: UrlQueue,
+        clock: Clock,
+        now_iso: Callable[[], str],
+        recrawl_days: Mapping[UrlKind, float] = DEFAULT_RECRAWL_DAYS,
     ) -> None:
         self.store = store
         self.queue = queue
         self.clock = clock
         self.now_iso = now_iso
+        self.recrawl_days = recrawl_days
 
     async def send(self, target: Target, payload: dict[str, Any]) -> SendResult:
         if target == "mediator":
             add_urls(self.queue, payload["urls"], self.clock)
             return "ok"
         if target == "outcome":
+            report_outcomes(self.queue, payload["reports"], self.recrawl_days, self.clock)
             return "ok"
         try:
             await asyncio.to_thread(store_record, payload, self.store, self.now_iso())

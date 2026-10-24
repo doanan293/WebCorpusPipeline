@@ -140,12 +140,17 @@ def test_site_flows_through_all_blocks(tmp_path: Path) -> None:
     expected_html = len(EXPECTED_HTML_PATHS)
     expected_other = len(EXPECTED_OTHER_PATHS)
 
+    def reported(stack: Stack) -> bool:
+        row = stack.queue.get(f"{stack.site}/a")
+        return row is not None and row.interval_days is not None
+
     async def scenario() -> Stack:
         async with _stack(tmp_path, store) as stack:
             await _wait(
                 lambda: (
                     len(store.collections["html"]) == expected_html
                     and len(store.collections["other"]) == expected_other
+                    and reported(stack)
                 ),
                 15,
             )
@@ -168,6 +173,9 @@ def test_site_flows_through_all_blocks(tmp_path: Path) -> None:
     assert {"src": f"{site}{src}", "dest": f"{site}{dest}", "intro": text} in store.graph
     queued = [row[0] for row in stack.queue.db.execute("SELECT url FROM urls")]
     assert not any("google.com" in url for url in queued)
+    # The merger reported the first visit of /a to the mediator over POST /report.
+    article = stack.queue.get(f"{site}/a")
+    assert article is not None and article.interval_days == 7.0
 
 
 def test_storage_down_then_up_delivers_from_outbox(tmp_path: Path) -> None:

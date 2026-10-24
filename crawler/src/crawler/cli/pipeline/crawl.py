@@ -94,7 +94,10 @@ async def crawl(
     """
     counts: Counter[str] = Counter()
     client = _CountingClient(
-        DirectServiceClient(parts.store, parts.queue, parts.clock, parts.now_iso), counts
+        DirectServiceClient(
+            parts.store, parts.queue, parts.clock, parts.now_iso, config.mediator.recrawl_days
+        ),
+        counts,
     )
     runtime = MergerRuntime(
         parts.merger,
