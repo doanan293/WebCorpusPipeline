@@ -165,7 +165,7 @@ def test_site_flows_through_all_blocks(tmp_path: Path) -> None:
     assert "Thong bao tuyen sinh PDF" in other[f"{site}/doc.pdf"]["content"]
     assert "Bao cao nam hoc DOCX" in other[f"{site}/report.docx"]["content"]
     src, dest, text = EXPECTED_EDGE
-    assert {"src": f"{site}{src}", "dest": f"{site}{dest}", "text": text} in store.graph
+    assert {"src": f"{site}{src}", "dest": f"{site}{dest}", "intro": text} in store.graph
     queued = [row[0] for row in stack.queue.db.execute("SELECT url FROM urls")]
     assert not any("google.com" in url for url in queued)
 

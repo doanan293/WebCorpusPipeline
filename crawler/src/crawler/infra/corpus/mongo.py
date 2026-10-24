@@ -39,9 +39,9 @@ class MongoCorpusDatabase:
     @staticmethod
     def _key(name: str, doc: dict[str, Any]) -> dict[str, Any]:
         if name == "graph":
-            # As storage keeps them: one edge per (src, dest, text), so links differing only in
+            # As storage keeps them: one edge per (src, dest, intro), so links differing only in
             # their sentence both survive a pull.
-            return {"src": doc["src"], "dest": doc["dest"], "text": doc.get("text", "")}
+            return {"src": doc["src"], "dest": doc["dest"], "intro": doc.get("intro", "")}
         return {"url": doc["url"]}
 
     def find_edges(self, *, src: str | None, dest: str | None, limit: int) -> list[dict[str, Any]]:

@@ -82,6 +82,6 @@ def test_reextract_without_merger_runs_in_process(
         "https://ctsv.hust.edu.vn/A",
         "https://ctsv.hust.edu.vn/B",
     }
-    assert {edge["text"] for edge in store.graph} == {"Xem trang C ngay hôm nay."}
+    assert {edge["intro"] for edge in store.graph} == {"Xem trang C ngay hôm nay."}
     queue = SqliteUrlQueue(project.root / "data/state/mediator.sqlite3")
     assert queue.counts(time.time()).total == 1  # the new link, queued as the services would

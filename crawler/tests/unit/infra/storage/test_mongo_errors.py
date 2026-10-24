@@ -52,15 +52,15 @@ def test_replace_edges_writes_new_edges_in_one_go_then_drops_the_rest() -> None:
     db = _GraphDatabase()
     store = MongoCorpusStore(db)  # type: ignore[arg-type]
     edges = [
-        {"src": "https://h/", "dest": "https://h/a", "text": "A"},
-        {"src": "https://h/", "dest": "https://h/a", "text": "A"},
-        {"src": "https://h/", "dest": "https://h/b", "text": "B"},
+        {"src": "https://h/", "dest": "https://h/a", "intro": "A"},
+        {"src": "https://h/", "dest": "https://h/a", "intro": "A"},
+        {"src": "https://h/", "dest": "https://h/b", "intro": "B"},
     ]
     store.replace_edges("https://h/", edges)
     (first, written), (second, query) = db.graph.calls
     assert first == "insert_many"
     assert isinstance(written, list)
-    assert [(doc["dest"], doc["text"]) for doc in written] == [
+    assert [(doc["dest"], doc["intro"]) for doc in written] == [
         ("https://h/a", "A"),
         ("https://h/b", "B"),
     ]

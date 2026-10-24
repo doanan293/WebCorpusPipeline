@@ -25,7 +25,7 @@ def test_html_record_maps_slide_fields() -> None:
     assert record["format"] == "html"
     assert record["title"] == "Tin 1"
     assert "Noi dung bai." in record["content"]
-    assert record["intro"] == "Gioi thieu"
+    assert "intro" not in record  # storage sets intro from the links to the page
     assert ["https://hust.edu.vn/b", "Bai B"] in record["out-links"]
     assert "https://hust.edu.vn/anh.jpg" in record["images"]
     assert record["content_id"] == hashlib.sha256(record["content"].strip().encode()).hexdigest()
@@ -52,7 +52,7 @@ def test_record_from_stored_article_uses_observed_refs() -> None:
     }
     record = record_from_article("https://h/", article)
     assert record["title"] == ""
-    assert record["intro"] == ""
+    assert "intro" not in record
     assert record["out-links"] == [["https://h/x", "X"]]
     assert record["images"] == ["https://h/i.png"]
     assert record["content_id"] == content_id_for("body")

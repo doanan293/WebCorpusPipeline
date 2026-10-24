@@ -52,7 +52,7 @@ class MongoCorpusStore:
         """
         unique = [
             {"_id": ObjectId(), **edge}
-            for edge in {(e["dest"], e["text"]): e for e in edges}.values()
+            for edge in {(e["dest"], e["intro"]): e for e in edges}.values()
         ]
 
         def replace() -> None:
@@ -65,6 +65,37 @@ class MongoCorpusStore:
                 self.db.graph.delete_many({"src": src})
 
         self._guard(replace)
+
+    def incoming_intros(self, dest: str) -> list[str]:
+        found: list[str] = []
+        self._guard(
+            lambda: found.extend(
+                str(edge.get("intro") or "")
+                for edge in self.db.graph.find({"dest": dest}, {"intro": 1, "_id": 0})
+            )
+        )
+        return found
+
+    def set_intro(self, url: str, intro: str) -> bool:
+        matched: list[int] = []
+        self._guard(
+            lambda: matched.append(
+                self.db.html.update_one({"url": url}, {"$set": {"intro": intro}}).matched_count
+            )
+        )
+        return bool(matched and matched[0])
+
+    def touch(self, url: str, checked_at: str) -> None:
+        def run() -> None:
+            for name in ("html", "other"):
+                if (
+                    self.db[name]
+                    .update_one({"url": url}, {"$set": {"checked_at": checked_at}})
+                    .matched_count
+                ):
+                    return
+
+        self._guard(run)
 
     def close(self) -> None:
         self.db.client.close()

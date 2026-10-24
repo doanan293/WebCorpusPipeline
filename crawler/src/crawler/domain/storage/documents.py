@@ -21,14 +21,15 @@ class StorageWrite:
 
 
 def to_write(record: Mapping[str, Any], updated_at: str) -> StorageWrite:
-    """The slide's schema: known fields only, ``intro`` always present on ``html``."""
+    """The teacher's schema: known fields only, ``intro`` present on ``html`` (storage fills it)."""
     is_html = record["format"] == "html"
     fields = HTML_FIELDS if is_html else OTHER_FIELDS
     document = {name: record[name] for name in fields if name in record}
     if is_html:
         document.setdefault("intro", "")
-    document["updated_at"] = updated_at
+    # A record reaches this function only when it is written: new, or changed since last time.
+    document["updated_at"] = document["checked_at"] = document["changed_at"] = updated_at
     edges = [
-        {"src": record["url"], "dest": dest, "text": text} for dest, text in record["out-links"]
+        {"src": record["url"], "dest": dest, "intro": text} for dest, text in record["out-links"]
     ]
     return StorageWrite("html" if is_html else "other", document, edges)

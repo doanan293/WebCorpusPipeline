@@ -41,7 +41,6 @@ def record_from_article(url: str, article: Mapping[str, Any]) -> dict[str, Any]:
         "format": "html",
         "title": str(article.get("title") or ""),
         "content": text,
-        "intro": str(article.get("summary") or ""),
         "out-links": [
             # The slide's link text is the sentence holding the link; older stored articles have
             # only the link's own label.

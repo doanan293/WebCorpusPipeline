@@ -25,8 +25,10 @@ def test_html_write_keeps_slide_and_extra_fields() -> None:
         "intro": "",
         "published_at": "2026-01-01",
         "updated_at": "2026-10-18T00:00:00Z",
+        "checked_at": "2026-10-18T00:00:00Z",
+        "changed_at": "2026-10-18T00:00:00Z",
     }
-    assert write.edges == [{"src": "https://h/a", "dest": "https://h/b", "text": "B"}]
+    assert write.edges == [{"src": "https://h/a", "dest": "https://h/b", "intro": "B"}]
 
 
 def test_other_write() -> None:
@@ -41,5 +43,7 @@ def test_other_write() -> None:
         "content": "t",
         "title": "",
         "updated_at": "now",
+        "checked_at": "now",
+        "changed_at": "now",
     }
     assert write.edges == []

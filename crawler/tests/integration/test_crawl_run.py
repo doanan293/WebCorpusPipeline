@@ -109,7 +109,7 @@ def test_crawl_run_stores_the_expected_records(tmp_path: Path) -> None:
     assert set(store.collections["html"]) == {f"{site}{path}" for path in EXPECTED_HTML_PATHS}
     assert set(store.collections["other"]) == {f"{site}{path}" for path in EXPECTED_OTHER_PATHS}
     src, dest, text = EXPECTED_EDGE
-    assert {"src": f"{site}{src}", "dest": f"{site}{dest}", "text": text} in store.graph
+    assert {"src": f"{site}{src}", "dest": f"{site}{dest}", "intro": text} in store.graph
     duplicates = [doc for doc in store.collections["html"].values() if doc.get("duplicate_of")]
     assert len(duplicates) == 1
     assert summary.stored == len(EXPECTED_HTML_PATHS) + len(EXPECTED_OTHER_PATHS)

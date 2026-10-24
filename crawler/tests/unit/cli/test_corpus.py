@@ -65,8 +65,8 @@ def test_query_direction_and_limit(
     database.load(
         "graph",
         [
-            {"src": "https://h/a", "dest": "https://h/b", "text": "B"},
-            {"src": "https://h/a", "dest": "https://h/c", "text": "C"},
+            {"src": "https://h/a", "dest": "https://h/b", "intro": "B"},
+            {"src": "https://h/a", "dest": "https://h/c", "intro": "C"},
         ],
     )
     code = main(
@@ -74,7 +74,7 @@ def test_query_direction_and_limit(
     )
     assert code == 0
     assert json.loads(capsys.readouterr().out) == [
-        {"src": "https://h/a", "dest": "https://h/b", "text": "B"}
+        {"src": "https://h/a", "dest": "https://h/b", "intro": "B"}
     ]
 
 

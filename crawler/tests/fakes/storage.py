@@ -29,6 +29,21 @@ class FakeCorpusStore:
             raise StoreUnavailableError(_DOWN)
         self.graph = [edge for edge in self.graph if edge["src"] != src] + edges
 
+    def incoming_intros(self, dest: str) -> list[str]:
+        return [edge["intro"] for edge in self.graph if edge["dest"] == dest]
+
+    def set_intro(self, url: str, intro: str) -> bool:
+        doc = self.collections["html"].get(url)
+        if doc is None:
+            return False
+        doc["intro"] = intro
+        return True
+
+    def touch(self, url: str, checked_at: str) -> None:
+        for name in ("html", "other"):
+            if url in self.collections[name]:
+                self.collections[name][url]["checked_at"] = checked_at
+
     def ensure_indexes(self) -> None:
         return None
 

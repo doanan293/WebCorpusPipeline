@@ -20,6 +20,18 @@ class CorpusStore(Protocol):
         """Make ``edges`` the only graph edges leaving ``src``."""
         ...
 
+    def incoming_intros(self, dest: str) -> list[str]:
+        """The link text (``intro``) of every ``graph`` edge pointing at ``dest``."""
+        ...
+
+    def set_intro(self, url: str, intro: str) -> bool:
+        """Set ``html.intro`` of ``url``; ``False`` when no such record exists."""
+        ...
+
+    def touch(self, url: str, checked_at: str) -> None:
+        """Set only ``checked_at`` on the ``html`` or ``other`` record of ``url``."""
+        ...
+
     def ensure_indexes(self) -> None: ...
 
     def close(self) -> None:

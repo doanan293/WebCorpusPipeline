@@ -29,7 +29,7 @@ def test_add_stores_record() -> None:
     store = FakeCorpusStore()
     assert _post(store, RECORD) == (200, {"status": "ok"})
     assert store.collections["html"]["https://h/a"]["title"] == "A"
-    assert store.graph == [{"src": "https://h/a", "dest": "https://h/b", "text": "B"}]
+    assert store.graph == [{"src": "https://h/a", "dest": "https://h/b", "intro": "B"}]
 
 
 def test_add_invalid_record_is_400() -> None:
