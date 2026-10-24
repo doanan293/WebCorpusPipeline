@@ -49,6 +49,15 @@ class DocumentReaders:
     limit: asyncio.Semaphore = field(default_factory=lambda: asyncio.Semaphore(8))
 
 
+@dataclass(frozen=True, slots=True)
+class Delivery:
+    """What the downloader knows about a download besides its bytes."""
+
+    requested_url: str | None  # the URL the mediator queued (before redirects)
+    etag: str | None
+    last_modified: str | None
+
+
 async def parse_payload(
     url: str,
     fmt: str,
@@ -57,8 +66,16 @@ async def parse_payload(
     *,
     readers: DocumentReaders,
     merger: MergerClient,
+    delivery: Delivery | None = None,
 ) -> ParseOutcome:
-    """Extract one downloaded page or document and send the record to the merger."""
+    """Extract one downloaded page or document and send the record to the merger.
+
+    ``not_modified`` (the site answered 304) is passed on without parsing anything.
+    """
+    requested = (delivery.requested_url if delivery else None) or url
+    if fmt == "not_modified":
+        notice = {"url": url, "requested_url": requested, "format": "not_modified"}
+        return "sent" if await merger.send(notice) else "unsent"
     if fmt == "html":
         analysis = await asyncio.to_thread(analyze_article, body, url, charset_of(content_type))
         record = html_record(url, analysis)
@@ -73,6 +90,9 @@ async def parse_payload(
             log.warning("cannot parse %s: %s", url, exc)
             return "unparsable"
         record = other_record(url, doc_format, text)
+    record["requested_url"] = requested
+    record["etag"] = delivery.etag if delivery else None
+    record["last_modified"] = delivery.last_modified if delivery else None
     return "sent" if await merger.send(record) else "unsent"
 
 

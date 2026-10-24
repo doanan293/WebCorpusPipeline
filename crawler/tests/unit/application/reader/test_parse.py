@@ -10,7 +10,7 @@ from pathlib import Path
 import docx
 import pymupdf
 
-from crawler.application.reader.parse import DocumentReaders, parse_payload
+from crawler.application.reader.parse import Delivery, DocumentReaders, parse_payload
 from crawler.domain.reader.cache_key import CLOUD_CACHE_REVISION, cache_key
 from crawler.domain.reader.key_pool import KeysExhaustedError
 from crawler.domain.reader.models import (
@@ -178,3 +178,48 @@ def test_document_parsing_respects_worker_limit(tmp_path: Path) -> None:
 
     asyncio.run(scenario())
     assert local.most == 2
+
+
+def test_delivery_details_ride_with_the_record(tmp_path: Path) -> None:
+    merger = FakeMergerClient()
+    readers = DocumentReaders(LocalReaderAdapter(), None, MemoryParseCache(), tmp_path)
+    body = b"<html><body><article><p>Noi dung bai viet day du</p></article></body></html>"
+    delivery = Delivery(requested_url="https://h/a?utm=1", etag='"e1"', last_modified=None)
+    asyncio.run(
+        parse_payload(
+            "https://h/a",
+            "html",
+            "text/html",
+            body,
+            readers=readers,
+            merger=merger,
+            delivery=delivery,
+        )
+    )
+    record = merger.records[-1]
+    assert (record["requested_url"], record["etag"], record["last_modified"]) == (
+        "https://h/a?utm=1",
+        '"e1"',
+        None,
+    )
+    assert isinstance(record["fingerprint"], str)
+
+
+def test_not_modified_is_passed_on_without_parsing(tmp_path: Path) -> None:
+    merger = FakeMergerClient()
+    readers = DocumentReaders(LocalReaderAdapter(), None, MemoryParseCache(), tmp_path)
+    outcome = asyncio.run(
+        parse_payload(
+            "https://h/a",
+            "not_modified",
+            "",
+            b"",
+            readers=readers,
+            merger=merger,
+            delivery=Delivery("https://h/a", None, None),
+        )
+    )
+    assert outcome == "sent"
+    assert merger.records == [
+        {"url": "https://h/a", "requested_url": "https://h/a", "format": "not_modified"}
+    ]

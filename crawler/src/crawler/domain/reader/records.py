@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from crawler.domain.reader.extract.article import ArticleAnalysis
+from crawler.domain.reader.extract.fingerprint import change_fingerprint
 
 _EXTRA_FIELDS = ("published_at", "modified_at", "author", "language", "headings", "content_blocks")
 _MIME_FORMATS = {
@@ -26,6 +27,11 @@ _MAX_SUFFIX = 5
 def content_id_for(text: str) -> str:
     """The content hash stored for extracted text (same as the batch crawl used)."""
     return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+
+
+def fingerprint_for(text: str) -> str | None:
+    """The change fingerprint the merger compares between visits; ``None`` for empty text."""
+    return change_fingerprint(text) if text.strip() else None
 
 
 def record_from_article(url: str, article: Mapping[str, Any]) -> dict[str, Any]:
@@ -54,6 +60,7 @@ def record_from_article(url: str, article: Mapping[str, Any]) -> dict[str, Any]:
         asset["url"] for asset in article.get("assets", []) if asset.get("role") == "inline_image"
     ]
     record["content_id"] = content_id_for(text)
+    record["fingerprint"] = fingerprint_for(text)
     return record
 
 
@@ -77,4 +84,5 @@ def other_record(url: str, fmt: str, text: str) -> dict[str, Any]:
         "content": text,
         "out-links": [],
         "content_id": content_id_for(text),
+        "fingerprint": fingerprint_for(text),
     }

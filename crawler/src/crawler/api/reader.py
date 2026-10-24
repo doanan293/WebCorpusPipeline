@@ -9,17 +9,17 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from aiohttp import web
 
 from crawler.api.common import Stats, error, json_response, stats_loop
-from crawler.application.reader.parse import DocumentReaders, parse_payload
+from crawler.application.reader.parse import Delivery, DocumentReaders, parse_payload
 from crawler.application.reader.ports import MergerClient
 from crawler.domain.shared.protocol import ACCEPTED
 
 log = logging.getLogger(__name__)
 
-FORMATS = frozenset({"html", "other"})
+FORMATS = frozenset({"html", "other", "not_modified"})
 # The largest document the downloader forwards (max_file_bytes) plus room for the request itself.
 MAX_BODY = 104857600 + 1048576
 
-Handle = Callable[[str, str, str, bytes], Awaitable[object]]
+Handle = Callable[[str, str, str, bytes, Delivery], Awaitable[object]]
 
 
 def create_app(
@@ -28,9 +28,9 @@ def create_app(
     counters = stats or Stats()
     tasks: set[asyncio.Task[None]] = set()
 
-    async def run(url: str, fmt: str, content_type: str, body: bytes) -> None:
+    async def run(url: str, fmt: str, content_type: str, body: bytes, delivery: Delivery) -> None:
         try:
-            outcome = await handle(url, fmt, content_type, body)
+            outcome = await handle(url, fmt, content_type, body, delivery)
             log.info("parse %s: %s", url, outcome)
             counters.incr(str(outcome))
         except Exception:
@@ -43,11 +43,17 @@ def create_app(
         if not url:
             return error(400, "X-Url header is required")
         if fmt not in FORMATS:
-            return error(400, "X-Format must be html or other")
+            return error(400, "X-Format must be html, other or not_modified")
         body = await request.read()
-        if body:
+        delivery = Delivery(
+            request.headers.get("X-Requested-Url") or url,
+            request.headers.get("X-Etag"),
+            request.headers.get("X-Last-Modified"),
+        )
+        if body or fmt == "not_modified":
             counters.incr("received")
-            task = asyncio.create_task(run(url, fmt, request.headers.get("Content-Type", ""), body))
+            content_type = request.headers.get("Content-Type", "")
+            task = asyncio.create_task(run(url, fmt, content_type, body, delivery))
             tasks.add(task)
             task.add_done_callback(tasks.discard)
         return json_response({"status": ACCEPTED}, status=202)
@@ -64,8 +70,12 @@ def create_service(
 ) -> web.Application:
     stats = Stats()
 
-    async def handle(url: str, fmt: str, content_type: str, body: bytes) -> object:
-        return await parse_payload(url, fmt, content_type, body, readers=readers, merger=merger)
+    async def handle(
+        url: str, fmt: str, content_type: str, body: bytes, delivery: Delivery
+    ) -> object:
+        return await parse_payload(
+            url, fmt, content_type, body, readers=readers, merger=merger, delivery=delivery
+        )
 
     app = create_app(handle, stats=stats)
 

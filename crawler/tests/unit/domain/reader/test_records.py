@@ -4,6 +4,7 @@ import hashlib
 from typing import Any
 
 from crawler.domain.reader.extract.article import analyze_article
+from crawler.domain.reader.extract.fingerprint import change_fingerprint
 from crawler.domain.reader.records import (
     content_id_for,
     document_format,
@@ -73,6 +74,7 @@ def test_other_record() -> None:
         "content": "Van ban",
         "out-links": [],
         "content_id": content_id_for("Van ban"),
+        "fingerprint": change_fingerprint("Van ban"),
     }
 
 
@@ -135,3 +137,12 @@ def test_out_links_are_links_not_embedded_resources() -> None:
         "https://hust.edu.vn/tb",
     ]
     assert "https://hust.edu.vn/anh.jpg" in record["images"]
+
+
+def test_records_carry_a_change_fingerprint() -> None:
+    v1 = other_record("https://h/a.pdf", "pdf", "Lịch thi ngày 12 tháng 5 năm 2026\nPhòng D3")
+    v1_dates = other_record("https://h/a.pdf", "pdf", "Lịch thi ngày 14 tháng 6 năm 2026\nPhòng D3")
+    v2 = other_record("https://h/a.pdf", "pdf", "Lịch thi\nPhòng D9")
+    assert v1["fingerprint"] == v1_dates["fingerprint"]  # only dates moved
+    assert v1["fingerprint"] != v2["fingerprint"]
+    assert other_record("https://h/b.pdf", "pdf", "  ")["fingerprint"] is None
