@@ -18,6 +18,16 @@ class Fetched:
     status: int
     content_type: str
     body: bytes
+    etag: str | None = None
+    last_modified: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Validators:
+    """What the last download of a URL said, sent back as a conditional request (304 if same)."""
+
+    etag: str | None
+    last_modified: str | None
 
 
 @dataclass(frozen=True, slots=True)

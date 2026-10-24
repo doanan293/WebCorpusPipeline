@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from http import HTTPStatus
 from urllib.parse import urljoin, urlsplit
 
 import aiohttp
 
 from crawler.domain.downloader.formats import payload_format
-from crawler.domain.downloader.models import DownloaderConfig, Fetched, FetchError
+from crawler.domain.downloader.models import DownloaderConfig, Fetched, FetchError, Validators
 from crawler.infra.shared.network import (
     NonPublicAddressError,
     resolve_public_hostname,
@@ -16,6 +17,17 @@ from crawler.infra.shared.network import (
 
 _REDIRECTS = frozenset({301, 302, 303, 307, 308})
 _CHUNK = 65536
+
+
+def _conditional_headers(validators: Validators | None) -> dict[str, str]:
+    if validators is None:
+        return {}
+    headers: dict[str, str] = {}
+    if validators.etag:
+        headers["If-None-Match"] = validators.etag
+    if validators.last_modified:
+        headers["If-Modified-Since"] = validators.last_modified
+    return headers
 
 
 async def public_address_check(url: str) -> None:
@@ -61,12 +73,12 @@ class AiohttpPageGetter:
             self.session = aiohttp.ClientSession(headers={"User-Agent": self.config.user_agent})
         return self.session
 
-    async def get(self, url: str) -> Fetched:
+    async def get(self, url: str, validators: Validators | None = None) -> Fetched:
         """Fetch ``url``; a dropped connection or a status in ``retry_statuses`` is retried."""
         for attempt in range(self.config.retries + 1):
             last = attempt == self.config.retries
             try:
-                page = await self._get_once(url)
+                page = await self._get_once(url, _conditional_headers(validators))
             except _ConnectionFailedError:
                 if last:
                     raise
@@ -76,7 +88,7 @@ class AiohttpPageGetter:
             await self.sleep(self.config.retry_backoff_seconds * 2**attempt)
         raise FetchError("unreachable")  # not reached: the last attempt returns or raises
 
-    async def _get_once(self, url: str) -> Fetched:
+    async def _get_once(self, url: str, headers: dict[str, str]) -> Fetched:
         current = url
         for _ in range(self.config.max_redirects + 1):
             await self.check(current)
@@ -84,8 +96,11 @@ class AiohttpPageGetter:
                 async with self._session().get(
                     current,
                     allow_redirects=False,
+                    headers=headers,
                     timeout=aiohttp.ClientTimeout(total=self.config.timeout_seconds),
                 ) as response:
+                    if response.status == HTTPStatus.NOT_MODIFIED:
+                        return Fetched(current, response.status, "", b"")
                     location = response.headers.get("Location")
                     if response.status in _REDIRECTS and location:
                         current = urljoin(current, location)
@@ -103,7 +118,14 @@ class AiohttpPageGetter:
                         body += chunk
                         if len(body) > limit:
                             raise FetchError("too_large")
-                    return Fetched(current, response.status, content_type, bytes(body))
+                    return Fetched(
+                        current,
+                        response.status,
+                        content_type,
+                        bytes(body),
+                        etag=response.headers.get("ETag"),
+                        last_modified=response.headers.get("Last-Modified"),
+                    )
             except (aiohttp.ClientError, TimeoutError) as exc:
                 raise _ConnectionFailedError(type(exc).__name__) from exc
         raise FetchError("too_many_redirects")

@@ -11,21 +11,22 @@ from aiohttp import web
 from crawler.api.common import Stats, error, json_object, json_response, stats_loop
 from crawler.application.downloader.fetch import FetchOutcome, fetch_and_forward
 from crawler.application.downloader.ports import PageGetter, ReaderClient, Renderer
+from crawler.domain.downloader.models import Validators
 from crawler.domain.shared.protocol import ACCEPTED, BUSY, IDLE
 
 log = logging.getLogger(__name__)
 
 
 def create_app(
-    work: Callable[[str], Awaitable[FetchOutcome]], stats: Stats | None = None
+    work: Callable[[str, Validators | None], Awaitable[FetchOutcome]], stats: Stats | None = None
 ) -> web.Application:
     counters = stats or Stats()
     state = {"busy": False}
     tasks: set[asyncio.Task[None]] = set()
 
-    async def run(url: str) -> None:
+    async def run(url: str, validators: Validators | None) -> None:
         try:
-            outcome = await work(url)
+            outcome = await work(url, validators)
             log.info("fetch %s: %s", url, outcome)
             counters.incr(outcome)
         except Exception:
@@ -39,12 +40,16 @@ def create_app(
         url = body.get("url")
         if not isinstance(url, str) or not url:
             return error(400, "url must be a non-empty string")
+        etag, last_modified = body.get("etag"), body.get("last_modified")
+        if not all(value is None or isinstance(value, str) for value in (etag, last_modified)):
+            return error(400, "etag and last_modified must be strings")
+        validators = Validators(etag, last_modified) if etag or last_modified else None
         if state["busy"]:
             return json_response({"status": BUSY}, status=409)
         # Set before any await, so a second /load in flight sees the node as busy.
         state["busy"] = True
         counters.incr("received")
-        task = asyncio.create_task(run(url))
+        task = asyncio.create_task(run(url, validators))
         tasks.add(task)
         task.add_done_callback(tasks.discard)
         return json_response({"status": ACCEPTED}, status=202)
@@ -67,8 +72,8 @@ def create_service(
     """``create_app`` doing the real fetch; logs stats every 30 s and closes adapters at exit."""
     stats = Stats()
 
-    async def work(url: str) -> FetchOutcome:
-        return await fetch_and_forward(url, getter, renderer, reader)
+    async def work(url: str, validators: Validators | None) -> FetchOutcome:
+        return await fetch_and_forward(url, getter, renderer, reader, validators)
 
     app = create_app(work, stats)
 

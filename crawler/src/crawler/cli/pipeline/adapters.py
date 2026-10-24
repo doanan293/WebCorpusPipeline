@@ -11,7 +11,7 @@ from crawler.application.mediator.add_urls import add_urls
 from crawler.application.mediator.ports import Clock, LoadResult, UrlQueue
 from crawler.application.merger.ports import SendResult, Target
 from crawler.application.merger.runtime import MergerRuntime
-from crawler.application.reader.parse import DocumentReaders, parse_payload
+from crawler.application.reader.parse import Delivery, DocumentReaders, parse_payload
 from crawler.application.reader.ports import MergerClient
 from crawler.application.storage.ports import (
     CorpusStore,
@@ -79,7 +79,7 @@ class DirectReaderClient:
         self.readers = readers
         self.merger = merger
 
-    async def send(self, page: Fetched, fmt: str) -> bool:
+    async def send(self, page: Fetched, fmt: str, *, requested_url: str) -> bool:
         outcome = await parse_payload(
             page.final_url,
             fmt,
@@ -87,6 +87,19 @@ class DirectReaderClient:
             page.body,
             readers=self.readers,
             merger=self.merger,
+            delivery=Delivery(requested_url, page.etag, page.last_modified),
+        )
+        return outcome != "unsent"
+
+    async def send_not_modified(self, requested_url: str) -> bool:
+        outcome = await parse_payload(
+            requested_url,
+            "not_modified",
+            "",
+            b"",
+            readers=self.readers,
+            merger=self.merger,
+            delivery=Delivery(requested_url, None, None),
         )
         return outcome != "unsent"
 

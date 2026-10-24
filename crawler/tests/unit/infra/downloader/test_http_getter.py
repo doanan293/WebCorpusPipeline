@@ -7,7 +7,7 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 
-from crawler.domain.downloader.models import DownloaderConfig, Fetched, FetchError
+from crawler.domain.downloader.models import DownloaderConfig, Fetched, FetchError, Validators
 from crawler.infra.downloader.http_getter import (
     AiohttpPageGetter,
     public_address_check,
@@ -43,7 +43,17 @@ def _site() -> web.Application:
         hits["missing"] = hits.get("missing", 0) + 1
         return web.Response(status=404)
 
+    async def conditional(request: web.Request) -> web.Response:
+        if request.headers.get("If-None-Match") == '"v1"':
+            return web.Response(status=304)
+        return web.Response(
+            text="<html><body>fresh</body></html>",
+            content_type="text/html",
+            headers={"ETag": '"v1"', "Last-Modified": "Mon, 05 Oct 2026 10:00:00 GMT"},
+        )
+
     app = web.Application()
+    app.router.add_get("/conditional", conditional)
     app.router.add_get("/flaky", flaky)
     app.router.add_get("/missing", missing)
     app.router.add_get("/page", page)
@@ -57,12 +67,12 @@ async def _reject_ip_literal(url: str) -> None:
         raise FetchError("non_public_address")
 
 
-def _get(path: str, config: DownloaderConfig) -> Fetched:
+def _get(path: str, config: DownloaderConfig, validators: Validators | None = None) -> Fetched:
     async def scenario() -> Fetched:
         async with TestServer(_site(), host="127.0.0.1") as server:
             getter = AiohttpPageGetter(config, check=_reject_ip_literal)
             try:
-                return await getter.get(f"http://localhost:{server.port}{path}")
+                return await getter.get(f"http://localhost:{server.port}{path}", validators)
             finally:
                 await getter.close()
 
@@ -111,3 +121,17 @@ def test_no_retry_on_404() -> None:
 def test_gives_up_after_retries() -> None:
     page = _get("/flaky", DownloaderConfig(retries=1, retry_backoff_seconds=0.01))
     assert page.status == 503
+
+
+def test_getter_keeps_validators_of_the_response() -> None:
+    page = _get("/conditional", DownloaderConfig())
+    assert (page.status, page.etag, page.last_modified) == (
+        200,
+        '"v1"',
+        "Mon, 05 Oct 2026 10:00:00 GMT",
+    )
+
+
+def test_getter_sends_conditional_headers() -> None:
+    page = _get("/conditional", DownloaderConfig(), Validators('"v1"', None))
+    assert (page.status, page.body) == (304, b"")

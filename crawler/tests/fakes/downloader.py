@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from crawler.domain.downloader.models import Fetched, FetchError
+from crawler.domain.downloader.models import Fetched, FetchError, Validators
 
 
 class FakeGetter:
@@ -10,8 +10,10 @@ class FakeGetter:
 
     def __init__(self, pages: dict[str, Fetched]) -> None:
         self.pages = pages
+        self.validators: dict[str, Validators | None] = {}
 
-    async def get(self, url: str) -> Fetched:
+    async def get(self, url: str, validators: Validators | None = None) -> Fetched:
+        self.validators[url] = validators
         if url not in self.pages:
             raise FetchError("unreachable")
         return self.pages[url]
@@ -36,7 +38,14 @@ class FakeReaderClient:
     def __init__(self, ok: bool = True) -> None:
         self.ok = ok
         self.sent: list[tuple[Fetched, str]] = []
+        self.requested: list[str] = []
+        self.not_modified: list[str] = []
 
-    async def send(self, page: Fetched, fmt: str) -> bool:
+    async def send(self, page: Fetched, fmt: str, *, requested_url: str) -> bool:
         self.sent.append((page, fmt))
+        self.requested.append(requested_url)
+        return self.ok
+
+    async def send_not_modified(self, requested_url: str) -> bool:
+        self.not_modified.append(requested_url)
         return self.ok

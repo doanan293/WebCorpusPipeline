@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from crawler.application.downloader.fetch import fetch_and_forward
-from crawler.domain.downloader.models import Fetched
+from crawler.domain.downloader.models import Fetched, Validators
 from tests.fakes.downloader import FakeGetter, FakeReaderClient, FakeRenderer
 
 ARTICLE = (
@@ -88,3 +88,33 @@ def test_reader_down_is_unsent() -> None:
     assert (
         _run({"https://h/a": _page("https://h/a", ARTICLE)}, "https://h/a", ok=False)[0] == "unsent"
     )
+
+
+def test_not_modified_is_reported_under_the_queued_url() -> None:
+    getter = FakeGetter({"https://h/x": Fetched("https://h/y", 304, "", b"")})
+    reader = FakeReaderClient()
+    validators = Validators('"e"', None)
+    outcome = asyncio.run(
+        fetch_and_forward("https://h/x", getter, FakeRenderer(), reader, validators)
+    )
+    assert outcome == "not_modified"
+    assert reader.not_modified == ["https://h/x"]
+    assert reader.sent == []
+    assert getter.validators["https://h/x"] == validators
+
+
+def test_forwarded_page_names_the_queued_url_and_keeps_validators() -> None:
+    page = Fetched(
+        "https://h/y", 200, "text/html; charset=utf-8", ARTICLE, etag='"v2"', last_modified="Mon"
+    )
+    reader = FakeReaderClient()
+    assert (
+        asyncio.run(
+            fetch_and_forward(
+                "https://h/x", FakeGetter({"https://h/x": page}), FakeRenderer(), reader
+            )
+        )
+        == "forwarded"
+    )
+    assert reader.requested == ["https://h/x"]
+    assert (reader.sent[0][0].etag, reader.sent[0][0].last_modified) == ('"v2"', "Mon")

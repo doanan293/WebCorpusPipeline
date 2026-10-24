@@ -6,10 +6,11 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from crawler.api.downloader import create_app
 from crawler.application.downloader.fetch import FetchOutcome
+from crawler.domain.downloader.models import Validators
 
 
 def test_ping_idle() -> None:
-    async def work(_: str) -> FetchOutcome:
+    async def work(_: str, __: Validators | None) -> FetchOutcome:
         return "forwarded"
 
     async def scenario() -> tuple[int, object]:
@@ -24,7 +25,7 @@ def test_load_accepts_and_turns_busy() -> None:
     gate = asyncio.Event()
     seen: list[str] = []
 
-    async def work(url: str) -> FetchOutcome:
+    async def work(url: str, _: Validators | None) -> FetchOutcome:
         seen.append(url)
         await gate.wait()
         return "forwarded"
@@ -55,7 +56,7 @@ def test_load_accepts_and_turns_busy() -> None:
 def test_second_load_while_busy_is_409() -> None:
     gate = asyncio.Event()
 
-    async def work(_: str) -> FetchOutcome:
+    async def work(_: str, __: Validators | None) -> FetchOutcome:
         await gate.wait()
         return "forwarded"
 
@@ -74,7 +75,7 @@ def test_second_load_while_busy_is_409() -> None:
 
 
 def test_load_bad_body_is_400() -> None:
-    async def work(_: str) -> FetchOutcome:
+    async def work(_: str, __: Validators | None) -> FetchOutcome:
         return "forwarded"
 
     async def scenario() -> list[int]:
@@ -88,7 +89,7 @@ def test_load_bad_body_is_400() -> None:
 
 
 def test_work_crash_returns_to_idle() -> None:
-    async def work(_: str) -> FetchOutcome:
+    async def work(_: str, __: Validators | None) -> FetchOutcome:
         raise RuntimeError("boom")
 
     async def scenario() -> object:
@@ -105,7 +106,7 @@ def test_work_crash_returns_to_idle() -> None:
 
 
 def test_ping_body_is_plain_utf8() -> None:
-    async def work(_: str) -> FetchOutcome:
+    async def work(_: str, __: Validators | None) -> FetchOutcome:
         return "forwarded"
 
     async def scenario() -> str:
@@ -113,3 +114,23 @@ def test_ping_body_is_plain_utf8() -> None:
             return await (await client.get("/ping")).text()
 
     assert '"đang chờ"' in asyncio.run(scenario())
+
+
+def test_load_passes_validators_to_the_work() -> None:
+    seen: list[Validators | None] = []
+    done = asyncio.Event()
+
+    async def work(_: str, validators: Validators | None) -> FetchOutcome:
+        seen.append(validators)
+        done.set()
+        return "not_modified"
+
+    async def scenario() -> None:
+        async with TestClient(TestServer(create_app(work))) as client:
+            body = {"url": "https://h/a", "etag": '"e"', "last_modified": "Mon"}
+            assert (await client.post("/load", json=body)).status == 202
+            await asyncio.wait_for(done.wait(), 2)
+            await client.post("/load", json={"url": "https://h/b"})
+
+    asyncio.run(scenario())
+    assert seen[0] == Validators('"e"', "Mon")
