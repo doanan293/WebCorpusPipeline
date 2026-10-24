@@ -4,43 +4,41 @@ Kho mã này gồm các dự án sau:
 
 | Thư mục | Dự án | Công cụ |
 | --- | --- | --- |
-| [`crawler/core/`](crawler/core/README.md) | Lõi năm khối thu thập (mediator, downloader, reader, merger, storage) và CLI của nhóm (`data-pipeline`) | Python 3.13, `uv` |
-| [`crawler/server/`](crawler/server/README.md) | Cùng lõi đó chạy thành năm dịch vụ HTTP theo slide của thầy, cộng mongoose (`services serve`) | Python 3.13, `uv`, Docker |
-| [`crawler/mediator`](https://github.com/bangoc/hust.edu.vn-2026/tree/main/crawler/mediator) (repo của lớp) | Service mediator (khối 3, cổng 5200) dùng chung cho cả lớp, tách từ khối mediator của `crawler/core` | Python 3.13, `uv`, Docker |
+| [`crawler/`](crawler/README.md) | Năm khối thu thập (reader, downloader, mediator, merger, storage) cùng Mongo (`mongoose`), chạy trong một tiến trình hoặc thành năm dịch vụ HTTP theo slide của thầy; lệnh `crawler` | Python 3.13, `uv`, Docker |
+| [`crawler/mediator`](https://github.com/bangoc/hust.edu.vn-2026/tree/main/crawler/mediator) (repo của lớp) | Service mediator (khối 3, cổng 5200) dùng chung cho cả lớp, tách từ khối mediator của `crawler/` | Python 3.13, `uv`, Docker |
 | [`lucene/`](lucene/README.md) | Lập chỉ mục và tìm kiếm tài liệu với Apache Lucene | JDK 17+, Maven 3.9+ |
 
 Chạy lệnh trong thư mục của từng dự án để các đường dẫn tương đối, cấu hình và dữ liệu đầu ra hoạt động đúng.
 
 ## Crawler
 
-`crawler/` có hai phần dùng chung một lõi:
+`crawler/` là một project Python, một package `crawler`, một lệnh `crawler`:
 
-- `crawler/core/`: package `data_pipeline`, gồm lõi các khối (`domain/`, `application/`, `infrastructure/`) và lệnh
-  `data-pipeline` (crawl cả năm khối trong một tiến trình, đóng gói corpus, bóc tách lại...).
-- `crawler/server/`: package `services`, gồm API HTTP của từng khối (lệnh `services serve <khối>`), `Dockerfile` và
-  `compose.yaml` dựng cả năm khối cùng MongoDB.
+- `src/crawler/domain/`, `application/`, `infra/`: các lớp của năm khối, theo clean architecture.
+- `src/crawler/cli/`: các lệnh (`crawler crawl run`, `crawler corpus ...`, `crawler pictures fetch`, ...);
+  `cli/pipeline/` nối năm khối trong một tiến trình.
+- `src/crawler/api/`: API HTTP của từng khối, chạy bằng `crawler serve <khối>`.
+- `Dockerfile`, `compose.yaml`: dựng cả năm khối cùng MongoDB.
 
 ```bash
-cd crawler/core
+cd crawler
 uv sync
 uv run pytest -q
-uv run data-pipeline --help
+uv run crawler --help
 ```
 
-Xem [hướng dẫn core](crawler/core/README.md) để cấu hình và chia sẻ corpus, và
-[hướng dẫn server](crawler/server/README.md) để chạy các khối bằng Docker
-(MongoDB, Kaggle). `lucene/` hiện chưa đọc corpus này; dự kiến
-sau này `lucene/` sẽ nhận corpus đã xử lý để lập chỉ mục và tìm kiếm.
+Xem [hướng dẫn crawler](crawler/README.md) để cấu hình, chạy các khối bằng Docker và chia sẻ corpus
+(MongoDB, Kaggle). `lucene/` hiện chưa đọc corpus này; dự kiến sau này `lucene/` sẽ nhận corpus đã xử lý để lập
+chỉ mục và tìm kiếm.
 
 ### Kiểm tra mã và pre-commit
 
-Mỗi package Python (`crawler/core/`, `crawler/server/`) có cấu hình ruff, pyrefly (strict) và pytest
-trong `pyproject.toml` của nó. Hook pre-commit nằm ở thư mục gốc repo, bỏ qua `lucene/` và `crawler/core/data/`;
-ruff, pyrefly, uv-lock và pytest (pytest chỉ khi push) chạy cho package có thay đổi. `crawler/server/` dùng lõi của
-`crawler/core/`, nên thay đổi trong `crawler/core/` cũng chạy kiểm tra của `crawler/server/`:
+`crawler/` có cấu hình ruff, pyrefly (strict) và pytest trong `pyproject.toml`. Hook pre-commit nằm ở thư mục gốc
+repo, bỏ qua `lucene/` và `crawler/data/`; ruff, pyrefly và uv-lock chạy khi commit, pytest chạy khi push, chỉ khi
+có thay đổi trong `crawler/`:
 
 ```bash
-uv run --directory crawler/core pre-commit install
+uv run --directory crawler pre-commit install
 ```
 
 ## Lucene
