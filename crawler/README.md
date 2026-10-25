@@ -96,8 +96,11 @@ uv run crawler pictures fetch --workers 32 --per-host 1
 - `--workers` (mặc định 64): số ảnh tải cùng lúc trên mọi host; `--per-host` (mặc định 2): trên một host.
 - Mỗi host cách nhau 0,25 s giữa hai lần tải; host trả `429`/`503` hoặc hết thời gian chờ thì khoảng chờ nhân đôi
   (tới 5 s) và ảnh được thử lại (3 lần); tải được thì khoảng chờ giảm dần về 0,25 s.
-- Ảnh lớn hơn 2 MB ghi `error = "too_large"`; phản hồi không phải ảnh `not_image`; lỗi HTTP `http_<mã>`; lỗi mạng
-  `timeout` hoặc `unreachable`.
+- Ảnh lớn hơn 2 MB ghi `error = "too_large"`; phản hồi rỗng `empty`; phản hồi không phải ảnh `not_image` (ảnh gửi
+  kèm `application/octet-stream` vẫn được nhận nếu các byte đầu là JPEG, PNG, GIF, WebP hay BMP); lỗi HTTP
+  `http_<mã>`; lỗi mạng `timeout` hoặc `unreachable`.
+- Host thiếu chứng chỉ trung gian (như `ts.hust.edu.vn`) được tải lại không kiểm tra chứng chỉ; kiểm tra địa chỉ
+  công khai, loại nội dung và cỡ ảnh vẫn giữ.
 - Mỗi ảnh được ghi ngay khi xong, nên dừng giữa chừng rồi chạy lại thì tiếp tục từ chỗ dừng. Cuối cùng in số ảnh
   theo kết quả (`ok`, `too_large`, ...).
 

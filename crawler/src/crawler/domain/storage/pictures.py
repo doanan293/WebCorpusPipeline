@@ -35,6 +35,24 @@ def picture_format(content_type: str, url: str) -> str:
     return suffix if suffix in _KNOWN else ""
 
 
+def sniff_picture(body: bytes) -> str:
+    """The format the first bytes show (``jpg``, ``png``, ...), else ``""``.
+
+    For hosts that send images as ``application/octet-stream``.
+    """
+    if body.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if body.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if body.startswith((b"GIF87a", b"GIF89a")):
+        return "gif"
+    if body[:4] == b"RIFF" and body[8:12] == b"WEBP":
+        return "webp"
+    if body.startswith(b"BM"):
+        return "bmp"
+    return ""
+
+
 def encode_picture(body: bytes) -> str:
     """The image as plain base64, without a ``data:`` prefix."""
     return base64.b64encode(body).decode("ascii")

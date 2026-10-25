@@ -118,3 +118,26 @@ def test_retry_errors_tries_failed_pictures_again() -> None:
     assert getter.calls["https://a/x.png"] == 0
     _run(store, getter, retry_errors=True)
     assert store.rows["https://a/x.png"]["b64"]
+
+
+def test_an_image_sent_as_octet_stream_is_kept_and_an_empty_body_is_an_error() -> None:
+    jpeg = b"\xff\xd8\xff\xe0" + b"x" * 100
+    store = _Store({"https://a/x": _row(), "https://a/y.html": _row(), "https://a/z.jpg": _row()})
+    getter = _Getter(
+        {
+            "https://a/x": [ImageResult(200, "application/octet-stream", jpeg)],
+            "https://a/y.html": [ImageResult(200, "application/octet-stream", b"<html>")],
+            "https://a/z.jpg": [ImageResult(200, "image/jpeg", b"")],
+        }
+    )
+    _run(store, getter)
+    assert (store.rows["https://a/x"]["format"], store.rows["https://a/x"]["error"]) == (
+        "jpg",
+        None,
+    )
+    assert store.rows["https://a/x"]["b64"]
+    assert store.rows["https://a/y.html"]["error"] == "not_image"
+    assert (store.rows["https://a/z.jpg"]["b64"], store.rows["https://a/z.jpg"]["error"]) == (
+        "",
+        "empty",
+    )

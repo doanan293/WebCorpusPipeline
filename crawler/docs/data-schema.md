@@ -53,7 +53,7 @@ gặp; `crawler pictures fetch` tải ảnh và điền `b64`.
 | **`format`** | string | `jpg`, `png`, `webp`, `gif`, `svg`, ...: từ `Content-Type` khi tải được (`image/jpeg` → `jpg`), không có thì từ đuôi URL, không xác định thì `""` |
 | **`b64`** | string | base64 thuần (không có tiền tố `data:...;base64,`) của byte ảnh; `""` khi chưa tải hoặc tải không được |
 | `size` | int \| null | số byte gốc; `null` khi chưa tải được |
-| `error` | string \| null | lý do không có `b64`: `too_large` (trên 2 MB), `not_image`, `http_<mã>`, `timeout`, `unreachable`; `null` khi thành công hoặc chưa thử |
+| `error` | string \| null | lý do không có `b64`: `too_large` (trên 2 MB), `empty`, `not_image`, `http_<mã>`, `timeout`, `unreachable`; `null` khi thành công hoặc chưa thử |
 | `fetched_at` | string \| null | lần tải gần nhất; `null` khi chưa thử |
 | `updated_at` | string | lần ghi gần nhất |
 

@@ -24,13 +24,19 @@ from crawler.application.storage.ports import (
     ImageResult,
     PictureStore,
 )
-from crawler.domain.storage.pictures import MAX_PICTURE_BYTES, encode_picture, picture_format
+from crawler.domain.storage.pictures import (
+    MAX_PICTURE_BYTES,
+    encode_picture,
+    picture_format,
+    sniff_picture,
+)
 
 log = logging.getLogger(__name__)
 
 ATTEMPTS = 3
 _BACK_OFF = frozenset({HTTPStatus.TOO_MANY_REQUESTS, HTTPStatus.SERVICE_UNAVAILABLE})
 _PROGRESS_EVERY = 1000
+_UNTYPED = frozenset({"", "application/octet-stream", "binary/octet-stream"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,11 +54,20 @@ class _Host:
     next_at: float = 0.0
 
 
+def _is_image(result: ImageResult) -> bool:
+    mime = result.content_type.partition(";")[0].strip().lower()
+    if mime.startswith("image/"):
+        return True
+    return mime in _UNTYPED and sniff_picture(result.body) != ""
+
+
 def _verdict(result: ImageResult) -> str | None:
     """``None`` for a usable image, else the reason kept in ``error``."""
     if result.status != HTTPStatus.OK:
         return f"http_{result.status}"
-    if not result.content_type.lower().startswith("image/"):
+    if not result.body:
+        return "empty"
+    if not _is_image(result):
         return "not_image"
     if len(result.body) > MAX_PICTURE_BYTES:
         return "too_large"
@@ -112,7 +127,7 @@ async def fetch_pictures(
                 store.save_picture(
                     url,
                     b64=encode_picture(result.body),
-                    fmt=picture_format(result.content_type, url),
+                    fmt=picture_format(result.content_type, url) or sniff_picture(result.body),
                     size=len(result.body),
                     error=None,
                     fetched_at=now_iso,
