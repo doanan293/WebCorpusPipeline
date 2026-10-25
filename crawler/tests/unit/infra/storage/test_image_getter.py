@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
+import ssl
+import subprocess
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
@@ -76,3 +80,50 @@ def test_default_check_refuses_a_private_address() -> None:
 def test_redirect_to_a_private_address_is_refused() -> None:
     with pytest.raises(ImageFetchError, match="non_public_address"):
         _get("/to-private", check=_reject_ip_literal, host="localhost")
+
+
+OPENSSL = shutil.which("openssl")
+
+
+@pytest.mark.skipif(OPENSSL is None, reason="needs the openssl command")
+def test_a_host_whose_certificate_does_not_verify_is_still_read(tmp_path: Path) -> None:
+    # Some HUST hosts leave out the intermediate certificate, which browsers fetch and Python does not.
+    key, cert = tmp_path / "key.pem", tmp_path / "cert.pem"
+    assert OPENSSL is not None
+    subprocess.run(  # noqa: S603 -- fixed argv, no shell
+        [
+            OPENSSL,
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-days",
+            "1",
+            "-subj",
+            "/CN=localhost",
+            "-keyout",
+            str(key),
+            "-out",
+            str(cert),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    context.load_cert_chain(cert, key)
+
+    async def scenario() -> ImageResult:
+        runner = web.AppRunner(_site())
+        await runner.setup()
+        site = web.TCPSite(runner, "127.0.0.1", 0, ssl_context=context)
+        await site.start()
+        port = runner.addresses[0][1]
+        getter = AiohttpImageGetter(timeout_seconds=2, check=_allow)
+        try:
+            return await getter.get(f"https://localhost:{port}/i.png")
+        finally:
+            await getter.close()
+            await runner.cleanup()
+
+    assert asyncio.run(scenario()) == ImageResult(200, "image/png", b"\x89PNG")

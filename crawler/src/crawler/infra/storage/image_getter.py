@@ -71,26 +71,38 @@ class AiohttpImageGetter:
         for _ in range(MAX_REDIRECTS + 1):
             await self.check(current)
             try:
-                async with self._session().get(
-                    current, timeout=self.timeout, allow_redirects=False
-                ) as response:
-                    location = response.headers.get("Location")
-                    if response.status in _REDIRECTS and location:
-                        current = urljoin(current, location)
-                        continue
-                    body = bytearray()
-                    async for chunk in response.content.iter_chunked(_CHUNK):
-                        body += chunk
-                        if len(body) > MAX_PICTURE_BYTES:
-                            body = body[: MAX_PICTURE_BYTES + 1]
-                            break
-                    content_type = response.headers.get("Content-Type", "")
-                    return ImageResult(response.status, content_type, bytes(body))
+                try:
+                    result = await self._get_once(current, verify=True)
+                except aiohttp.ClientConnectorCertificateError:
+                    # Some hosts leave out the intermediate certificate, which browsers fetch and
+                    # aiohttp does not. The picture is public, and the address check still holds.
+                    result = await self._get_once(current, verify=False)
             except TimeoutError as exc:
                 raise ImageFetchError("timeout") from exc
             except (aiohttp.ClientError, ValueError, UnicodeError) as exc:
                 raise ImageFetchError("unreachable") from exc
+            if isinstance(result, str):
+                current = result
+                continue
+            return result
         raise ImageFetchError("too_many_redirects")
+
+    async def _get_once(self, url: str, *, verify: bool) -> ImageResult | str:
+        """The response to one GET, or the URL a redirect points to."""
+        async with self._session().get(
+            url, timeout=self.timeout, allow_redirects=False, ssl=verify
+        ) as response:
+            location = response.headers.get("Location")
+            if response.status in _REDIRECTS and location:
+                return urljoin(url, location)
+            body = bytearray()
+            async for chunk in response.content.iter_chunked(_CHUNK):
+                body += chunk
+                if len(body) > MAX_PICTURE_BYTES:
+                    body = body[: MAX_PICTURE_BYTES + 1]
+                    break
+            content_type = response.headers.get("Content-Type", "")
+            return ImageResult(response.status, content_type, bytes(body))
 
     async def close(self) -> None:
         if self.session is not None:
