@@ -2,7 +2,7 @@
   "owner": "doanvanan0209",
   "slug": "hust-information-retrieval-corpus",
   "title": "HUST Information Retrieval Corpus",
-  "subtitle": "Processed public HUST pages, documents and link provenance",
-  "description": "Versioned processed corpus produced by the data_pipeline project.",
+  "subtitle": "HUST pages, documents, pictures and link graph in the class's Mongo format",
+  "description": "Versioned corpus of the crawler project (WebCorpusPipeline): the html, picture, other and graph collections as JSON lines, and the crawler's data folders (state, raw HTML, document files) as data-*.tar.gz.bin, which are gzip tar files. Load with `crawler corpus pull`.",
   "license_name": "CC BY 4.0"
 }

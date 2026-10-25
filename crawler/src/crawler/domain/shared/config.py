@@ -39,6 +39,10 @@ class ProjectPaths:
         return self.root / "config/domains/status.jsonl"
 
     @property
+    def data_root(self) -> Path:
+        return self.root / "data"
+
+    @property
     def corpus_pulled(self) -> Path:
         return self.root / "data/corpus/pulled"
 

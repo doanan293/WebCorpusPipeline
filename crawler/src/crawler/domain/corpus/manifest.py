@@ -5,7 +5,8 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-# Files a corpus package holds besides manifest.json: one per Mongo collection of the slide.
+# Files a corpus package holds besides manifest.json: one per Mongo collection of the slide, and
+# the archives of the data folders when packed with them.
 PAYLOAD = ("html.jsonl", "picture.jsonl", "other.jsonl", "graph.jsonl")
 # 2.0: the teacher's format (picture collection, graph and html intro, other origin).
 SCHEMA_VERSION = "2.0"
@@ -22,12 +23,16 @@ def snapshot_id(files: Mapping[str, Any]) -> str:
     ).hexdigest()
 
 
-def build_manifest(files: dict[str, Any], counts: dict[str, int]) -> dict[str, Any]:
+def build_manifest(
+    files: dict[str, Any], counts: dict[str, int], archives: dict[str, str] | None = None
+) -> dict[str, Any]:
+    """``archives`` maps an archive among ``files`` to the data folder it unpacks to."""
     return {
         "schema_version": SCHEMA_VERSION,
         "snapshot_id": snapshot_id(files),
         "files": files,
         "counts": counts,
+        "archives": archives or {},
     }
 
 

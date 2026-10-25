@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from crawler.application.corpus.package import package_corpus, verify_corpus
+from crawler.application.corpus.package import package_corpus, restore_data, verify_corpus
 from crawler.infra.corpus.files.corpus_files import LocalCorpusFiles
 from tests.fakes.corpus import FakeCorpusDatabase
 
@@ -65,3 +65,36 @@ def test_verify_detects_tampered_file(tmp_path: Path) -> None:
     report = verify_corpus(output, FILES)
     assert not report["valid"]
     assert "checksum mismatch other.jsonl" in report["errors"]
+
+
+def _data(root: Path) -> Path:
+    (root / "state").mkdir(parents=True)
+    (root / "state" / "mediator.sqlite3").write_bytes(b"queue")
+    (root / "submission").mkdir()
+    (root / "submission" / "check.py").write_text("print(1)\n")
+    (root / "submission" / "db-20261025.archive.gz").write_bytes(b"the mongo dump again")
+    (root / "corpus").mkdir()  # the package itself is never packed
+    return root
+
+
+def test_package_packs_the_data_folders_beside_the_collections(tmp_path: Path) -> None:
+    output = package_corpus(_db(), FILES, tmp_path / "out", data_root=_data(tmp_path / "data"))
+    manifest = json.loads((output / "manifest.json").read_text())
+    assert manifest["archives"] == {
+        "data-state.tar.gz.bin": "state",
+        "data-submission.tar.gz.bin": "submission",
+    }
+    assert set(manifest["archives"]) <= set(manifest["files"])
+    assert verify_corpus(output, FILES)["valid"]
+
+
+def test_restore_data_unpacks_missing_folders_and_keeps_the_others(tmp_path: Path) -> None:
+    output = package_corpus(_db(), FILES, tmp_path / "out", data_root=_data(tmp_path / "data"))
+    target = tmp_path / "fresh"
+    (target / "state").mkdir(parents=True)
+    (target / "state" / "mediator.sqlite3").write_bytes(b"newer queue")
+
+    assert restore_data(output, target, FILES) == {"state": "kept", "submission": "restored"}
+    assert (target / "state" / "mediator.sqlite3").read_bytes() == b"newer queue"
+    assert (target / "submission" / "check.py").read_text() == "print(1)\n"
+    assert not (target / "submission" / "db-20261025.archive.gz").exists()

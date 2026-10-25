@@ -137,15 +137,29 @@ Một ảnh hoặc tài liệu thường có nhiều trang trỏ tới. `origin`
 
 ## Gói corpus
 
-`crawler corpus package --output data/corpus/<phiên bản>` xuất bốn collection ra:
+`crawler corpus package --output data/corpus/<phiên bản>` xuất bốn collection và gói các thư mục của `data/`:
 
 | Tệp | Nội dung |
 |---|---|
 | `html.jsonl`, `picture.jsonl`, `other.jsonl`, `graph.jsonl` | mỗi dòng một document của collection cùng tên (không có `_id`) |
-| `manifest.json` | `schema_version` (`"2.0"`), `snapshot_id` (sha256 của danh sách tệp), `files` (`sha256`, `size` mỗi tệp), `counts` (số dòng) |
+| `data-state.tar.gz.bin`, `data-crawl.tar.gz.bin`, `data-enrichment.tar.gz.bin`, `data-submission.tar.gz.bin` | tar gzip của `data/<thư mục>` (không có `--no-data`); `submission` bỏ các bản dump `*.archive.gz` |
+| `manifest.json` | `schema_version` (`"2.0"`), `snapshot_id` (sha256 của danh sách tệp), `files` (`sha256`, `size` mỗi tệp), `counts` (số dòng), `archives` (tệp gói → thư mục trong `data/`) |
 
 `corpus verify` kiểm tra `schema_version`, `sha256`, kích thước và tệp lạ; gói khác `"2.0"` bị từ chối.
-`corpus pull` tải bản được pin trong `config/corpus.lock.json`, kiểm tra rồi nạp vào MongoDB ([corpus.md](corpus.md)).
+`corpus pull` tải bản được pin trong `config/corpus.lock.json`, kiểm tra, nạp vào MongoDB rồi bung các thư mục
+`data/` chưa có ([corpus.md](corpus.md)).
+
+## Bản dump để nộp
+
+Bản nộp là dump của database `information_retrieval`, nằm ở `data/submission/` (không nằm trong gói corpus). Kiểm
+tra rồi dump, trong `crawler/`:
+
+```bash
+uv run python data/submission/check_submission.py     # mã 1 nếu dữ liệu sai format
+docker exec services-mongoose-1 mongodump --db information_retrieval --archive=/tmp/ir.archive.gz --gzip
+docker cp services-mongoose-1:/tmp/ir.archive.gz data/submission/information_retrieval-$(date +%Y%m%d).archive.gz
+docker exec services-mongoose-1 rm /tmp/ir.archive.gz
+```
 
 ## Dữ liệu thô giữ lại
 

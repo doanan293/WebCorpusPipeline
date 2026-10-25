@@ -23,7 +23,7 @@ def publish_corpus(
     if not valid["valid"]:
         raise ValueError("invalid corpus: " + "; ".join(valid["errors"]))
     config = files.read_json(config_path)
-    with files.temporary("ir-kaggle-") as staging:
+    with files.temporary("ir-kaggle-", corpus.resolve()) as staging:
         # Only the files the manifest lists (verified above) are published, never strays.
         manifest = files.read_json(corpus / MANIFEST)
         for name in [*manifest["files"], MANIFEST]:
@@ -54,7 +54,7 @@ def pull_corpus(
         msg = "corpus lock needs owner, slug and version"
         raise ValueError(msg)
     destination = destination.resolve()
-    with files.temporary("ir-kaggle-pull-") as staging:
+    with files.temporary("ir-kaggle-pull-", destination) as staging:
         dataset = f"{owner}/{slug}/{version}"
         try:
             publisher.download(dataset, staging)
@@ -76,5 +76,5 @@ def pull_corpus(
         if report["snapshot_id"] != lock.get("snapshot_id"):
             msg = "downloaded corpus does not match pinned lock"
             raise ValueError(msg)
-        files.install_copy(corpus, destination)
+        files.install(corpus, destination)
     return destination

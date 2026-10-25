@@ -124,7 +124,7 @@ uv run playwright install chromium     # trình duyệt cho trang JavaScript
 | `serve reader\|downloader\|mediator\|merger\|storage` | chạy một khối thành dịch vụ HTTP ([docs/services.md](docs/services.md)) |
 | `pictures fetch [--workers N] [--per-host N] [--retry-errors]` | tải ảnh của collection `picture` thành base64 |
 | `reextract [--crawl DIR] [--merger URL]` | chạy lại bộ trích xuất trên HTML đã lưu ở `data/crawl/` và lưu lại (trong một tiến trình, giữ khoá như `crawl run`; với `--merger` thì gửi sang dịch vụ merger). Dùng khi đổi thuật toán trích xuất, không tải lại trang |
-| `corpus package\|verify\|query\|publish\|pull` | đóng gói MongoDB thành corpus, truy vấn đồ thị, Kaggle ([docs/corpus.md](docs/corpus.md)) |
+| `corpus package\|verify\|query\|publish\|pull` | đóng gói MongoDB và `data/` thành corpus, truy vấn đồ thị, Kaggle; máy mới chỉ cần `corpus pull` ([docs/corpus.md](docs/corpus.md)) |
 | `domains audit` | kiểm tra host nào còn trả nội dung ([docs/domains.md](docs/domains.md)) |
 | `eval extraction` | chấm điểm thuật toán trích xuất nội dung |
 

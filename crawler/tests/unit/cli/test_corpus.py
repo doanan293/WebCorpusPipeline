@@ -37,6 +37,21 @@ def test_package_exports_mongo_to_the_output(
     assert main(["corpus", "package", "--output", str(tmp_path / "corpus")]) == 0
     manifest = json.loads((tmp_path / "corpus" / "manifest.json").read_text())
     assert manifest["counts"]["html.jsonl"] == 1
+    assert manifest["archives"] == {}  # the project has no data/ folders yet
+
+
+def test_package_packs_data_folders_unless_told_not_to(
+    project: ProjectPaths, tmp_path: Path, database: FakeCorpusDatabase
+) -> None:
+    (project.data_root / "state").mkdir(parents=True)
+    (project.data_root / "state" / "mediator.sqlite3").write_bytes(b"q")
+    assert main(["corpus", "package", "--output", str(tmp_path / "a")]) == 0
+    assert (
+        "data-state.tar.gz.bin"
+        in json.loads((tmp_path / "a" / "manifest.json").read_text())["archives"]
+    )
+    assert main(["corpus", "package", "--output", str(tmp_path / "b"), "--no-data"]) == 0
+    assert json.loads((tmp_path / "b" / "manifest.json").read_text())["archives"] == {}
 
 
 def _report(valid: bool) -> Any:
@@ -116,13 +131,22 @@ def test_pull_downloads_then_loads_into_mongo(
         calls.append(("load", path, db))
         return {"html": 1, "other": 0, "graph": 0}
 
+    def restore_data(path: Path, data_root: Path, files: object) -> dict[str, str]:
+        calls.append(("restore", path, data_root))
+        return {"state": "restored"}
+
     monkeypatch.setattr(kaggle, "pull_corpus", pull_corpus)
     monkeypatch.setattr(load, "load_corpus", load_corpus)
+    monkeypatch.setattr(package, "restore_data", restore_data)
     assert main(["corpus", "pull"]) == 0
     assert calls == [
         ("pull", project.corpus_lock, project.corpus_pulled),
         ("load", project.corpus_pulled, database),
+        ("restore", project.corpus_pulled, project.data_root),
     ]
+    calls.clear()
+    assert main(["corpus", "pull", "--no-data"]) == 0
+    assert [call[0] for call in calls] == ["pull", "load"]
 
 
 def test_pull_no_load_skips_mongo(project: ProjectPaths, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -26,12 +26,20 @@ CorpusOption = Annotated[Path, typer.Option(help="Directory holding a packaged c
 @app.command()
 def package(
     output: Annotated[Path, typer.Option(help="Directory to write the corpus package to.")],
+    no_data: Annotated[
+        bool,
+        typer.Option("--no-data", help="Only the collections; leave out the data/ folders."),
+    ] = False,
 ) -> int:
-    """Export the html, picture, other and graph collections of MongoDB into a versioned corpus."""
+    """Export the html, picture, other and graph collections of MongoDB into a versioned corpus,
+    with the data/ folders (state, crawl, enrichment, submission) packed beside them."""
     from crawler.application.corpus import package as corpus_package
 
+    data_root = None if no_data else context.current_paths().data_root
     with bootstrap.mongo_database(context.build_settings()) as db:
-        print(corpus_package.package_corpus(db, bootstrap.corpus_files(), output))
+        print(
+            corpus_package.package_corpus(db, bootstrap.corpus_files(), output, data_root=data_root)
+        )
     return 0
 
 
@@ -104,11 +112,16 @@ def pull(
         Path | None, typer.Option(help="Where to download to (default: data/corpus/pulled).")
     ] = None,
     no_load: Annotated[
-        bool, typer.Option("--no-load", help="Only download; do not load into MongoDB.")
+        bool, typer.Option("--no-load", help="Only download; do not load MongoDB or data/.")
+    ] = False,
+    no_data: Annotated[
+        bool, typer.Option("--no-data", help="Do not unpack the data/ folders.")
     ] = False,
 ) -> int:
-    """Download the locked corpus snapshot from Kaggle and load it into MongoDB."""
+    """Download the locked corpus snapshot from Kaggle, load it into MongoDB and unpack the
+    data/ folders that are missing (folders holding files are kept as they are)."""
     from crawler.application.corpus import kaggle, load
+    from crawler.application.corpus import package as corpus_package
 
     paths = context.current_paths()
     files = bootstrap.corpus_files()
@@ -122,4 +135,7 @@ def pull(
     if not no_load:
         with bootstrap.mongo_database(context.build_settings()) as db:
             print(json.dumps(load.load_corpus(pulled, db, files), indent=2))
+        if not no_data:
+            restored = corpus_package.restore_data(pulled, paths.data_root, files)
+            print(json.dumps(restored, indent=2))
     return 0
