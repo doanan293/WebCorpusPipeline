@@ -52,6 +52,7 @@ theo `url` và `graph` theo (`src`, `dest`, `intro`). Sau đó bung các thư m�
 được giữ nguyên, không ghi đè (`--no-data` để bỏ bước này, `--no-load` chỉ tải về). Thư mục tạm của `publish` và
 `pull` nằm cạnh gói chứ không ở `/tmp` (có máy để `/tmp` trong RAM); `publish` dùng hard link nên không chép gói.
 
-Phiên bản đang ghim là **v3** (19/10/2026), định dạng cũ trước format chung (chỉ ba tệp `html`, `other`, `graph`,
-chưa có `picture`). `pull` từ chối bản này cho tới khi có bản `2.0` được publish và ghim lại trong
-`config/corpus.lock.json`. Các phiên bản 1–2 trên Kaggle là định dạng của pipeline Scrapy cũ.
+Phiên bản đang ghim là **v4** (25/10/2026), gói `2.0` khoảng 42 GB: bốn collection (`html` 141.353, `picture`
+114.476 trong đó 98.274 có `b64`, `other` 5.860, `graph` 8.251.443) và bốn thư mục `data/` (`state`, `crawl`,
+`enrichment`, `submission`). Máy mới cần khoảng 120 GB trống để pull (tải về, MongoDB, `data/`). Các phiên bản
+1–3 trên Kaggle là định dạng cũ, `pull` từ chối.
