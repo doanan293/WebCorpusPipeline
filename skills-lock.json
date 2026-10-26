@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "drawio-skill": {
+      "source": "agents365-ai/drawio-skill",
+      "sourceType": "github",
+      "skillPath": "skills/drawio-skill/SKILL.md",
+      "computedHash": "5db15667a8a1a8dc0c9e3df425410de381d4339572793a6ef772cb615a6a7032"
+    },
     "humanizer": {
       "source": "blader/humanizer",
       "sourceType": "github",
