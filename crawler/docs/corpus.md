@@ -42,7 +42,8 @@ mới. Máy mới lấy đúng bản đó mà không phải crawl lại:
 
 ```bash
 docker compose up -d mongoose
-uv run crawler corpus pull            # tải vào data/corpus/pulled rồi nạp vào MongoDB
+uv run crawler corpus pull            # tải vào data/corpus/pulled, nạp MongoDB, bung data/ còn thiếu
+uv run crawler corpus pull --no-data  # nạp MongoDB, không bung data/
 uv run crawler corpus pull --no-load  # chỉ tải
 ```
 

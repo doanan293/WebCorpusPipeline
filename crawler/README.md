@@ -39,6 +39,20 @@ Chạy bằng cách nào cũng **tiếp tục** đúng chỗ cách kia dừng: t
 định kỳ. Mỗi lúc chỉ một cách chạy được ghi vào trạng thái: mỗi file SQLite có một khoá; cách thứ hai báo
 `Error: ... is in use by <ai đang chạy>` và thoát mã 2.
 
+## Máy mới và bản nộp
+
+Toàn bộ dữ liệu (Mongo và `data/`) nằm trên Kaggle, bản ghim trong `config/corpus.lock.json`; máy mới không phải
+crawl lại ([docs/corpus.md](docs/corpus.md)):
+
+```bash
+uv sync && docker compose up -d mongoose
+uv run crawler corpus pull           # cần `KAGGLE_API_TOKEN` trong .env, khoảng 120 GB trống
+```
+
+Bản nộp là dump Mongo `data/submission/information_retrieval-<ngày>.archive.gz` (`mongodump --archive --gzip`,
+không có trên Kaggle). Nạp vào Mongo khác bằng `mongorestore --archive=<tệp> --gzip`; kiểm tra và dump lại:
+[docs/data-schema.md](docs/data-schema.md#bản-dump-để-nộp).
+
 ## Crawl trong một tiến trình
 
 ```bash

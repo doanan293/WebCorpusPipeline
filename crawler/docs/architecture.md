@@ -79,8 +79,9 @@ HTTP client), nên lọc link, lập lịch, AutoThrottle, crawl lại theo thay
 - `domains audit`: thăm dò danh sách host của trường để biết host nào còn trả nội dung công khai, làm url mầm
   (mục 5). Công nghệ: `aiohttp`, Playwright.
 - `eval extraction`: chấm điểm thuật toán tìm khối nội dung trên trang mẫu có đáp án (mục 6).
-- `corpus package/publish/pull`: xuất bốn collection Mongo ra tệp JSONL có checksum, đưa lên Kaggle để chia sẻ
-  dữ liệu ([corpus.md](corpus.md)). Công nghệ: `pymongo`, Kaggle CLI.
+- `corpus package/publish/pull`: xuất bốn collection Mongo ra tệp JSONL và gói các thư mục `data/`, có checksum,
+  đưa lên Kaggle để chia sẻ dữ liệu; máy mới `pull` là có lại Mongo và `data/` ([corpus.md](corpus.md)).
+  Công nghệ: `pymongo`, `tarfile`, Kaggle CLI.
 
 Service mediator dùng chung cho cả lớp nằm ở repo của lớp
 ([`bangoc/hust.edu.vn-2026`, `crawler/mediator`](https://github.com/bangoc/hust.edu.vn-2026/tree/main/crawler/mediator)),

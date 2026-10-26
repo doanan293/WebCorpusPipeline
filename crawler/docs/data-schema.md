@@ -11,6 +11,7 @@ Nơi duy nhất mô tả dữ liệu mà các khối lưu lại. Bản ghi các 
 | `data/enrichment/cache/` | reader | kết quả LlamaParse đã trả tiền, khoá theo `sha256` tệp, trang và phiên bản reader |
 | `data/crawl/`, `data/enrichment/files/` | (chỉ đọc) | [dữ liệu thô giữ lại](#dữ-liệu-thô-giữ-lại) |
 | `data/corpus/<phiên bản>/` | `corpus package` | [gói corpus](#gói-corpus) |
+| `data/submission/` | `mongodump` (tay) | [bản dump để nộp](#bản-dump-để-nộp), script kiểm tra `check_submission.py` |
 
 ## MongoDB
 
