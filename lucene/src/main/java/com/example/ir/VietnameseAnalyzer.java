@@ -61,6 +61,16 @@ final class VietnameseAnalyzer extends Analyzer {
         return new TokenStreamComponents(source, ts);
     }
 
+    /**
+     * Chuan hoa cho truy van KHONG qua tach tu: ky tu dai dien (tuyển*), mo ho (hoc~), khoang
+     * [a TO b]. Phai giong cac buoc chuan hoa luc lap chi muc (chu thuong + bo dau), neu khong
+     * "tuyển*" se khong khop term "tuyen_sinh" trong chi muc.
+     */
+    @Override
+    protected TokenStream normalize(String fieldName, TokenStream in) {
+        return new ASCIIFoldingFilter(new LowerCaseFilter(in));
+    }
+
     @Override
     public void close() {
         try {
@@ -84,6 +94,7 @@ final class VietnameseAnalyzer extends Analyzer {
         private String text = "";
         private String lower = "";
         private int finalOffset;
+        private int lastStart;
 
         VnWordTokenizer(VnSegmenter segmenter) {
             this.segmenter = segmenter;
@@ -95,8 +106,9 @@ final class VietnameseAnalyzer extends Analyzer {
             pos = 0;
             cursor = 0;
             finalOffset = 0;
+            lastStart = 0;
             text = readAll(input);
-            lower = text.toLowerCase();
+            lower = lowerSameLength(text);
             try {
                 forms = segmenter.segment(text);
             } catch (UncheckedIOException e) {
@@ -125,13 +137,17 @@ final class VietnameseAnalyzer extends Analyzer {
                 end = span[1];
                 cursor = end;
             }
+            // offset khong duoc di lui va khong vuot qua van ban (IndexWriter se tu choi ca tai lieu)
+            start = Math.min(Math.max(start, lastStart), text.length());
+            end = Math.min(Math.max(end, start), text.length());
+            lastStart = start;
             finalOffset = Math.max(finalOffset, end);
             offsetAtt.setOffset(correctOffset(start), correctOffset(end));
             return true;
         }
 
         private int[] locateSpan(String form) {
-            String[] sylls = form.toLowerCase().split("_");
+            String[] sylls = lowerSameLength(form).split("_");
             if (sylls.length == 0 || sylls[0].isEmpty()) {
                 return null;
             }
@@ -162,6 +178,19 @@ final class VietnameseAnalyzer extends Analyzer {
             forms = List.of();
             text = "";
             lower = "";
+        }
+
+        /**
+         * Chu thuong TUNG KY TU, giu nguyen do dai. String.toLowerCase() co the lam chuoi dai ra
+         * ("İ" -> "i" + dau cham ket hop), khi do vi tri tim trong ban chu thuong lech khoi van ban
+         * goc va offset di lui -> IndexWriter tu choi ca tai lieu.
+         */
+        private static String lowerSameLength(String s) {
+            char[] cs = s.toCharArray();
+            for (int i = 0; i < cs.length; i++) {
+                cs[i] = Character.toLowerCase(cs[i]);
+            }
+            return new String(cs);
         }
 
         private static String readAll(Reader r) throws IOException {

@@ -1,0 +1,45 @@
+# MongoDB rieng cho lucene: nap ban dump cua crawler (data/*.archive.gz) roi lap chi muc tu day.
+# Tach han khoi crawler/compose.yaml: volume rieng, cong rieng (27018), sua ben crawler khong anh huong.
+#
+#   docker compose up -d mongo                 # bat MongoDB
+#   docker compose run --rm restore            # nap ban dump (bo collection picture)
+#   DUMP=<ten-file>.archive.gz docker compose run --rm restore   # nap ban dump khac trong data/
+name: lucene
+
+services:
+  mongo:
+    # 7.0 chu khong phai 8.0: mongo 8.0 tu thoat tren kernel Linux 6.19 - 7.0.13 (TCMalloc/rseq,
+    # SERVER-121912), ma Docker Desktop hien chay kernel 7.0.12. Lucene chi doc van ban, 7.0 la du.
+    image: mongo:7.0
+    restart: unless-stopped
+    # WiredTiger mac dinh lay ~1/2 RAM; 2 GB du cho corpus nay.
+    command: ["--wiredTigerCacheSizeGB", "2"]
+    ports:
+      - "127.0.0.1:27018:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # Chay mot lan: docker compose run --rm restore
+  restore:
+    image: mongo:7.0
+    profiles: ["restore"]
+    depends_on:
+      mongo: {condition: service_healthy}
+    volumes:
+      - ./data:/dump:ro
+    command:
+      - mongorestore
+      - --uri=mongodb://mongo:27017
+      - --gzip
+      - --archive=/dump/${DUMP:-information_retrieval-20261025.archive.gz}
+      - --nsExclude=information_retrieval.picture   # anh base64, khong dung de tim kiem
+      - --drop
+
+volumes:
+  mongo_data:
+    name: lucene_mongo_data

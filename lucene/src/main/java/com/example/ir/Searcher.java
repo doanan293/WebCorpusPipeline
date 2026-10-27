@@ -8,6 +8,7 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.StoredFields;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.BooleanClause;
@@ -41,6 +42,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -48,6 +50,13 @@ import java.util.function.Consumer;
 public final class Searcher {
 
     static final String DEFAULT_FIELD = "content";
+
+    /**
+     * Cac field duoc tim va trong so: khop tieu de / anchor text (intro) dang tin hon khop noi dung.
+     * Chi muc lap tu thu muc khong co intro -> clause intro khong khop gi, khong anh huong.
+     */
+    static final Map<String, Float> FIELD_BOOSTS = Map.of("title", 3.0f, "intro", 1.5f, "content", 1.0f);
+    private static final String[] FIELDS = {"title", "intro", "content"};
 
     // Cac dau hieu cu phap QueryParser: co bat ky cai nao -> KHONG tu dong coi la cum.
     private static final java.util.regex.Pattern LUCENE_SYNTAX = java.util.regex.Pattern.compile(
@@ -90,7 +99,7 @@ public final class Searcher {
 
     /** Kieu 1: doc toan bo truy van tu danh sach (nap tu file), in console + ghi file. */
     public static void runBatch(Path indexDir, List<QueryLoader.Query> queries, Analyzer analyzer,
-                                int topK, Path outFile) throws IOException {
+                                Synonyms synonyms, double dedup, int topK, Path outFile) throws IOException {
 
         Files.createDirectories(outFile.toAbsolutePath().getParent());
 
@@ -103,6 +112,7 @@ public final class Searcher {
             tfidfSearcher.setSimilarity(new ClassicSimilarity());
             StoredFields storedFields = searcher.storedFields();
             QueryParser parser = newParser(analyzer);
+            Extras extras = new Extras(synonyms, spellSuggester(reader), dedup);
             Consumer<String> sink = teeSink(out);
 
             sink.accept("# Ket qua tim kiem Lucene (che do batch)");
@@ -111,7 +121,7 @@ public final class Searcher {
             sink.accept("");
 
             for (QueryLoader.Query q : queries) {
-                executeAndFormat(searcher, tfidfSearcher, reader, storedFields, analyzer, parser, q, topK, sink);
+                executeAndFormat(searcher, tfidfSearcher, reader, storedFields, analyzer, parser, extras, q, topK, sink);
             }
         }
         System.out.println();
@@ -119,7 +129,7 @@ public final class Searcher {
     }
 
     /** Kieu 2: nhap lan luot tung truy van tu console, hien ket qua ngay sau moi truy van. */
-    public static void runInteractive(Path indexDir, Analyzer analyzer,
+    public static void runInteractive(Path indexDir, Analyzer analyzer, Synonyms synonyms, double dedup,
                                       int topK, Path outFile) throws IOException {
 
         Files.createDirectories(outFile.toAbsolutePath().getParent());
@@ -134,6 +144,7 @@ public final class Searcher {
             tfidfSearcher.setSimilarity(new ClassicSimilarity());
             StoredFields storedFields = searcher.storedFields();
             QueryParser parser = newParser(analyzer);
+            Extras extras = new Extras(synonyms, spellSuggester(reader), dedup);
             Consumer<String> sink = teeSink(out);
 
             sink.accept("# Ket qua tim kiem Lucene (che do interactive)");
@@ -155,7 +166,7 @@ public final class Searcher {
                 if (line.equals(":q") || line.equals(":quit") || line.equals("exit")) break;
 
                 QueryLoader.Query q = new QueryLoader.Query("Q" + (++n), line);
-                executeAndFormat(searcher, tfidfSearcher, reader, storedFields, analyzer, parser, q, topK, sink);
+                executeAndFormat(searcher, tfidfSearcher, reader, storedFields, analyzer, parser, extras, q, topK, sink);
             }
             sink.accept("");
             sink.accept("# Ket thuc phien: " + n + " truy van.");
@@ -165,8 +176,25 @@ public final class Searcher {
 
     // ---- phan dung chung ----
 
+    /** Goi y chinh ta khi truy van co it ket qua hon nguong nay. */
+    private static final int SPELL_BELOW = 20;
+    /** Trong so cua cum mo rong (viet tat / dong nghia) so voi truy van goc. */
+    private static final float SYNONYM_BOOST = 0.5f;
+
+    /**
+     * Cac bo sung quanh truy van: mo rong viet tat / dong nghia, goi y chinh ta (null neu chi muc
+     * chua co field spell), nguong Jaccard de an ket qua gan trung (0 = tat).
+     */
+    private record Extras(Synonyms synonyms, SpellSuggester spell, double dedup) {}
+
+    private static SpellSuggester spellSuggester(IndexReader reader) throws IOException {
+        SpellSuggester s = new SpellSuggester(reader);
+        return s.available() ? s : null;
+    }
+
     private static QueryParser newParser(Analyzer analyzer) {
-        QueryParser parser = new QueryParser(DEFAULT_FIELD, analyzer);
+        // Tu khong ghi field -> tim tren ca title/intro/content (kem trong so); "title:..." van dung duoc
+        QueryParser parser = new MultiFieldQueryParser(FIELDS, analyzer, FIELD_BOOSTS);
         parser.setDefaultOperator(QueryParser.Operator.OR);
         return parser;
     }
@@ -202,29 +230,39 @@ public final class Searcher {
                 sylls.add(w);
             }
         }
-        if (sylls.size() == 1) {
-            return new TermQuery(new Term(DEFAULT_FIELD, sylls.get(0)));
-        }
-
-        PhraseQuery.Builder pb = new PhraseQuery.Builder();
-        pb.setSlop(VN_SLOP);
-        for (String s : sylls) {
-            pb.add(new Term(DEFAULT_FIELD, s));
-        }
-
-        BooleanQuery.Builder bb = new BooleanQuery.Builder();
-        bb.add(new BoostQuery(pb.build(), 2.0f), BooleanClause.Occur.SHOULD);
-        for (String w : words) {
-            if (w.indexOf('_') > 0) { // chi tu ghep (du dac trung) moi lam clause phu
-                bb.add(new BoostQuery(new TermQuery(new Term(DEFAULT_FIELD, w)), 0.4f),
-                        BooleanClause.Occur.SHOULD);
+        return acrossFields(field -> {
+            if (sylls.size() == 1) {
+                return new TermQuery(new Term(field, sylls.get(0)));
             }
+            PhraseQuery.Builder pb = new PhraseQuery.Builder();
+            pb.setSlop(VN_SLOP);
+            for (String s : sylls) {
+                pb.add(new Term(field, s));
+            }
+
+            BooleanQuery.Builder bb = new BooleanQuery.Builder();
+            bb.add(new BoostQuery(pb.build(), 2.0f), BooleanClause.Occur.SHOULD);
+            for (String w : words) {
+                if (w.indexOf('_') > 0) { // chi tu ghep (du dac trung) moi lam clause phu
+                    bb.add(new BoostQuery(new TermQuery(new Term(field, w)), 0.4f),
+                            BooleanClause.Occur.SHOULD);
+                }
+            }
+            return bb.build();
+        });
+    }
+
+    /** Dung cung 1 truy van tren moi field trong FIELDS, nhan trong so cua field, ghep bang OR. */
+    private static Query acrossFields(java.util.function.Function<String, Query> perField) {
+        BooleanQuery.Builder bb = new BooleanQuery.Builder();
+        for (String field : FIELDS) {
+            bb.add(new BoostQuery(perField.apply(field), FIELD_BOOSTS.get(field)), BooleanClause.Occur.SHOULD);
         }
         return bb.build();
     }
 
     /**
-     * Truy van "thuan" cho tf-idf: OR tung TU duoc tach ra (khong PhraseQuery, khong boost),
+     * Truy van "thuan" cho tf-idf: OR tung TU duoc tach ra tren moi field (khong PhraseQuery, khong boost),
      * dung cong thuc mac dinh cua Lucene (tf x idf x fieldNorm cho tung tu, cong don).
      */
     private static Query buildPlainQuery(Analyzer analyzer, String text) throws IOException {
@@ -233,12 +271,11 @@ public final class Searcher {
             return new MatchNoDocsQuery("khong con tu khoa");
         }
         java.util.LinkedHashSet<String> unique = new java.util.LinkedHashSet<>(words);
-        if (unique.size() == 1) {
-            return new TermQuery(new Term(DEFAULT_FIELD, unique.iterator().next()));
-        }
         BooleanQuery.Builder bb = new BooleanQuery.Builder();
-        for (String w : unique) {
-            bb.add(new TermQuery(new Term(DEFAULT_FIELD, w)), BooleanClause.Occur.SHOULD);
+        for (String field : FIELDS) {
+            for (String w : unique) {
+                bb.add(new TermQuery(new Term(field, w)), BooleanClause.Occur.SHOULD);
+            }
         }
         return bb.build();
     }
@@ -284,7 +321,8 @@ public final class Searcher {
     /** Parse + tim kiem 1 truy van, xuat ket qua kem doan trich chua tu khoa. */
     private static void executeAndFormat(IndexSearcher searcher, IndexSearcher tfidfSearcher, IndexReader reader,
                                          StoredFields storedFields, Analyzer analyzer, QueryParser parser,
-                                         QueryLoader.Query q, int topK, Consumer<String> sink) throws IOException {
+                                         Extras extras, QueryLoader.Query q, int topK,
+                                         Consumer<String> sink) throws IOException {
         sink.accept("==================================================");
         sink.accept("Truy van " + q.id() + ": " + q.text());
 
@@ -293,9 +331,10 @@ public final class Searcher {
         // ra ket qua khi bo tach tu chia cum hoi khac giua truy van va tai lieu.
         // Muon dieu khien tay thi dung AND/OR/NOT/ngoac kep nhu binh thuong.
         String raw = q.text().strip();
+        boolean plain = !LUCENE_SYNTAX.matcher(raw).find();
         boolean autoPhrase = analyzer instanceof VietnameseAnalyzer
                 && raw.contains(" ")
-                && !LUCENE_SYNTAX.matcher(raw).find();
+                && plain;
 
         Query luceneQuery;
         if (autoPhrase) {
@@ -322,13 +361,68 @@ public final class Searcher {
             return;
         }
 
-        TopDocs hits = searcher.search(luceneQuery, topK);
+        // Mo rong truy van "tron" bang tu dien viet tat / dong nghia: ktx -> + "ký túc xá"
+        List<String> expansions = plain ? extras.synonyms().expansions(raw) : List.of();
+        if (!expansions.isEmpty()) {
+            BooleanQuery.Builder b = new BooleanQuery.Builder();
+            b.add(luceneQuery, BooleanClause.Occur.SHOULD);
+            for (String e : expansions) {
+                Query eq = expansionQuery(analyzer, parser, e);
+                if (eq != null) b.add(new BoostQuery(eq, SYNONYM_BOOST), BooleanClause.Occur.SHOULD);
+            }
+            luceneQuery = b.build();
+            parsed = luceneQuery.toString();
+            sink.accept("  Mo rong truy van (viet tat / dong nghia): + " + String.join(" | ", expansions));
+        }
+
+        // Lay du ung vien de con du topK sau khi an ket qua gan trung
+        TopDocs hits = searcher.search(luceneQuery, extras.dedup() > 0 ? topK * 3 + 10 : topK);
         long total = hits.totalHits.value;
         sink.accept("  Query da parse: " + parsed);
         sink.accept("  Tong so tai lieu khop: " + total
                 + (total > topK ? "  (hien thi " + topK + " ket qua dau)" : ""));
 
-        if (hits.scoreDocs.length == 0) {
+        Set<Integer> shown = new HashSet<>();
+        List<ScoreDoc> results = new ArrayList<>(List.of(hits.scoreDocs));
+        if (extras.dedup() > 0 && results.size() > 1) {
+            List<ScoreDoc> kept = new ArrayList<>();
+            List<long[]> keptSketches = new ArrayList<>();
+            int hidden = 0;
+            for (ScoreDoc sd : results) {
+                if (kept.size() == topK) break;
+                long[] sk = NearDuplicates.sketch(storedFields.document(sd.doc).get("content"));
+                boolean dup = false;
+                for (long[] other : keptSketches) {
+                    if (NearDuplicates.estimate(sk, other) >= extras.dedup()) {
+                        dup = true;
+                        break;
+                    }
+                }
+                if (dup) {
+                    hidden++;
+                    shown.add(sd.doc); // khong hien lai o phan tf-idf ben duoi
+                } else {
+                    kept.add(sd);
+                    keptSketches.add(sk);
+                }
+            }
+            results = kept;
+            if (hidden > 0) {
+                sink.accept("  (da an " + hidden + " ket qua gan trung lap voi ket qua xep tren)");
+            }
+        } else if (results.size() > topK) {
+            results = results.subList(0, topK);
+        }
+
+        if (extras.spell() != null && plain && total < SPELL_BELOW) {
+            SpellSuggester.Suggestion s = extras.spell().suggest(raw);
+            if (s != null) {
+                sink.accept("  >> Co phai ban muon tim: \"" + s.text() + "\"  (" + s.hits()
+                        + " van ban chua cum nay, so voi " + s.originalHits() + ")");
+            }
+        }
+
+        if (results.isEmpty()) {
             sink.accept("  (khong co ket qua)");
             sink.accept("");
             return;
@@ -340,15 +434,14 @@ public final class Searcher {
         Query plainQuery = buildPlainQuery(analyzer, raw);
 
         Highlighter highlighter = buildHighlighter(luceneQuery, reader);
-        Set<Integer> shown = new HashSet<>();
         int rank = 0;
-        for (ScoreDoc sd : hits.scoreDocs) {
+        for (ScoreDoc sd : results) {
             Document d = storedFields.document(sd.doc);
             rank++;
             shown.add(sd.doc);
             double tfidf = tfidfSearcher.explain(plainQuery, sd.doc).getValue().doubleValue();
             sink.accept(String.format("  %2d. score=%.4f  tf-idf=%.4f  id=%s", rank, sd.score, tfidf, d.get("id")));
-            sink.accept("      file: " + d.get("path"));
+            describe(d, sink);
             sink.accept("      " + kwic(highlighter, analyzer, d.get("content")));
         }
 
@@ -357,7 +450,8 @@ public final class Searcher {
         // khoa -> van tinh duoc tf-idf > 0. Liet ke rieng de nguoi dung thay het, khong bi
         // "an" chi vi khong khop cum chinh xac.
         if (!(plainQuery instanceof MatchNoDocsQuery)) {
-            TopDocs plainHits = tfidfSearcher.search(plainQuery, Math.max(topK, reader.numDocs()));
+            // shown co toi da topK tai lieu -> lay 2*topK la du topK tai lieu moi (khong duyet het chi muc)
+            TopDocs plainHits = tfidfSearcher.search(plainQuery, 2 * topK);
             List<ScoreDoc> extra = new ArrayList<>();
             for (ScoreDoc sd : plainHits.scoreDocs) {
                 if (!shown.contains(sd.doc) && extra.size() < topK) {
@@ -371,12 +465,34 @@ public final class Searcher {
                     Document d = storedFields.document(sd.doc);
                     r2++;
                     sink.accept(String.format("  %2d. tf-idf=%.4f  id=%s", r2, sd.score, d.get("id")));
-                    sink.accept("      file: " + d.get("path"));
+                    describe(d, sink);
                     sink.accept("      " + kwic(highlighter, analyzer, d.get("content")));
                 }
             }
         }
         sink.accept("");
+    }
+
+    /** Cum mo rong: cum tieng Viet nhu truy van tron, con lai qua QueryParser. */
+    private static Query expansionQuery(Analyzer analyzer, QueryParser parser, String text) throws IOException {
+        if (analyzer instanceof VietnameseAnalyzer && text.contains(" ")) {
+            Query q = buildVietnamesePhraseQuery(analyzer, text);
+            return q instanceof MatchNoDocsQuery ? null : q;
+        }
+        try {
+            return parser.parse(QueryParser.escape(text));
+        } catch (ParseException e) {
+            return null;
+        }
+    }
+
+    /** In tieu de (neu co) va nguon cua 1 ket qua. */
+    private static void describe(Document d, Consumer<String> sink) {
+        String title = d.get("title");
+        if (title != null && !title.isBlank()) {
+            sink.accept("      title: " + title.replaceAll("\\s+", " ").strip());
+        }
+        sink.accept("      nguon: " + d.get("path"));
     }
 
     private static Highlighter buildHighlighter(Query query, IndexReader reader) throws IOException {

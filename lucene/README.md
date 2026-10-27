@@ -2,10 +2,11 @@
 
 Chương trình đơn giản minh hoạ **Apache Lucene**:
 
-- **Đầu vào**: một thư mục văn bản (`.txt`, `.md`, `.csv`, `.log`, `.pdf`) + một file truy vấn.
+- **Đầu vào**: một thư mục văn bản (`.txt`, `.md`, `.csv`, `.log`, `.pdf`) **hoặc** corpus của crawler trong MongoDB
+  (xem [Tìm kiếm trên corpus của crawler](#tìm-kiếm-trên-corpus-của-crawler-mongodb)) + một file truy vấn.
 - **Đầu ra**:
   - chỉ mục Lucene trong `index/`
-  - mô tả chỉ mục dạng đọc được trong `output/index-dump.txt` (tự sinh)
+  - mô tả chỉ mục dạng đọc được trong `output/index-dump.txt` (tự sinh, chỉ khi chỉ mục ≤ 1000 tài liệu)
   - kết quả tìm kiếm: in ra console + `output/results.txt`
 
 ## Yêu cầu
@@ -97,6 +98,90 @@ Chỉ dùng được với `--analyzer vietnamese` (mặc định) — báo lỗ
 | `--analyzer` | `vietnamese` | `vietnamese` (tách từ VnCoreNLP) \| `standard` \| `english` (stemming) |
 | `--vn-home` | `.` | thư mục chứa `lib/VnCoreNLP-1.2.jar` và `models/` (cho `--analyzer vietnamese`) |
 | `--skip-index` | (tắt) | bỏ qua lập chỉ mục nếu `index/` đã có sẵn |
+| `--source` | `files` | `files` (đọc `--docs`) \| `mongo` (đọc corpus của crawler trong MongoDB) |
+| `--mongo-uri` | `mongodb://localhost:27018` | MongoDB của `compose.yaml` (cho `--source mongo`) |
+| `--mongo-db` | `information_retrieval` | database chứa `html`, `other` |
+| `--limit` | `0` (tất cả) | chỉ lập chỉ mục N tài liệu đầu (để thử nhanh với `--source mongo`) |
+| `--synonyms` | `synonyms.txt` | từ điển viết tắt / đồng nghĩa để mở rộng truy vấn; `--no-synonyms` để tắt |
+| `--dedup` | `0.9` | ngưỡng Jaccard để ẩn kết quả gần trùng lặp; `--no-dedup` để tắt |
+
+## Bổ sung quanh truy vấn
+
+Ba bổ sung chạy tự động, không cần lệnh riêng:
+
+**Mở rộng viết tắt / đồng nghĩa** — `synonyms.txt`, mỗi dòng một nhóm từ tương đương (`ký túc xá, ktx`). Truy
+vấn "trơn" chứa một thành viên (so khớp không dấu, nguyên từ) thì các thành viên còn lại được thêm vào truy vấn
+dạng OR với trọng số 0.5:
+
+```
+Truy van Q1: ktx
+  Mo rong truy van (viet tat / dong nghia): + ký túc xá
+```
+
+Tránh đưa vào viết tắt trùng với từ thường gặp (ví dụ "ai" vừa là AI vừa là "ai là…"), sẽ mở rộng sai.
+
+**Gợi ý sửa lỗi chính tả** — khi truy vấn trơn có ít hơn 20 kết quả. Bộ từ vựng là field `spell` (âm tiết còn
+dấu của tiêu đề + nội dung). Mỗi âm tiết lấy tối đa 8 âm tiết cách nó 1–2 phép sửa (Levenshtein; 1 phép với âm
+tiết ≤ 3 ký tự); rồi thay lần lượt từng âm tiết, đếm số văn bản chứa **nguyên cụm**, giữ phương án nhiều nhất
+(tối đa 2 lượt). Nhờ kiểm tra trong ngữ cảnh mà "sử lý" được sửa thành "xử lý" dù "sử" là từ đúng chính tả. Chỉ
+gợi ý khi cụm gốc không có trong văn bản nào, hoặc cụm mới nhiều gấp ≥ 10 lần (để không đổi viết tắt có thật như
+"cntt"):
+
+```
+Truy van Q1: sử lý ngôn ngữ
+  >> Co phai ban muon tim: "xử lý ngôn ngữ"  (2 van ban chua cum nay, so voi 0)
+```
+
+Chỉ mục lập trước khi có field `spell` thì không gợi ý (lập lại chỉ mục để bật).
+
+**Ẩn kết quả gần trùng lặp** — nhiều trang khoa/viện đăng lại cùng một nội dung. Mỗi kết quả được biểu diễn
+bằng tập chuỗi 4 từ liên tiếp; độ giống nhau (hệ số Jaccard) ước lượng bằng MinHash 128 hàm băm. Kết quả giống
+một kết quả xếp trên với Jaccard ≥ 0.9 bị ẩn, chương trình lấy thêm ứng viên để vẫn đủ top-K:
+
+```
+  (da an 1 ket qua gan trung lap voi ket qua xep tren)
+```
+
+## Tìm kiếm trên corpus của crawler (MongoDB)
+
+Crawler (`../crawler`) lưu kết quả vào MongoDB, bản dump `information_retrieval-<ngày>.archive.gz` đặt trong
+`data/` (không commit, `lucene/data` nằm trong `.gitignore`). `compose.yaml` ở thư mục này dựng **một MongoDB riêng
+cho lucene** — volume `lucene_mongo_data`, cổng `127.0.0.1:27018` — tách hẳn khỏi `crawler/compose.yaml`, nên sửa bên
+crawler không ảnh hưởng tới đây.
+
+```bash
+docker compose up -d mongo                                  # 1. bật MongoDB
+docker compose run --rm restore                             # 2. nạp bản dump (một lần, bỏ collection picture)
+mvn -q package
+java -Xmx4g -jar target/lucene-search.jar --source mongo --index index-mongo --limit 5000 --mode batch \
+     --queries data/queries-vi.txt                          # 3. thử trên 5000 tài liệu
+java -Xmx4g -jar target/lucene-search.jar --source mongo --index index-mongo   # 4. lập chỉ mục toàn bộ
+java -jar target/lucene-search.jar --index index-mongo --skip-index            # 5. các lần sau: chỉ tìm kiếm
+```
+
+- Bản dump khác tên: `DUMP=<tên-file>.archive.gz docker compose run --rm restore`. `restore` chạy `--drop` nên nạp lại
+  sẽ thay dữ liệu cũ.
+- Dùng `mongo:7.0` chứ không phải `8.0`: MongoDB 8.0 tự thoát trên kernel Linux 6.19–7.0.13
+  ([SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912)), mà Docker Desktop đang chạy kernel 7.0.12.
+- Nên dùng thư mục chỉ mục riêng (`--index index-mongo`) để không ghi đè chỉ mục của bộ mẫu `data/docs`.
+
+Tài liệu Lucene lấy từ hai collection ([schema](../crawler/docs/data-schema.md#mongodb)):
+
+| Collection | Một tài liệu Lucene | `id` | `title` | `intro` | `content` |
+|---|---|---|---|---|---|
+| `html` | một trang (bỏ trang trùng nội dung — có `duplicate_of` — và trang rỗng) | `url` | `title` | `intro` | `content` |
+| `other` | một tệp PDF/DOCX/XLSX… (bỏ tệp rỗng) | `url` | tên tệp trong URL | — | `content` |
+
+`graph` không được lập chỉ mục riêng: crawler đã gộp văn bản các liên kết trỏ tới mỗi trang (anchor text) vào
+`html.intro`. `picture` (ảnh base64) không được nạp.
+
+Truy vấn không ghi field sẽ tìm trên cả ba field với trọng số **`title` ×3, `intro` ×1.5, `content` ×1**: trang có
+từ khoá trong tiêu đề, hoặc được các trang khác nhắc tới bằng từ khoá đó, xếp trên trang chỉ nhắc tới trong nội
+dung. Muốn tìm một field: `title:"tuyển sinh"`. Đoạn trích (KWIC) vẫn cắt từ `content`.
+
+Lập chỉ mục được đọc kiểu stream (cursor MongoDB), không nạp cả corpus vào RAM, và in tiến độ mỗi 1000 tài liệu.
+Bước chậm nhất là **tách từ VnCoreNLP** (một luồng): xem tốc độ `tl/s` ở bước thử 3 để ước thời gian lập toàn bộ,
+hoặc dùng `--analyzer standard` nếu cần nhanh.
 
 ## Đoạn trích chứa từ khoá (KWIC)
 
@@ -107,7 +192,8 @@ Mỗi kết quả in kèm một đoạn văn bản **cắt quanh vị trí từ 
 
 ```
   1. score=0.5645  id=ranking-bm25.txt
-     file: data/docs/ranking-bm25.txt
+     title: ranking-bm25.txt
+     nguon: data/docs/ranking-bm25.txt
      … Lucene, use «BM25» as the default ranking function. «BM25» is a probabilistic model … Modern search engines use «BM25» as the default …
 ```
 
@@ -227,7 +313,7 @@ mvn -q compile exec:java -Dexec.args="--mode batch"      # batch
 ## Định dạng file truy vấn (`data/queries.txt`)
 
 - Mỗi dòng một truy vấn. Dòng trống hoặc bắt đầu bằng `#` bị bỏ qua.
-- Dùng được cú pháp `QueryParser` của Lucene: `AND`, `OR`, `NOT`, `"cụm từ"`, `tiền tố*`, `filename:tên`.
+- Dùng được cú pháp `QueryParser` của Lucene: `AND`, `OR`, `NOT`, `"cụm từ"`, `tiền tố*` (cả có dấu: `tuyển*`), `title:tên` (tiêu đề trang, hoặc tên file với `--source files`).
 - Muốn tự đặt mã truy vấn: `<id><TAB><nội dung>` (ví dụ `Q99<TAB>elasticsearch OR solr`).
 
 ## Xem nội dung chỉ mục
@@ -236,7 +322,7 @@ Thư mục `index/` là file nhị phân (`.cfs`), phải xem qua công cụ.
 
 ### File mô tả tự sinh — `output/index-dump.txt`
 
-**Mỗi lần lập chỉ mục, chương trình tự ghi** một file văn bản mô tả toàn bộ chỉ mục:
+**Mỗi lần lập chỉ mục (khi chỉ mục ≤ 1000 tài liệu), chương trình tự ghi** một file văn bản mô tả toàn bộ chỉ mục:
 
 - **Tổng quan**: số tài liệu, số segment, dung lượng.
 - **Bảng Field**: mỗi field được đánh chỉ mục kiểu gì (`DOCS` / `DOCS_AND_FREQS_AND_POSITIONS` / `NONE`), có `stored` / `norms` không.
@@ -285,9 +371,13 @@ Tải bản `lucene-9.12.3` từ trang Apache, chạy `luke.sh` / `luke.bat`, m�
 |---|---|---|
 | Rút văn bản | `TextExtractor` | đọc text thẳng; PDF qua Apache PDFBox |
 | Nạp tài liệu | `DocLoader` | quét thư mục đệ quy → `List<Doc>` (id = đường dẫn tương đối) |
-| Tạo chỉ mục | `Indexer` | `IndexWriter` + analyzer; field `content` (phân tích **và lưu** để highlighter cắt được đoạn trích), `id`/`path`/`filename` |
+| Nạp từ MongoDB | `MongoDocLoader` | duyệt cursor `html` rồi `other` (`--source mongo`), từng tài liệu một |
+| Tạo chỉ mục | `Indexer` | `IndexWriter` + analyzer; field `content` (phân tích **và lưu** để highlighter cắt được đoạn trích), `title`, `intro` (chỉ phân tích), `id`/`path` |
 | Nạp truy vấn | `QueryLoader` | đọc `queries.txt` (mode batch) |
-| Tìm kiếm | `Searcher` | `runBatch` (từ file) / `runInteractive` (REPL ở console); dùng chung `QueryParser` → `IndexSearcher.search` → top-K BM25; `Highlighter` cắt đoạn trích, `teeSink` tô nền ANSI (console) / bọc `«...»` (file) |
+| Tìm kiếm | `Searcher` | `runBatch` (từ file) / `runInteractive` (REPL ở console); `MultiFieldQueryParser` trên `title`/`intro`/`content` → `IndexSearcher.search` → top-K BM25; `Highlighter` cắt đoạn trích, `teeSink` tô nền ANSI (console) / bọc `«...»` (file) |
+| Mở rộng truy vấn | `Synonyms` | đọc `synonyms.txt`, thêm cụm viết tắt / đồng nghĩa vào truy vấn |
+| Gợi ý chính tả | `SpellSuggester` | `DirectSpellChecker` trên field `spell` + đếm cụm trong field `content` |
+| Ẩn trùng lặp | `NearDuplicates` | chuỗi 4 từ + MinHash, ước lượng Jaccard giữa các kết quả |
 | Tách từ tiếng Việt | `VnSegmenter` + `VietnameseAnalyzer` + `CompoundSplitFilter` | nạp động VnCoreNLP từ `lib/`; token là **từ** (`trí_tuệ_nhân_tạo`) + âm tiết cùng vị trí; kèm bỏ dấu + lọc từ dừng |
 | Xem chỉ mục | `IndexDump` | tiện ích riêng: in field, từ điển term, postings (`java -cp ... com.example.ir.IndexDump`) |
 
@@ -299,3 +389,4 @@ Tải bản `lucene-9.12.3` từ trang Apache, chạy `luke.sh` / `luke.bat`, m�
 - Mỗi lần chạy, chỉ mục được tạo lại từ đầu (`OpenMode.CREATE`); dùng `--skip-index` để giữ lại.
 - `content` được lưu bản gốc (`Store.YES`) để `Highlighter` cắt đoạn trích. Nếu tập văn bản rất lớn và không cần snippet, đổi lại `Store.NO` trong `Indexer`.
 - VnCoreNLP dùng log4j 1.x nên khi khởi tạo có thể in dòng `INFO ... Loading Word Segmentation model` — bình thường.
+- Văn bản được chuẩn hoá Unicode NFC khi nạp (cả truy vấn) — văn bản web dạng NFD (dấu tách rời) vẫn khớp.

@@ -123,13 +123,15 @@ final class VnSegmenter implements AutoCloseable {
         List<String> out = new ArrayList<>();
         try {
             synchronized (pipeline) {
-                Object ann = annotationClass.getConstructor(String.class).newInstance(text);
-                annotate.invoke(pipeline, ann);
-                List<?> sentences = (List<?>) getSentences.invoke(ann);
-                if (sentences != null) {
-                    for (Object s : sentences) {
-                        for (Object w : (List<?>) getWords.invoke(s)) {
-                            out.add((String) getForm.invoke(w));
+                for (String chunk : chunks(text)) {
+                    Object ann = annotationClass.getConstructor(String.class).newInstance(chunk);
+                    annotate.invoke(pipeline, ann);
+                    List<?> sentences = (List<?>) getSentences.invoke(ann);
+                    if (sentences != null) {
+                        for (Object s : sentences) {
+                            for (Object w : (List<?>) getWords.invoke(s)) {
+                                out.add((String) getForm.invoke(w));
+                            }
                         }
                     }
                 }
@@ -140,6 +142,36 @@ final class VnSegmenter implements AutoCloseable {
         List<String> result = List.copyOf(out);
         cache.put(text, result);
         return result;
+    }
+
+    /**
+     * VnCoreNLP tach tu theo CAU, thoi gian tang rat nhanh theo do dai cau. Bang / danh sach
+     * khong co dau cham thanh 1 "cau" hang chuc nghin ky tu -> treo hang phut. Cat truoc theo
+     * dong, dong nao dai hon {@value MAX_CHUNK} ky tu thi cat o khoang trang gan nhat.
+     */
+    static final int MAX_CHUNK = 1000;
+
+    static List<String> chunks(String text) {
+        List<String> out = new ArrayList<>();
+        for (String line : text.split("\n")) {
+            int start = 0;
+            while (line.length() - start > MAX_CHUNK) {
+                int cut = line.lastIndexOf(' ', start + MAX_CHUNK);
+                if (cut <= start) {
+                    cut = start + MAX_CHUNK; // khong co khoang trang: cat cung
+                }
+                addIfText(out, line.substring(start, cut));
+                start = cut;
+            }
+            addIfText(out, line.substring(start));
+        }
+        return out;
+    }
+
+    private static void addIfText(List<String> out, String s) {
+        if (!s.isBlank()) {
+            out.add(s);
+        }
     }
 
     @Override

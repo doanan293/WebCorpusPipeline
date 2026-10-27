@@ -14,6 +14,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <lucene.version>9.12.3</lucene.version>
         <pdfbox.version>3.0.8</pdfbox.version>
+        <mongodb.version>5.2.1</mongodb.version>
         <exec.mainClass>com.example.ir.Main</exec.mainClass>
     </properties>
 
@@ -38,10 +39,27 @@
             <artifactId>lucene-highlighter</artifactId>
             <version>${lucene.version}</version>
         </dependency>
+        <!-- DirectSpellChecker: goi y sua loi chinh ta tu bo tu vung cua chi muc -->
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-suggest</artifactId>
+            <version>${lucene.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
             <version>${pdfbox.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.mongodb</groupId>
+            <artifactId>mongodb-driver-sync</artifactId>
+            <version>${mongodb.version}</version>
+        </dependency>
+        <!-- driver Mongo log qua SLF4J; khong co binding thi in canh bao moi lan chay -> tat log -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-nop</artifactId>
+            <version>2.0.16</version>
         </dependency>
     </dependencies>
 

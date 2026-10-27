@@ -28,10 +28,9 @@ uv run crawler --help
 ```
 
 Xem [hướng dẫn crawler](crawler/README.md) để cấu hình, chạy các khối bằng Docker và chia sẻ corpus
-(MongoDB, Kaggle). `lucene/` hiện chưa đọc corpus này. Để lập chỉ mục, nạp bản dump Mongo của crawler
-(`mongorestore --archive=information_retrieval-<ngày>.archive.gz --gzip`) rồi đọc database `information_retrieval`:
-`html` (`title`, `content`, `intro`), `other` (`content`), `graph` (`src`, `dest`, `intro`); `picture` chỉ là ảnh
-base64, bỏ được bằng `--nsExclude 'information_retrieval.picture'`. Schema:
+(MongoDB, Kaggle). `lucene/` lập chỉ mục corpus này từ bản dump Mongo của crawler, nạp vào MongoDB riêng của
+`lucene/compose.yaml` (`html`, `other`; bỏ `picture`): xem
+[lucene/README.md](lucene/README.md#tìm-kiếm-trên-corpus-của-crawler-mongodb). Schema:
 [crawler/docs/data-schema.md](crawler/docs/data-schema.md#mongodb).
 
 ### Kiểm tra mã và pre-commit

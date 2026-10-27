@@ -1,0 +1,31 @@
+# Tu dien viet tat / dong nghia de MO RONG TRUY VAN.
+# Moi dong 1 nhom tu tuong duong, ngan cach bang dau phay. So khop khong phan biet dau va hoa/thuong,
+# theo nguyen tu: truy van chua 1 thanh vien -> cac thanh vien con lai duoc them vao (trong so 0.5).
+# Tranh viet tat trung voi tu thuong gap (vd. "ai" = "ai" la ai) vi se mo rong sai.
+
+# --- Dai hoc Bach khoa Ha Noi ---
+đại học bách khoa hà nội, bách khoa hà nội, đhbk hà nội, đhbkhn, hust
+ký túc xá, ktx
+sinh viên, sv
+giảng viên, gv
+giáo sư, gs
+phó giáo sư, pgs
+nghiên cứu sinh, ncs
+thời khóa biểu, tkb
+chương trình đào tạo, ctđt
+công tác sinh viên, ctsv
+đồ án tốt nghiệp, đatn
+trung học phổ thông, thpt
+đánh giá tư duy, tsa
+điểm chuẩn, điểm trúng tuyển
+trường công nghệ thông tin và truyền thông, soict
+trường điện - điện tử, seee
+trường cơ khí, sme
+trường kinh tế, sem
+khoa toán - tin, fami
+kỹ thuật y sinh, bme
+
+# --- Chuyen nganh ---
+công nghệ thông tin, cntt
+học máy, machine learning
+xử lý ngôn ngữ tự nhiên, nlp

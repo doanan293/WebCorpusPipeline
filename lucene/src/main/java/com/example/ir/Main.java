@@ -20,7 +20,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Dau vao : 1 thu muc van ban (.txt/.pdf...) + truy van.
+ * Dau vao : 1 thu muc van ban (.txt/.pdf...) HOAC corpus cua crawler trong MongoDB + truy van.
  * Dau ra  : chi muc Lucene (thu muc index/) + ket qua tim kiem (console + output/results.txt).
  *
  * Ba kieu chay (--mode):
@@ -32,14 +32,25 @@ import java.util.Map;
  *   Can chay 1 lan:  bash scripts/setup-vncorenlp.sh
  *   Neu chua co VnCoreNLP -> canh bao va tu dong lui ve "standard".
  *
+ * Nguon van ban (--source):
+ *   files : thu muc --docs (mac dinh data/docs).
+ *   mongo : database --mongo-db tai --mongo-uri (MongoDB cua compose.yaml, cong 27018);
+ *           --limit N de thu tren N tai lieu dau.
+ *
  * Vi du:
  *   java -jar target/lucene-search.jar                              # interactive, analyzer vietnamese
  *   java -jar target/lucene-search.jar --mode batch --queries data/queries-vi.txt
  *   java -jar target/lucene-search.jar --mode segment                # xem ket qua tach tu
  *   java -jar target/lucene-search.jar --analyzer standard          # khong dung VnCoreNLP
  *   java -jar target/lucene-search.jar --skip-index                 # dung lai chi muc co san
+ *   java -jar target/lucene-search.jar --source mongo --index index-mongo --limit 5000
  */
 public final class Main {
+
+    /** Chi tu ghi output/index-dump.txt khi chi muc khong qua so tai lieu nay. */
+    private static final int REPORT_MAX_DOCS = 1000;
+    /** Nguong Jaccard (MinHash) de an ket qua gan trung lap. */
+    private static final double DEFAULT_DEDUP = 0.9;
 
     public static void main(String[] args) throws Exception {
         forceUtf8Console(); // tieng Viet hien dung tren Windows (console codepage khong phai UTF-8)
@@ -58,6 +69,18 @@ public final class Main {
         boolean batch       = !segment && (mode.startsWith("b") || opt.containsKey("batch"));
         boolean interactive = !segment && !batch;
         boolean skipIndex   = opt.containsKey("skip-index");
+        String source       = opt.getOrDefault("source", "files").toLowerCase(Locale.ROOT);
+        boolean fromMongo   = source.equals("mongo");
+        String mongoUri     = opt.getOrDefault("mongo-uri", MongoDocLoader.DEFAULT_URI);
+        String mongoDb      = opt.getOrDefault("mongo-db", MongoDocLoader.DEFAULT_DB);
+        long limit          = Long.parseLong(opt.getOrDefault("limit", "0"));
+        if (!fromMongo && !source.equals("files")) {
+            System.err.println("--source khong ro '" + source + "' (files | mongo)");
+            System.exit(2);
+        }
+        Synonyms synonyms = loadSynonyms(opt);
+        double dedup = opt.containsKey("no-dedup") ? 0
+                : Double.parseDouble(opt.getOrDefault("dedup", String.valueOf(DEFAULT_DEDUP)));
 
         try (Analyzer analyzer = buildAnalyzer(anName, vnHome)) {
             String effective = analyzer instanceof VietnameseAnalyzer ? "vietnamese"
@@ -76,13 +99,20 @@ public final class Main {
                 return;
             }
 
-            System.out.println("  docs     : " + docsDir.toAbsolutePath());
+            if (fromMongo) {
+                System.out.println("  source   : mongo " + mongoUri + " / " + mongoDb
+                        + (limit > 0 ? "  (limit " + limit + ")" : ""));
+            } else {
+                System.out.println("  docs     : " + docsDir.toAbsolutePath());
+            }
             if (!interactive) {
                 System.out.println("  queries  : " + queries.toAbsolutePath());
             }
             System.out.println("  index    : " + indexDir.toAbsolutePath());
             System.out.println("  output   : " + outFile.toAbsolutePath());
             System.out.println("  top-K    : " + topK);
+            System.out.println("  viet tat : " + synonyms.size() + " nhom"
+                    + "  |  an trung lap: " + (dedup > 0 ? "Jaccard >= " + dedup : "tat"));
             System.out.println();
 
             // 1) + 2) Nap van ban va tao chi muc (co the bo qua bang --skip-index)
@@ -93,35 +123,66 @@ public final class Main {
                 if (skipIndex) {
                     System.out.println("(--skip-index nhung chua co chi muc hop le -> van tao moi)");
                 }
-                System.out.println("== [1/2] Nap van ban ==");
-                List<DocLoader.Doc> docs = DocLoader.load(docsDir);
-                if (docs.isEmpty()) {
-                    System.err.println("Khong tim thay van ban hop le trong " + docsDir.toAbsolutePath());
-                    System.exit(1);
+                int n;
+                if (fromMongo) {
+                    System.out.println("== [1/2] Ket noi MongoDB ==");
+                    try (MongoDocLoader docs = MongoDocLoader.open(mongoUri, mongoDb, limit)) {
+                        System.out.println("  " + docs.describe());
+                        System.out.println();
+                        System.out.println("== [2/2] Tao chi muc (doc tu MongoDB) ==");
+                        Files.createDirectories(indexDir);
+                        n = Indexer.build(indexDir, docs, analyzer);
+                    } catch (IOException e) {
+                        System.err.println("!! " + e.getMessage());
+                        System.exit(1);
+                        return;
+                    }
+                } else {
+                    System.out.println("== [1/2] Nap van ban ==");
+                    List<DocLoader.Doc> docs = DocLoader.load(docsDir);
+                    if (docs.isEmpty()) {
+                        System.err.println("Khong tim thay van ban hop le trong " + docsDir.toAbsolutePath());
+                        System.exit(1);
+                    }
+                    docs.forEach(d -> System.out.printf("  + %-28s (%,d ky tu)%n", d.id(), d.content().length()));
+
+                    System.out.println();
+                    System.out.println("== [2/2] Tao chi muc ==");
+                    Files.createDirectories(indexDir);
+                    n = Indexer.build(indexDir, docs, analyzer);
                 }
-                docs.forEach(d -> System.out.printf("  + %-28s (%,d ky tu)%n", d.id(), d.content().length()));
-
-                System.out.println();
-                System.out.println("== [2/2] Tao chi muc ==");
-                Files.createDirectories(indexDir);
-                int n = Indexer.build(indexDir, docs, analyzer);
                 System.out.println("  Da lap chi muc " + n + " van ban -> " + indexDir.toAbsolutePath());
-            }
 
-            // Mo ta chi muc vua tao (de xem truc quan)
-            IndexDump.writeReport(indexDir, dumpFile);
-            System.out.println("  Mo ta chi muc  -> " + dumpFile.toAbsolutePath());
+                // Mo ta chi muc vua tao (de xem truc quan) - chi voi chi muc nho, file se qua lon
+                if (n <= REPORT_MAX_DOCS) {
+                    IndexDump.writeReport(indexDir, dumpFile);
+                    System.out.println("  Mo ta chi muc  -> " + dumpFile.toAbsolutePath());
+                } else {
+                    System.out.println("  (chi muc lon, khong ghi " + dumpFile + "; xem bang IndexDump --postings)");
+                }
+            }
 
             // 3) Tim kiem
             System.out.println();
             System.out.println("== Tim kiem ==");
             if (interactive) {
-                Searcher.runInteractive(indexDir, analyzer, topK, outFile);
+                Searcher.runInteractive(indexDir, analyzer, synonyms, dedup, topK, outFile);
             } else {
                 List<QueryLoader.Query> qs = QueryLoader.load(queries);
-                Searcher.runBatch(indexDir, qs, analyzer, topK, outFile);
+                Searcher.runBatch(indexDir, qs, analyzer, synonyms, dedup, topK, outFile);
             }
         }
+    }
+
+    /** Tu dien viet tat / dong nghia: --synonyms <file> (mac dinh synonyms.txt), --no-synonyms de tat. */
+    private static Synonyms loadSynonyms(Map<String, String> opt) throws IOException {
+        if (opt.containsKey("no-synonyms")) return Synonyms.empty();
+        Path f = Path.of(opt.getOrDefault("synonyms", "synonyms.txt"));
+        if (!Files.exists(f)) {
+            if (opt.containsKey("synonyms")) System.err.println("Khong thay file " + f.toAbsolutePath());
+            return Synonyms.empty();
+        }
+        return Synonyms.load(f);
     }
 
     /** Ep System.out/err sang UTF-8 (JDK 17 tren Windows mac dinh dung codepage cua console). */

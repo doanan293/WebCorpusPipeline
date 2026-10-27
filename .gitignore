@@ -13,7 +13,7 @@ lucene/data
 # lucene (Maven build, generated index/output, VnCoreNLP downloaded by lucene/scripts/setup-vncorenlp.sh)
 lucene/target/
 lucene/out/
-lucene/index/
+lucene/index*/
 lucene/output/
 lucene/lib/
 lucene/models/
