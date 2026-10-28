@@ -29,14 +29,16 @@ import java.util.concurrent.TimeUnit;
  * Doc corpus cua crawler tu MongoDB (database information_retrieval) -> document cho Indexer.
  *
  *   html  : 1 trang = 1 tai lieu (url, title, content, intro); bo trang trung noi dung (co duplicate_of)
- *   other : 1 tep PDF/DOCX/... = 1 tai lieu (url, format, content); title lay tu ten tep trong URL
- *   graph : khong lap chi muc rieng - anchor text da duoc crawler gop vao html.intro
+ *   other : 1 tep PDF/DOCX/... = 1 tai lieu (url, format, content); title lay tu ten tep trong URL;
+ *           intro tinh tu graph (crawler chi tinh intro cho html) - xem {@link #introFor(String)}
+ *   graph : khong lap chi muc rieng - anchor text cua trang da duoc crawler gop vao html.intro
  *
  * Doc kieu stream (cursor), khong nap het vao RAM. Schema: crawler/docs/data-schema.md#mongodb.
  *
  * Dong bo tang dan ({@link #changes(String)}): crawler them trang moi, thu thap lai trang cu, tinh lai
  * intro cua trang duoc tro toi - moi lan ghi deu dat updated_at (ISO 8601 UTC, so sanh duoc nhu chuoi).
  * Doc cac document co updated_at >= moc; trang trung noi dung / rong tra ve de XOA khoi chi muc.
+ * Them: cac tep ma nhung trang vua doi tro toi (intro cua tep doi theo lien ket, updated_at cua tep thi khong).
  */
 final class MongoDocLoader implements Iterable<DocLoader.Doc>, AutoCloseable {
 
@@ -44,6 +46,10 @@ final class MongoDocLoader implements Iterable<DocLoader.Doc>, AutoCloseable {
     static final String DEFAULT_DB = "information_retrieval";
 
     private static final List<String> COLLECTIONS = List.of("html", "other");
+    /** Nhu crawler (domain/storage/intro.py): giu toi da 20 van ban lien ket. */
+    private static final int MAX_INTRO_TEXTS = 20;
+    /** So url trang moi lan hoi graph khi tim tep bi anh huong. */
+    private static final int LINK_CHUNK = 500;
     // Lo nho de moi lan getMore khong cach nhau qua lau khi tach tu cham (cursor het han sau 10 phut).
     private static final int BATCH_SIZE = 100;
 
@@ -92,6 +98,10 @@ final class MongoDocLoader implements Iterable<DocLoader.Doc>, AutoCloseable {
         return sb.toString();
     }
 
+    MongoDatabase database() {
+        return db;
+    }
+
     /** 1 thay doi can dua vao chi muc: doc = null nghia la xoa url khoi chi muc. */
     record Change(String url, DocLoader.Doc doc) {}
 
@@ -110,11 +120,15 @@ final class MongoDocLoader implements Iterable<DocLoader.Doc>, AutoCloseable {
         }
     }
 
-    /** Cac document html / other co updated_at >= since (them moi, cap nhat, hoac thanh trung / rong). */
+    /**
+     * Cac document html / other co updated_at >= since (them moi, cap nhat, hoac thanh trung / rong),
+     * roi cac tep (other) ma nhung trang html vua doi tro toi - vi van ban lien ket toi tep co the vua doi.
+     */
     Iterable<Change> changes(String since) {
-        return () -> new java.util.Iterator<>() {
-            private final Iterator<String> collections = COLLECTIONS.iterator();
-            private String collection;
+        return () -> new Iterator<>() {
+            private int phase;                                   // 0 html, 1 other, 2 tep duoc tro toi
+            private final java.util.Set<String> changedPages = new java.util.HashSet<>();
+            private final java.util.Set<String> seenFiles = new java.util.HashSet<>();
             private MongoCursor<Document> cursor;
 
             @Override
@@ -122,16 +136,13 @@ final class MongoDocLoader implements Iterable<DocLoader.Doc>, AutoCloseable {
                 while (cursor == null || !cursor.hasNext()) {
                     if (cursor != null) cursor.close();
                     cursor = null;
-                    if (!collections.hasNext()) return false;
-                    collection = collections.next();
-                    cursor = db.getCollection(collection)
-                            .find(Filters.gte("updated_at", since))
-                            .projection(Projections.fields(
-                                    Projections.include("url", "title", "intro", "content", "format", "duplicate_of"),
-                                    Projections.excludeId()))
-                            .batchSize(BATCH_SIZE)
-                            .noCursorTimeout(true)
-                            .iterator();
+                    if (phase == 3) return false;
+                    cursor = switch (phase++) {
+                        case 0 -> changedSince("html", since);
+                        case 1 -> changedSince("other", since);
+                        default -> linkedFiles(changedPages, seenFiles);
+                    };
+                    if (cursor == null) return false;
                 }
                 return true;
             }
@@ -140,9 +151,68 @@ final class MongoDocLoader implements Iterable<DocLoader.Doc>, AutoCloseable {
             public Change next() {
                 if (!hasNext()) throw new NoSuchElementException();
                 Document d = cursor.next();
-                return new Change(d.getString("url"), toDoc(collection, d));
+                String collection = phase == 1 ? "html" : "other";
+                String url = d.getString("url");
+                if (phase == 1) changedPages.add(url);
+                else seenFiles.add(url);
+                return new Change(url, toDoc(collection, d));
             }
         };
+    }
+
+    private MongoCursor<Document> changedSince(String collection, String since) {
+        return db.getCollection(collection)
+                .find(Filters.gte("updated_at", since))
+                .projection(Projections.fields(
+                        Projections.include("url", "title", "intro", "content", "format", "duplicate_of"),
+                        Projections.excludeId()))
+                .batchSize(BATCH_SIZE)
+                .noCursorTimeout(true)
+                .iterator();
+    }
+
+    /** Cac tep (other) duoc nhung trang trong pages tro toi, tru cac tep da xu ly o luot nay. */
+    private MongoCursor<Document> linkedFiles(java.util.Set<String> pages, java.util.Set<String> seen) {
+        java.util.Set<String> dests = new java.util.HashSet<>();
+        List<String> all = new java.util.ArrayList<>(pages);
+        for (int i = 0; i < all.size(); i += LINK_CHUNK) {
+            List<String> chunk = all.subList(i, Math.min(all.size(), i + LINK_CHUNK));
+            for (Document e : db.getCollection("graph").find(Filters.in("src", chunk))
+                    .projection(Projections.fields(Projections.include("dest"), Projections.excludeId()))) {
+                dests.add(e.getString("dest"));
+            }
+        }
+        dests.removeAll(seen);
+        dests.removeAll(pages);
+        if (dests.isEmpty()) return null;
+        return db.getCollection("other")
+                .find(Filters.in("url", dests))
+                .projection(Projections.fields(
+                        Projections.include("url", "title", "content", "format"), Projections.excludeId()))
+                .batchSize(BATCH_SIZE)
+                .noCursorTimeout(true)
+                .iterator();
+    }
+
+    /**
+     * Van ban lien ket tro toi url, tinh nhu crawler tinh html.intro (build_intro): gop khoang trang,
+     * bo rong, bo trung, sap theo so lan xuat hien giam dan (bang nhau thi theo chu), toi da 20 dong.
+     */
+    String introFor(String url) {
+        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        for (Document e : db.getCollection("graph").find(Filters.eq("dest", url))
+                .projection(Projections.fields(Projections.include("intro"), Projections.excludeId()))) {
+            String t = e.getString("intro");
+            if (t == null) continue;
+            t = t.strip().replaceAll("\\s+", " ");
+            if (!t.isEmpty()) counts.merge(t, 1, Integer::sum);
+        }
+        return counts.entrySet().stream()
+                .sorted(java.util.Map.Entry.<String, Integer>comparingByValue().reversed()
+                        .thenComparing(java.util.Map.Entry.comparingByKey()))
+                .limit(MAX_INTRO_TEXTS)
+                .map(java.util.Map.Entry::getKey)
+                .collect(java.util.stream.Collectors.joining("\n"));
     }
 
     @Override
@@ -170,7 +240,7 @@ final class MongoDocLoader implements Iterable<DocLoader.Doc>, AutoCloseable {
     }
 
     /** null neu document khong duoc lap chi muc: rong, hoac trang trung noi dung voi trang khac. */
-    private static DocLoader.Doc toDoc(String collection, Document d) {
+    private DocLoader.Doc toDoc(String collection, Document d) {
         String url = d.getString("url");
         String content = d.getString("content");
         if (url == null || content == null || content.isBlank() || d.containsKey("duplicate_of")) {
@@ -183,7 +253,8 @@ final class MongoDocLoader implements Iterable<DocLoader.Doc>, AutoCloseable {
         if (title.isBlank()) {
             title = fileName(url);
         }
-        return new DocLoader.Doc(url, "mongo:other (" + nullToEmpty(d.getString("format")) + ")", title, "", content);
+        return new DocLoader.Doc(url, "mongo:other (" + nullToEmpty(d.getString("format")) + ")", title,
+                introFor(url), content);
     }
 
     /** "https://x/a/Quy%20che.pdf" -> "Quy che.pdf" (de tim duoc tep theo ten). */

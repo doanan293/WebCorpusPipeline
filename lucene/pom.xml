@@ -39,6 +39,12 @@
             <artifactId>lucene-highlighter</artifactId>
             <version>${lucene.version}</version>
         </dependency>
+        <!-- FunctionScoreQuery: nhan diem BM25 voi PageRank -->
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-queries</artifactId>
+            <version>${lucene.version}</version>
+        </dependency>
         <!-- DirectSpellChecker: goi y sua loi chinh ta tu bo tu vung cua chi muc -->
         <dependency>
             <groupId>org.apache.lucene</groupId>

@@ -88,7 +88,7 @@ Chỉ dùng được với `--analyzer vietnamese` (mặc định) — báo lỗ
 
 | Tham số | Mặc định | Ý nghĩa |
 |---|---|---|
-| `--mode` | `interactive` | `interactive` \| `batch` \| `segment` \| `sync` |
+| `--mode` | `interactive` | `interactive` \| `batch` \| `segment` \| `sync` \| `pagerank` |
 | `--docs` | `data/docs` | thư mục văn bản đầu vào |
 | `--queries` | `data/queries.txt` | file truy vấn (chỉ dùng ở mode batch) |
 | `--index` | `index` | thư mục chứa chỉ mục Lucene |
@@ -103,6 +103,7 @@ Chỉ dùng được với `--analyzer vietnamese` (mặc định) — báo lỗ
 | `--mongo-db` | `information_retrieval` | database chứa `html`, `other` |
 | `--limit` | `0` (tất cả) | chỉ lập chỉ mục N tài liệu đầu (để thử nhanh với `--source mongo`) |
 | `--synonyms` | `synonyms.txt` | từ điển viết tắt / đồng nghĩa để mở rộng truy vấn; `--no-synonyms` để tắt |
+| `--pagerank-weight` | `0.5` | điểm = BM25 × (1 + w · PageRank chuẩn hoá); `--no-pagerank` để tắt |
 | `--every` | `0` | `--mode sync`: lặp lại mỗi N giây (0 = chạy 1 lượt) |
 | `--dedup` | `0.9` | ngưỡng Jaccard để ẩn kết quả gần trùng lặp; `--no-dedup` để tắt |
 
@@ -171,10 +172,14 @@ Tài liệu Lucene lấy từ hai collection ([schema](../crawler/docs/data-sche
 | Collection | Một tài liệu Lucene | `id` | `title` | `intro` | `content` |
 |---|---|---|---|---|---|
 | `html` | một trang (bỏ trang trùng nội dung — có `duplicate_of` — và trang rỗng) | `url` | `title` | `intro` | `content` |
-| `other` | một tệp PDF/DOCX/XLSX… (bỏ tệp rỗng) | `url` | tên tệp trong URL | — | `content` |
+| `other` | một tệp PDF/DOCX/XLSX… (bỏ tệp rỗng) | `url` | tên tệp trong URL | văn bản liên kết từ `graph` | `content` |
 
-`graph` không được lập chỉ mục riêng: crawler đã gộp văn bản các liên kết trỏ tới mỗi trang (anchor text) vào
-`html.intro`. `picture` (ảnh base64) không được nạp.
+`graph` không được lập chỉ mục riêng mà dùng làm **văn bản liên kết** (anchor text): crawler đã gộp văn bản các liên
+kết trỏ tới mỗi trang vào `html.intro`, nhưng không làm cho tệp. Với `other`, lucene tự tính `intro` từ `graph` theo
+đúng quy tắc của crawler (`build_intro`: gộp khoảng trắng, bỏ rỗng / trùng, xếp theo số lần xuất hiện, tối đa 20
+dòng). Có ích nhất với tệp PDF bóc chữ bị lỗi dấu: liên kết mô tả tệp bằng tiếng Việt chuẩn, ví dụ
+`DHBK_ET-E5.pdf` (nội dung "VIÉN DIÉN TU … TUYÉN SINH") có liên kết "Ngành Kỹ thuật Y sinh". `picture` (ảnh base64)
+không được nạp.
 
 Truy vấn không ghi field sẽ tìm trên cả ba field với trọng số **`title` ×3, `intro` ×1.5, `content` ×1**: trang có
 từ khoá trong tiêu đề, hoặc được các trang khác nhắc tới bằng từ khoá đó, xếp trên trang chỉ nhắc tới trong nội
@@ -183,6 +188,26 @@ dung. Muốn tìm một field: `title:"tuyển sinh"`. Đoạn trích (KWIC) v�
 Lập chỉ mục được đọc kiểu stream (cursor MongoDB), không nạp cả corpus vào RAM, và in tiến độ mỗi 1000 tài liệu.
 Bước chậm nhất là **tách từ VnCoreNLP** (một luồng): xem tốc độ `tl/s` ở bước thử 3 để ước thời gian lập toàn bộ,
 hoặc dùng `--analyzer standard` nếu cần nhanh.
+
+## PageRank (`graph` → điểm chất lượng của trang)
+
+Khi lập chỉ mục từ MongoDB, chương trình tính **PageRank** trên đồ thị liên kết (`PageRank`):
+
+- **Đỉnh**: mọi trang `html` và tệp `other`. **Cạnh**: liên kết trong `graph` **giữa hai host khác nhau**. Khoảng 85%
+  liên kết nằm trong cùng một site (menu, chân trang, phân trang); tính cả vào thì các trang điều hướng của thư viện
+  số `dlib.hust.edu.vn` chiếm hết top. Liên kết từ site khác mới là "lời giới thiệu": PageRank cao nhất rơi vào trang
+  chủ các site (thư viện, hust.edu.vn, svbk, ctsv…) và các thông báo tuyển sinh của ts.hust.
+- **Tính**: phương pháp luỹ thừa, bước nhảy α = 0.1, trang không có liên kết ra nhảy đều tới mọi trang.
+- **Chuẩn hoá** về g(d) ∈ [0, 1] theo thang log: 0 = không có liên kết nào từ site khác, 1 = cao nhất.
+- **Xếp hạng**: `điểm = BM25 × (1 + w · g(d))`, `w` = `--pagerank-weight` (mặc định 0.5, tức trang có PageRank cao nhất
+  được cộng tối đa 50%). Nhân thay vì cộng vì điểm BM25 dao động 10–200 tuỳ truy vấn; nhân thì tác động của PageRank
+  theo tỉ lệ, như nhau ở mọi truy vấn. `--no-pagerank` để tắt. Mỗi kết quả in thêm `pagerank=…`.
+- g(d) lưu thành doc values trong chỉ mục, nên **tính lại không phải lập lại chỉ mục**:
+  ```bash
+  java -jar target/lucene-search.jar --mode pagerank --index index-mongo     # vài chục giây
+  ```
+  `--mode sync` giữ nguyên g của tài liệu được ghi đè, tài liệu mới nhận 0 cho tới lần `--mode pagerank` sau.
+  PageRank đổi chậm, chạy lại định kỳ (ví dụ mỗi ngày) là đủ.
 
 ## Đồng bộ khi MongoDB có dữ liệu mới (`--mode sync`)
 
@@ -202,6 +227,7 @@ java -jar target/lucene-search.jar --mode sync --index index-mongo --every 60   
 | `url` đã có, title / intro / content đổi | ghi đè (`updateDocument` theo `url`) |
 | `url` đã có, ghi lại nhưng không đổi gì | bỏ qua (so chữ ký SHA-1 `sig` lưu trong chỉ mục) |
 | thành trang trùng (`duplicate_of`) hoặc nội dung rỗng | xoá |
+| tệp được một trang vừa đổi trỏ tới | tính lại `intro` từ `graph`, ghi đè nếu đổi (`updated_at` của tệp không đổi khi có liên kết mới) |
 
 - **Mốc** (`updated_at` đã đồng bộ tới) lưu ngay trong commit của chỉ mục, nên chỉ mục và mốc luôn khớp; đồng bộ
   chết giữa chừng thì lượt sau làm lại từ mốc cũ. Mốc lùi 60 giây so với lúc bắt đầu đọc để không lỡ bản ghi ghi
@@ -420,6 +446,7 @@ Tải bản `lucene-9.12.3` từ trang Apache, chạy `luke.sh` / `luke.bat`, m�
 | Rút văn bản | `TextExtractor` | đọc text thẳng; PDF qua Apache PDFBox |
 | Nạp tài liệu | `DocLoader` | quét thư mục đệ quy → `List<Doc>` (id = đường dẫn tương đối) |
 | Nạp từ MongoDB | `MongoDocLoader` | duyệt cursor `html` rồi `other` (`--source mongo`), từng tài liệu một; `changes(moc)` cho đồng bộ |
+| PageRank | `PageRank` | tính trên liên kết khác host của `graph`, chuẩn hoá [0, 1], lưu doc values; `Indexer.updatePagerank` ghi đè |
 | Đồng bộ | `Indexer.sync` | thêm / ghi đè / xoá theo `url`, bỏ qua bản ghi không đổi, lưu mốc trong commit |
 | Tạo chỉ mục | `Indexer` | `IndexWriter` + analyzer; field `content` (phân tích **và lưu** để highlighter cắt được đoạn trích), `title`, `intro` (chỉ phân tích), `id`/`path` |
 | Nạp truy vấn | `QueryLoader` | đọc `queries.txt` (mode batch) |

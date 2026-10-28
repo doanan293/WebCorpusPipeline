@@ -5,9 +5,13 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.DocValuesType;
+import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.StoredFields;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.queries.function.FunctionScoreQuery;
 import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
@@ -99,7 +103,8 @@ public final class Searcher {
 
     /** Kieu 1: doc toan bo truy van tu danh sach (nap tu file), in console + ghi file. */
     public static void runBatch(Path indexDir, List<QueryLoader.Query> queries, Analyzer analyzer,
-                                Synonyms synonyms, double dedup, int topK, Path outFile) throws IOException {
+                                Synonyms synonyms, double dedup, float pagerankWeight, int topK,
+                                Path outFile) throws IOException {
 
         Files.createDirectories(outFile.toAbsolutePath().getParent());
 
@@ -112,7 +117,7 @@ public final class Searcher {
             tfidfSearcher.setSimilarity(new ClassicSimilarity());
             StoredFields storedFields = searcher.storedFields();
             QueryParser parser = newParser(analyzer);
-            Extras extras = new Extras(synonyms, spellSuggester(reader), dedup);
+            Extras extras = new Extras(synonyms, spellSuggester(reader), dedup, pagerankWeight);
             Consumer<String> sink = teeSink(out);
 
             sink.accept("# Ket qua tim kiem Lucene (che do batch)");
@@ -134,7 +139,7 @@ public final class Searcher {
      * khac) -> thay ngay van ban vua them / cap nhat ma khong can khoi dong lai.
      */
     public static void runInteractive(Path indexDir, Analyzer analyzer, Synonyms synonyms, double dedup,
-                                      int topK, Path outFile) throws IOException {
+                                      float pagerankWeight, int topK, Path outFile) throws IOException {
 
         Files.createDirectories(outFile.toAbsolutePath().getParent());
 
@@ -174,7 +179,7 @@ public final class Searcher {
                     IndexSearcher searcher = new IndexSearcher(reader);
                     IndexSearcher tfidfSearcher = new IndexSearcher(reader);
                     tfidfSearcher.setSimilarity(new ClassicSimilarity());
-                    Extras extras = new Extras(synonyms, spellSuggester(reader), dedup);
+                    Extras extras = new Extras(synonyms, spellSuggester(reader), dedup, pagerankWeight);
 
                     QueryLoader.Query q = new QueryLoader.Query("Q" + (++n), line);
                     executeAndFormat(searcher, tfidfSearcher, reader, searcher.storedFields(), analyzer, parser,
@@ -198,9 +203,15 @@ public final class Searcher {
 
     /**
      * Cac bo sung quanh truy van: mo rong viet tat / dong nghia, goi y chinh ta (null neu chi muc
-     * chua co field spell), nguong Jaccard de an ket qua gan trung (0 = tat).
+     * chua co field spell), nguong Jaccard de an ket qua gan trung (0 = tat), trong so PageRank (0 = tat).
      */
-    private record Extras(Synonyms synonyms, SpellSuggester spell, double dedup) {}
+    private record Extras(Synonyms synonyms, SpellSuggester spell, double dedup, float pagerankWeight) {}
+
+    /** Chi muc co gia tri PageRank (doc values) khong - chi muc lap tu thu muc thi khong. */
+    private static boolean hasPagerank(IndexReader reader) {
+        FieldInfo fi = FieldInfos.getMergedFieldInfos(reader).fieldInfo(PageRank.FIELD);
+        return fi != null && fi.getDocValuesType() != DocValuesType.NONE;
+    }
 
     private static SpellSuggester spellSuggester(IndexReader reader) throws IOException {
         SpellSuggester s = new SpellSuggester(reader);
@@ -390,10 +401,17 @@ public final class Searcher {
             sink.accept("  Mo rong truy van (viet tat / dong nghia): + " + String.join(" | ", expansions));
         }
 
+        // Diem chat luong tinh: BM25 * (1 + w * g(d)), g = PageRank chuan hoa trong [0, 1]
+        boolean usePagerank = extras.pagerankWeight() > 0 && hasPagerank(reader);
+        Query scoring = usePagerank
+                ? FunctionScoreQuery.boostByValue(luceneQuery, PageRank.boost(extras.pagerankWeight()))
+                : luceneQuery;
+
         // Lay du ung vien de con du topK sau khi an ket qua gan trung
-        TopDocs hits = searcher.search(luceneQuery, extras.dedup() > 0 ? topK * 3 + 10 : topK);
+        TopDocs hits = searcher.search(scoring, extras.dedup() > 0 ? topK * 3 + 10 : topK);
         long total = hits.totalHits.value;
-        sink.accept("  Query da parse: " + parsed);
+        sink.accept("  Query da parse: " + parsed
+                + (usePagerank ? "   x (1 + " + extras.pagerankWeight() + " * pagerank)" : ""));
         sink.accept("  Tong so tai lieu khop: " + total
                 + (total > topK ? "  (hien thi " + topK + " ket qua dau)" : ""));
 
@@ -455,7 +473,8 @@ public final class Searcher {
             rank++;
             shown.add(sd.doc);
             double tfidf = tfidfSearcher.explain(plainQuery, sd.doc).getValue().doubleValue();
-            sink.accept(String.format("  %2d. score=%.4f  tf-idf=%.4f  id=%s", rank, sd.score, tfidf, d.get("id")));
+            sink.accept(String.format("  %2d. score=%.4f  tf-idf=%.4f%s  id=%s", rank, sd.score, tfidf,
+                    usePagerank ? String.format("  pagerank=%.2f", PageRank.of(searcher, sd.doc)) : "", d.get("id")));
             describe(d, sink);
             sink.accept("      " + kwic(highlighter, analyzer, d.get("content")));
         }

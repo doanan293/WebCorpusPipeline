@@ -31,6 +31,7 @@ import java.util.Map;
  *   segment     : nhap 1 cau tu console, in ket qua TACH TU (VnCoreNLP) - khong dung index.
  *   sync        : dong bo tang dan chi muc voi MongoDB (them / cap nhat / xoa theo updated_at);
  *                 --every N lap lai moi N giay, khong co thi chay 1 luot.
+ *   pagerank    : tinh lai PageRank tu graph va ghi de vao chi muc (khong tach tu lai).
  *
  * Analyzer (--analyzer): mac dinh "vietnamese" (tach TU bang VnCoreNLP).
  *   Can chay 1 lan:  bash scripts/setup-vncorenlp.sh
@@ -49,6 +50,7 @@ import java.util.Map;
  *   java -jar target/lucene-search.jar --skip-index                 # dung lai chi muc co san
  *   java -jar target/lucene-search.jar --source mongo --index index-mongo --limit 5000
  *   java -jar target/lucene-search.jar --mode sync --index index-mongo --every 60
+ *   java -jar target/lucene-search.jar --mode pagerank --index index-mongo
  */
 public final class Main {
 
@@ -62,6 +64,8 @@ public final class Main {
      * duoc bo qua nho chu ky.
      */
     private static final int SYNC_OVERLAP_SECONDS = 60;
+    /** Trong so PageRank: diem = BM25 * (1 + w * g(d)), g trong [0, 1]. */
+    private static final float DEFAULT_PAGERANK_WEIGHT = 0.5f;
 
     public static void main(String[] args) throws Exception {
         forceUtf8Console(); // tieng Viet hien dung tren Windows (console codepage khong phai UTF-8)
@@ -79,7 +83,8 @@ public final class Main {
         boolean segment     = mode.startsWith("seg") || opt.containsKey("segment");
         boolean batch       = !segment && (mode.startsWith("b") || opt.containsKey("batch"));
         boolean sync        = !segment && !batch && mode.startsWith("sy");
-        boolean interactive = !segment && !batch && !sync;
+        boolean pagerank    = mode.startsWith("pa");
+        boolean interactive = !segment && !batch && !sync && !pagerank;
         boolean skipIndex   = opt.containsKey("skip-index");
         String source       = opt.getOrDefault("source", "files").toLowerCase(Locale.ROOT);
         boolean fromMongo   = source.equals("mongo");
@@ -93,6 +98,19 @@ public final class Main {
         Synonyms synonyms = loadSynonyms(opt);
         double dedup = opt.containsKey("no-dedup") ? 0
                 : Double.parseDouble(opt.getOrDefault("dedup", String.valueOf(DEFAULT_DEDUP)));
+        float prWeight = opt.containsKey("no-pagerank") ? 0
+                : Float.parseFloat(opt.getOrDefault("pagerank-weight", String.valueOf(DEFAULT_PAGERANK_WEIGHT)));
+
+        if (pagerank) {
+            System.out.println("== PageRank: tinh lai tu graph va ghi de vao chi muc " + indexDir.toAbsolutePath() + " ==");
+            try (MongoDocLoader mongo = MongoDocLoader.open(mongoUri, mongoDb, 0)) {
+                Map<String, Float> g = computePagerank(mongo);
+                long t0 = System.nanoTime();
+                int n = Indexer.updatePagerank(indexDir, g, MongoDocLoader.timestamp(Instant.now()));
+                System.out.printf("  Da cap nhat PageRank cho %,d tai lieu (%.1f s)%n", n, (System.nanoTime() - t0) / 1e9);
+            }
+            return;
+        }
 
         try (Analyzer analyzer = buildAnalyzer(anName, vnHome)) {
             String effective = analyzer instanceof VietnameseAnalyzer ? "vietnamese"
@@ -147,13 +165,16 @@ public final class Main {
                 if (fromMongo) {
                     System.out.println("== [1/2] Ket noi MongoDB ==");
                     // moc cho --mode sync: lay TRUOC khi doc, ban ghi doi trong luc lap se duoc doc lai sau
-                    String since = MongoDocLoader.timestamp(Instant.now().minusSeconds(SYNC_OVERLAP_SECONDS));
+                    Instant started = Instant.now();
+                    String since = MongoDocLoader.timestamp(started.minusSeconds(SYNC_OVERLAP_SECONDS));
                     try (MongoDocLoader docs = MongoDocLoader.open(mongoUri, mongoDb, limit)) {
                         System.out.println("  " + docs.describe());
+                        Map<String, Float> g = computePagerank(docs);
                         System.out.println();
                         System.out.println("== [2/2] Tao chi muc (doc tu MongoDB) ==");
                         Files.createDirectories(indexDir);
-                        n = Indexer.build(indexDir, docs, analyzer, limit > 0 ? null : since);
+                        n = Indexer.build(indexDir, docs, analyzer, limit > 0 ? null : since, g,
+                                MongoDocLoader.timestamp(started));
                     } catch (IOException e) {
                         System.err.println("!! " + e.getMessage());
                         System.exit(1);
@@ -188,12 +209,22 @@ public final class Main {
             System.out.println();
             System.out.println("== Tim kiem ==");
             if (interactive) {
-                Searcher.runInteractive(indexDir, analyzer, synonyms, dedup, topK, outFile);
+                Searcher.runInteractive(indexDir, analyzer, synonyms, dedup, prWeight, topK, outFile);
             } else {
                 List<QueryLoader.Query> qs = QueryLoader.load(queries);
-                Searcher.runBatch(indexDir, qs, analyzer, synonyms, dedup, topK, outFile);
+                Searcher.runBatch(indexDir, qs, analyzer, synonyms, dedup, prWeight, topK, outFile);
             }
         }
+    }
+
+    /** PageRank tren lien ket khac host cua graph, in thong ke va 5 trang cao nhat. */
+    private static Map<String, Float> computePagerank(MongoDocLoader mongo) {
+        long t0 = System.nanoTime();
+        PageRank.Result r = PageRank.compute(mongo.database());
+        System.out.printf("  PageRank: %,d trang/tep, %,d lien ket khac host, %,d trang duoc tro toi tu site khac;"
+                + " hoi tu sau %d vong (%.1f s)%n", r.nodes(), r.edges(), r.linked(), r.iterations(), (System.nanoTime() - t0) / 1e9);
+        r.top().forEach(t -> System.out.println("    " + t));
+        return r.scores();
     }
 
     /**
