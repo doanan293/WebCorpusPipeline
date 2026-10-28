@@ -88,7 +88,7 @@ Chỉ dùng được với `--analyzer vietnamese` (mặc định) — báo lỗ
 
 | Tham số | Mặc định | Ý nghĩa |
 |---|---|---|
-| `--mode` | `interactive` | `interactive` \| `batch` \| `segment` |
+| `--mode` | `interactive` | `interactive` \| `batch` \| `segment` \| `sync` |
 | `--docs` | `data/docs` | thư mục văn bản đầu vào |
 | `--queries` | `data/queries.txt` | file truy vấn (chỉ dùng ở mode batch) |
 | `--index` | `index` | thư mục chứa chỉ mục Lucene |
@@ -103,6 +103,7 @@ Chỉ dùng được với `--analyzer vietnamese` (mặc định) — báo lỗ
 | `--mongo-db` | `information_retrieval` | database chứa `html`, `other` |
 | `--limit` | `0` (tất cả) | chỉ lập chỉ mục N tài liệu đầu (để thử nhanh với `--source mongo`) |
 | `--synonyms` | `synonyms.txt` | từ điển viết tắt / đồng nghĩa để mở rộng truy vấn; `--no-synonyms` để tắt |
+| `--every` | `0` | `--mode sync`: lặp lại mỗi N giây (0 = chạy 1 lượt) |
 | `--dedup` | `0.9` | ngưỡng Jaccard để ẩn kết quả gần trùng lặp; `--no-dedup` để tắt |
 
 ## Bổ sung quanh truy vấn
@@ -182,6 +183,53 @@ dung. Muốn tìm một field: `title:"tuyển sinh"`. Đoạn trích (KWIC) v�
 Lập chỉ mục được đọc kiểu stream (cursor MongoDB), không nạp cả corpus vào RAM, và in tiến độ mỗi 1000 tài liệu.
 Bước chậm nhất là **tách từ VnCoreNLP** (một luồng): xem tốc độ `tl/s` ở bước thử 3 để ước thời gian lập toàn bộ,
 hoặc dùng `--analyzer standard` nếu cần nhanh.
+
+## Đồng bộ khi MongoDB có dữ liệu mới (`--mode sync`)
+
+Crawler không chỉ thêm trang mới: nó còn thu thập lại trang cũ (nội dung đổi), tính lại `intro` của các trang được
+trỏ tới, và có thể đánh dấu trang thành trùng (`duplicate_of`). Mọi lần ghi đều đặt `updated_at`. Thay vì lập lại
+toàn bộ (~10 phút), `--mode sync` chỉ đọc những bản ghi có `updated_at` mới hơn mốc lần trước:
+
+```bash
+java -jar target/lucene-search.jar --source mongo --index index-mongo     # 1 lần: lập toàn bộ, ghi mốc
+java -jar target/lucene-search.jar --mode sync --index index-mongo        # 1 lượt đồng bộ
+java -jar target/lucene-search.jar --mode sync --index index-mongo --every 60   # lặp mỗi 60 giây (Ctrl+C dừng)
+```
+
+| Bản ghi trong MongoDB | Trong chỉ mục |
+|---|---|
+| `url` chưa có trong chỉ mục | thêm |
+| `url` đã có, title / intro / content đổi | ghi đè (`updateDocument` theo `url`) |
+| `url` đã có, ghi lại nhưng không đổi gì | bỏ qua (so chữ ký SHA-1 `sig` lưu trong chỉ mục) |
+| thành trang trùng (`duplicate_of`) hoặc nội dung rỗng | xoá |
+
+- **Mốc** (`updated_at` đã đồng bộ tới) lưu ngay trong commit của chỉ mục, nên chỉ mục và mốc luôn khớp; đồng bộ
+  chết giữa chừng thì lượt sau làm lại từ mốc cũ. Mốc lùi 60 giây so với lúc bắt đầu đọc để không lỡ bản ghi ghi
+  đúng lúc đang đọc; đọc trùng thì bị bỏ qua nhờ chữ ký.
+- Lần chạy đầu tạo index MongoDB trên `updated_at` của `html`, `other` để mỗi lượt không quét cả collection.
+- Chỉ mục lập bằng `--limit` hoặc từ thư mục không có mốc → `sync` báo cần lập toàn bộ trước.
+- **Phía tìm kiếm** (interactive) mở lại chỉ mục trước mỗi truy vấn nếu có commit mới, nên vừa đồng bộ xong là tìm
+  thấy, không cần khởi động lại; `sync` và tìm kiếm chạy song song được (Lucene: 1 tiến trình ghi, nhiều tiến trình đọc).
+- Nên thỉnh thoảng lập lại toàn bộ (ví dụ mỗi tuần) để dọn sai lệch tích luỹ và gộp segment.
+
+### Demo: dữ liệu mới đổ vào MongoDB
+
+Từ bản dump, 10% `html` và `other` (chọn theo băm `url`, cố định) đã được tách khỏi MongoDB và lưu thành 100 batch
+trong `data/demo/batch-001 … batch-100.{html,other}.json` (mỗi batch ~140 trang + vài tệp; `lucene/data` không
+commit). MongoDB và chỉ mục chứa 90% còn lại. `scripts/demo-upsert.sh` đưa batch trở lại MongoDB như crawler vừa
+ghi (`updated_at` = lúc chạy, upsert theo `url`):
+
+```bash
+# cửa sổ 1: tìm kiếm (tự thấy dữ liệu mới trước mỗi truy vấn)
+java -jar target/lucene-search.jar --index index-mongo --skip-index
+# cửa sổ 2: đồng bộ mỗi 10 giây
+java -jar target/lucene-search.jar --mode sync --index index-mongo --every 10
+# cửa sổ 3: "crawler" đổ batch 1..100, cách nhau 30 giây
+bash scripts/demo-upsert.sh 1 100 30
+```
+
+Chạy lại một batch đã đổ (`bash scripts/demo-upsert.sh 1`) thì MongoDB báo "cập nhật", còn `sync` báo "không đổi"
+vì nội dung y hệt. Muốn quay về dữ liệu đầy đủ: `docker compose run --rm restore` rồi lập lại chỉ mục.
 
 ## Đoạn trích chứa từ khoá (KWIC)
 
@@ -371,7 +419,8 @@ Tải bản `lucene-9.12.3` từ trang Apache, chạy `luke.sh` / `luke.bat`, m�
 |---|---|---|
 | Rút văn bản | `TextExtractor` | đọc text thẳng; PDF qua Apache PDFBox |
 | Nạp tài liệu | `DocLoader` | quét thư mục đệ quy → `List<Doc>` (id = đường dẫn tương đối) |
-| Nạp từ MongoDB | `MongoDocLoader` | duyệt cursor `html` rồi `other` (`--source mongo`), từng tài liệu một |
+| Nạp từ MongoDB | `MongoDocLoader` | duyệt cursor `html` rồi `other` (`--source mongo`), từng tài liệu một; `changes(moc)` cho đồng bộ |
+| Đồng bộ | `Indexer.sync` | thêm / ghi đè / xoá theo `url`, bỏ qua bản ghi không đổi, lưu mốc trong commit |
 | Tạo chỉ mục | `Indexer` | `IndexWriter` + analyzer; field `content` (phân tích **và lưu** để highlighter cắt được đoạn trích), `title`, `intro` (chỉ phân tích), `id`/`path` |
 | Nạp truy vấn | `QueryLoader` | đọc `queries.txt` (mode batch) |
 | Tìm kiếm | `Searcher` | `runBatch` (từ file) / `runInteractive` (REPL ở console); `MultiFieldQueryParser` trên `title`/`intro`/`content` → `IndexSearcher.search` → top-K BM25; `Highlighter` cắt đoạn trích, `teeSink` tô nền ANSI (console) / bọc `«...»` (file) |

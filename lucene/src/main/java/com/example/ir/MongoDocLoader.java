@@ -8,6 +8,7 @@ import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Indexes;
 import com.mongodb.client.model.Projections;
 import org.bson.Document;
 import org.bson.conversions.Bson;
@@ -16,6 +17,9 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -29,6 +33,10 @@ import java.util.concurrent.TimeUnit;
  *   graph : khong lap chi muc rieng - anchor text da duoc crawler gop vao html.intro
  *
  * Doc kieu stream (cursor), khong nap het vao RAM. Schema: crawler/docs/data-schema.md#mongodb.
+ *
+ * Dong bo tang dan ({@link #changes(String)}): crawler them trang moi, thu thap lai trang cu, tinh lai
+ * intro cua trang duoc tro toi - moi lan ghi deu dat updated_at (ISO 8601 UTC, so sanh duoc nhu chuoi).
+ * Doc cac document co updated_at >= moc; trang trung noi dung / rong tra ve de XOA khoi chi muc.
  */
 final class MongoDocLoader implements Iterable<DocLoader.Doc>, AutoCloseable {
 
@@ -84,6 +92,59 @@ final class MongoDocLoader implements Iterable<DocLoader.Doc>, AutoCloseable {
         return sb.toString();
     }
 
+    /** 1 thay doi can dua vao chi muc: doc = null nghia la xoa url khoi chi muc. */
+    record Change(String url, DocLoader.Doc doc) {}
+
+    /** Thoi diem hien tai theo dinh dang updated_at cua crawler: 2026-10-18T13:01:17+00:00. */
+    static String timestamp(Instant t) {
+        return TIMESTAMP.format(t);
+    }
+
+    private static final DateTimeFormatter TIMESTAMP =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'+00:00'").withZone(ZoneOffset.UTC);
+
+    /** Index tren updated_at de moi luot dong bo khong phai quet ca collection (tao 1 lan, lan sau bo qua). */
+    void ensureUpdatedAtIndex() {
+        for (String c : COLLECTIONS) {
+            db.getCollection(c).createIndex(Indexes.ascending("updated_at"));
+        }
+    }
+
+    /** Cac document html / other co updated_at >= since (them moi, cap nhat, hoac thanh trung / rong). */
+    Iterable<Change> changes(String since) {
+        return () -> new java.util.Iterator<>() {
+            private final Iterator<String> collections = COLLECTIONS.iterator();
+            private String collection;
+            private MongoCursor<Document> cursor;
+
+            @Override
+            public boolean hasNext() {
+                while (cursor == null || !cursor.hasNext()) {
+                    if (cursor != null) cursor.close();
+                    cursor = null;
+                    if (!collections.hasNext()) return false;
+                    collection = collections.next();
+                    cursor = db.getCollection(collection)
+                            .find(Filters.gte("updated_at", since))
+                            .projection(Projections.fields(
+                                    Projections.include("url", "title", "intro", "content", "format", "duplicate_of"),
+                                    Projections.excludeId()))
+                            .batchSize(BATCH_SIZE)
+                            .noCursorTimeout(true)
+                            .iterator();
+                }
+                return true;
+            }
+
+            @Override
+            public Change next() {
+                if (!hasNext()) throw new NoSuchElementException();
+                Document d = cursor.next();
+                return new Change(d.getString("url"), toDoc(collection, d));
+            }
+        };
+    }
+
     @Override
     public Iterator<DocLoader.Doc> iterator() {
         return new Docs();
@@ -108,10 +169,11 @@ final class MongoDocLoader implements Iterable<DocLoader.Doc>, AutoCloseable {
                 .iterator();
     }
 
+    /** null neu document khong duoc lap chi muc: rong, hoac trang trung noi dung voi trang khac. */
     private static DocLoader.Doc toDoc(String collection, Document d) {
         String url = d.getString("url");
         String content = d.getString("content");
-        if (url == null || content == null || content.isBlank()) {
+        if (url == null || content == null || content.isBlank() || d.containsKey("duplicate_of")) {
             return null;
         }
         String title = nullToEmpty(d.getString("title"));

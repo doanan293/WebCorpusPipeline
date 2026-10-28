@@ -128,48 +128,63 @@ public final class Searcher {
         System.out.println("Da ghi ket qua chi tiet vao: " + outFile.toAbsolutePath());
     }
 
-    /** Kieu 2: nhap lan luot tung truy van tu console, hien ket qua ngay sau moi truy van. */
+    /**
+     * Kieu 2: nhap lan luot tung truy van tu console, hien ket qua ngay sau moi truy van.
+     * Truoc moi truy van mo lai chi muc neu co commit moi (vd. --mode sync dang chay o tien trinh
+     * khac) -> thay ngay van ban vua them / cap nhat ma khong can khoi dong lai.
+     */
     public static void runInteractive(Path indexDir, Analyzer analyzer, Synonyms synonyms, double dedup,
                                       int topK, Path outFile) throws IOException {
 
         Files.createDirectories(outFile.toAbsolutePath().getParent());
 
         try (Directory dir = FSDirectory.open(indexDir);
-             DirectoryReader reader = DirectoryReader.open(dir);
              BufferedWriter out = Files.newBufferedWriter(outFile, StandardCharsets.UTF_8);
              BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
 
-            IndexSearcher searcher = new IndexSearcher(reader);
-            IndexSearcher tfidfSearcher = new IndexSearcher(reader);
-            tfidfSearcher.setSimilarity(new ClassicSimilarity());
-            StoredFields storedFields = searcher.storedFields();
-            QueryParser parser = newParser(analyzer);
-            Extras extras = new Extras(synonyms, spellSuggester(reader), dedup);
-            Consumer<String> sink = teeSink(out);
+            DirectoryReader reader = DirectoryReader.open(dir);
+            try {
+                QueryParser parser = newParser(analyzer);
+                Consumer<String> sink = teeSink(out);
 
-            sink.accept("# Ket qua tim kiem Lucene (che do interactive)");
-            sink.accept("# So van ban trong chi muc: " + reader.numDocs() + " | top-K = " + topK);
-            sink.accept("");
-            System.out.println("Nhap truy van roi Enter. Go ':q' (hoac Ctrl+D) de thoat.");
-            if (analyzer instanceof VietnameseAnalyzer) {
-                System.out.println("(cum tieng Viet cu go binh thuong, khong can ngoac kep)");
+                sink.accept("# Ket qua tim kiem Lucene (che do interactive)");
+                sink.accept("# So van ban trong chi muc: " + reader.numDocs() + " | top-K = " + topK);
+                sink.accept("");
+                System.out.println("Nhap truy van roi Enter. Go ':q' (hoac Ctrl+D) de thoat.");
+                if (analyzer instanceof VietnameseAnalyzer) {
+                    System.out.println("(cum tieng Viet cu go binh thuong, khong can ngoac kep)");
+                }
+
+                int n = 0;
+                while (true) {
+                    System.out.print("\ntruy van> ");
+                    System.out.flush();
+                    String line = in.readLine();
+                    if (line == null) break;                       // Ctrl+D / het input
+                    line = line.strip();
+                    if (line.isEmpty()) continue;
+                    if (line.equals(":q") || line.equals(":quit") || line.equals("exit")) break;
+
+                    DirectoryReader newer = DirectoryReader.openIfChanged(reader);
+                    if (newer != null) {
+                        reader.close();
+                        reader = newer;
+                        sink.accept("# (chi muc vua duoc cap nhat: " + reader.numDocs() + " van ban)");
+                    }
+                    IndexSearcher searcher = new IndexSearcher(reader);
+                    IndexSearcher tfidfSearcher = new IndexSearcher(reader);
+                    tfidfSearcher.setSimilarity(new ClassicSimilarity());
+                    Extras extras = new Extras(synonyms, spellSuggester(reader), dedup);
+
+                    QueryLoader.Query q = new QueryLoader.Query("Q" + (++n), line);
+                    executeAndFormat(searcher, tfidfSearcher, reader, searcher.storedFields(), analyzer, parser,
+                            extras, q, topK, sink);
+                }
+                sink.accept("");
+                sink.accept("# Ket thuc phien: " + n + " truy van.");
+            } finally {
+                reader.close();
             }
-
-            int n = 0;
-            while (true) {
-                System.out.print("\ntruy van> ");
-                System.out.flush();
-                String line = in.readLine();
-                if (line == null) break;                       // Ctrl+D / het input
-                line = line.strip();
-                if (line.isEmpty()) continue;
-                if (line.equals(":q") || line.equals(":quit") || line.equals("exit")) break;
-
-                QueryLoader.Query q = new QueryLoader.Query("Q" + (++n), line);
-                executeAndFormat(searcher, tfidfSearcher, reader, storedFields, analyzer, parser, extras, q, topK, sink);
-            }
-            sink.accept("");
-            sink.accept("# Ket thuc phien: " + n + " truy van.");
         }
         System.out.println("\nDa ghi lai phien vao: " + outFile.toAbsolutePath());
     }

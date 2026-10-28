@@ -14,6 +14,8 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.LocalTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -23,10 +25,12 @@ import java.util.Map;
  * Dau vao : 1 thu muc van ban (.txt/.pdf...) HOAC corpus cua crawler trong MongoDB + truy van.
  * Dau ra  : chi muc Lucene (thu muc index/) + ket qua tim kiem (console + output/results.txt).
  *
- * Ba kieu chay (--mode):
+ * Kieu chay (--mode):
  *   interactive : nhap lan luot tung truy van tu console, hien ket qua ngay (mac dinh).
  *   batch       : doc tat ca truy van tu file --queries.
  *   segment     : nhap 1 cau tu console, in ket qua TACH TU (VnCoreNLP) - khong dung index.
+ *   sync        : dong bo tang dan chi muc voi MongoDB (them / cap nhat / xoa theo updated_at);
+ *                 --every N lap lai moi N giay, khong co thi chay 1 luot.
  *
  * Analyzer (--analyzer): mac dinh "vietnamese" (tach TU bang VnCoreNLP).
  *   Can chay 1 lan:  bash scripts/setup-vncorenlp.sh
@@ -44,6 +48,7 @@ import java.util.Map;
  *   java -jar target/lucene-search.jar --analyzer standard          # khong dung VnCoreNLP
  *   java -jar target/lucene-search.jar --skip-index                 # dung lai chi muc co san
  *   java -jar target/lucene-search.jar --source mongo --index index-mongo --limit 5000
+ *   java -jar target/lucene-search.jar --mode sync --index index-mongo --every 60
  */
 public final class Main {
 
@@ -51,6 +56,12 @@ public final class Main {
     private static final int REPORT_MAX_DOCS = 1000;
     /** Nguong Jaccard (MinHash) de an ket qua gan trung lap. */
     private static final double DEFAULT_DEDUP = 0.9;
+    /**
+     * Moc dong bo lui lai so giay nay so voi luc bat dau doc: ban ghi crawler ghi dung luc dang doc
+     * (hoac lech dong ho vai giay) van duoc lay o luot sau. Doc trung khong sao - van ban khong doi
+     * duoc bo qua nho chu ky.
+     */
+    private static final int SYNC_OVERLAP_SECONDS = 60;
 
     public static void main(String[] args) throws Exception {
         forceUtf8Console(); // tieng Viet hien dung tren Windows (console codepage khong phai UTF-8)
@@ -67,7 +78,8 @@ public final class Main {
         String mode    = opt.getOrDefault("mode", "interactive").toLowerCase(Locale.ROOT);
         boolean segment     = mode.startsWith("seg") || opt.containsKey("segment");
         boolean batch       = !segment && (mode.startsWith("b") || opt.containsKey("batch"));
-        boolean interactive = !segment && !batch;
+        boolean sync        = !segment && !batch && mode.startsWith("sy");
+        boolean interactive = !segment && !batch && !sync;
         boolean skipIndex   = opt.containsKey("skip-index");
         String source       = opt.getOrDefault("source", "files").toLowerCase(Locale.ROOT);
         boolean fromMongo   = source.equals("mongo");
@@ -87,7 +99,7 @@ public final class Main {
                     : analyzer instanceof EnglishAnalyzer ? "english" : "standard";
 
             System.out.println("== Cau hinh ==");
-            System.out.println("  mode     : " + (segment ? "segment" : interactive ? "interactive" : "batch"));
+            System.out.println("  mode     : " + (segment ? "segment" : sync ? "sync" : interactive ? "interactive" : "batch"));
             System.out.println("  analyzer : " + effective
                     + (effective.equals("vietnamese") ? " (vn-home: " + vnHome.toAbsolutePath() + ")" : "")
                     + (effective.equals(anName) ? "" : "  [yeu cau: " + anName + "]"));
@@ -96,6 +108,14 @@ public final class Main {
                 System.out.println();
                 System.out.println("== Tach tu ==");
                 SegmentRunner.run(analyzer);
+                return;
+            }
+
+            if (sync) {
+                System.out.println("  source   : mongo " + mongoUri + " / " + mongoDb);
+                System.out.println("  index    : " + indexDir.toAbsolutePath());
+                System.out.println();
+                runSync(indexDir, analyzer, mongoUri, mongoDb, Integer.parseInt(opt.getOrDefault("every", "0")));
                 return;
             }
 
@@ -126,12 +146,14 @@ public final class Main {
                 int n;
                 if (fromMongo) {
                     System.out.println("== [1/2] Ket noi MongoDB ==");
+                    // moc cho --mode sync: lay TRUOC khi doc, ban ghi doi trong luc lap se duoc doc lai sau
+                    String since = MongoDocLoader.timestamp(Instant.now().minusSeconds(SYNC_OVERLAP_SECONDS));
                     try (MongoDocLoader docs = MongoDocLoader.open(mongoUri, mongoDb, limit)) {
                         System.out.println("  " + docs.describe());
                         System.out.println();
                         System.out.println("== [2/2] Tao chi muc (doc tu MongoDB) ==");
                         Files.createDirectories(indexDir);
-                        n = Indexer.build(indexDir, docs, analyzer);
+                        n = Indexer.build(indexDir, docs, analyzer, limit > 0 ? null : since);
                     } catch (IOException e) {
                         System.err.println("!! " + e.getMessage());
                         System.exit(1);
@@ -170,6 +192,36 @@ public final class Main {
             } else {
                 List<QueryLoader.Query> qs = QueryLoader.load(queries);
                 Searcher.runBatch(indexDir, qs, analyzer, synonyms, dedup, topK, outFile);
+            }
+        }
+    }
+
+    /**
+     * Dong bo tang dan: moi luot doc cac ban ghi co updated_at >= moc (luu trong commit cua chi muc),
+     * them / ghi de / xoa trong chi muc, roi day moc toi luc bat dau luot (tru SYNC_OVERLAP_SECONDS).
+     */
+    private static void runSync(Path indexDir, Analyzer analyzer, String mongoUri, String mongoDb, int every)
+            throws IOException, InterruptedException {
+        String since = Indexer.since(indexDir);
+        if (since == null) {
+            System.err.println("!! Chi muc " + indexDir.toAbsolutePath() + " chua co moc dong bo.");
+            System.err.println("   Lap toan bo 1 lan truoc:  --source mongo --index " + indexDir);
+            System.exit(1);
+        }
+        try (MongoDocLoader mongo = MongoDocLoader.open(mongoUri, mongoDb, 0)) {
+            mongo.ensureUpdatedAtIndex();
+            System.out.println("== Dong bo" + (every > 0 ? " moi " + every + " giay (Ctrl+C de dung)" : "") + " ==");
+            while (true) {
+                long t0 = System.nanoTime();
+                String next = MongoDocLoader.timestamp(Instant.now().minusSeconds(SYNC_OVERLAP_SECONDS));
+                if (next.compareTo(since) < 0) next = since; // khong lui moc
+                Indexer.SyncStats s = Indexer.sync(indexDir, mongo.changes(since), analyzer, next);
+                System.out.printf("  [%s] updated_at >= %s: them %d, cap nhat %d, xoa %d, khong doi %d  (%.1f s)%n",
+                        LocalTime.now().withNano(0), since, s.added(), s.updated(), s.deleted(), s.unchanged(),
+                        (System.nanoTime() - t0) / 1e9);
+                since = next;
+                if (every <= 0) break;
+                Thread.sleep(every * 1000L);
             }
         }
     }
