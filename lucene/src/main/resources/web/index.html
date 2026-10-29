@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tìm kiếm</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --line: #d0d7de;
+    --link: #1a4fb4; --url: #1a7f37; --mark: #fff3a3; --card: #f6f8fa; --accent: #b4441a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #8d96a0; --line: #30363d;
+      --link: #6ea8fe; --url: #57c46e; --mark: #5c4b00; --card: #161b22; --accent: #f0883e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+  form { display: flex; gap: 8px; }
+  input[type=search] { flex: 1; min-width: 0; font: inherit; padding: 10px 14px; border: 1px solid var(--line);
+         border-radius: 24px; background: var(--bg); color: var(--fg); }
+  input[type=search]:focus { outline: 2px solid var(--link); outline-offset: -1px; }
+  button { font: inherit; padding: 10px 18px; border: 0; border-radius: 24px; background: var(--link); color: #fff;
+           cursor: pointer; }
+  .opts { margin-top: 8px; font-size: 14px; color: var(--muted); }
+  .opts select { font: inherit; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
+  .info { margin: 20px 0 8px; font-size: 14px; color: var(--muted); }
+  .note { margin: 6px 0; font-size: 14px; }
+  .note a { color: var(--link); font-weight: 600; cursor: pointer; }
+  .err { color: var(--accent); }
+  .hit { padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .hit .url { color: var(--url); font-size: 13px; word-break: break-all; }
+  .hit .title { font-size: 18px; color: var(--link); text-decoration: none; display: block; margin: 2px 0; }
+  .hit .title:hover { text-decoration: underline; }
+  .hit .snip { font-size: 14px; overflow-wrap: anywhere; }
+  .hit .meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  mark { background: var(--mark); color: inherit; padding: 0 1px; border-radius: 2px; }
+  details { margin-top: 24px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+  code { font-size: 12px; background: var(--card); padding: 2px 4px; border-radius: 4px; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tìm kiếm thông tin</h1>
+  <div class="sub" id="sub">Lucene · BM25 · PageRank</div>
+  <form id="f">
+    <input type="search" id="q" name="q" placeholder="Nhập truy vấn, ví dụ: điểm chuẩn đại học bách khoa" autofocus>
+    <button type="submit">Tìm</button>
+  </form>
+  <div class="opts">
+    Số kết quả
+    <select id="limit"><option>10</option><option>20</option><option>50</option></select>
+    · hỗ trợ AND, OR, NOT, "cụm từ", title:..., ký tự đại diện *
+  </div>
+  <div id="out"></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const isUrl = s => /^https?:\/\//i.test(s);
+
+fetch('/api/info').then(r => r.json()).then(d => {
+  $('sub').textContent = 'Lucene · BM25 · PageRank · ' + d.docs.toLocaleString('vi-VN') + ' văn bản';
+}).catch(() => {});
+
+function hitHtml(h, i, pagerank, extra) {
+  // van ban tu MongoDB: id la url goc, source la "mongo:html" / "mongo:other"; van ban tu thu muc: id la ten tep
+  const link = isUrl(h.id) ? h.id : isUrl(h.source) ? h.source : null;
+  const title = h.title || h.id;
+  const head = link
+    ? `<a class="title" href="${esc(link)}" target="_blank" rel="noopener">${esc(title)}</a>`
+    : `<span class="title">${esc(title)}</span>`;
+  const meta = extra
+    ? `tf-idf ${h.tfidf.toFixed(3)}`
+    : `#${i + 1} · điểm ${h.score.toFixed(3)} · tf-idf ${h.tfidf.toFixed(3)}` + (pagerank ? ` · PageRank ${h.pagerank.toFixed(2)}` : '');
+  const where = link ? link + (h.source.startsWith('mongo:other') ? '  · tệp' : '') : h.source;
+  return `<div class="hit"><div class="url">${esc(where)}</div>${head}
+    <div class="snip">${h.snippet}</div><div class="meta">${meta}</div></div>`;
+}
+
+async function search(q, push) {
+  q = q.trim();
+  if (!q) return;
+  $('q').value = q;
+  if (push) history.pushState(null, '', '?q=' + encodeURIComponent(q));
+  document.title = q + ' - Tìm kiếm';
+  $('out').innerHTML = '<div class="info">Đang tìm…</div>';
+  let d;
+  try {
+    const r = await fetch('/api/search?q=' + encodeURIComponent(q) + '&limit=' + $('limit').value);
+    d = await r.json();
+  } catch (e) {
+    $('out').innerHTML = '<div class="info err">Không kết nối được máy chủ tìm kiếm.</div>';
+    return;
+  }
+  let html = '';
+  if (d.error) {
+    $('out').innerHTML = `<div class="info err">${esc(d.error)}</div>`;
+    return;
+  }
+  html += `<div class="info">Khoảng ${d.total.toLocaleString('vi-VN')} kết quả (${d.ms} ms)`
+        + (d.hidden ? ` · đã ẩn ${d.hidden} kết quả gần trùng lặp` : '') + '</div>';
+  if (d.suggestion) {
+    html += `<div class="note">Có phải bạn muốn tìm: <a data-q="${esc(d.suggestion.text)}">${esc(d.suggestion.text)}</a>
+             <span class="info">(${d.suggestion.hits} văn bản, so với ${d.suggestion.originalHits})</span></div>`;
+  }
+  if (d.expansions.length) {
+    html += `<div class="note">Đã mở rộng truy vấn: + ${d.expansions.map(esc).join(' | ')}</div>`;
+  }
+  if (!d.hits.length) html += '<div class="info">Không có kết quả.</div>';
+  html += d.hits.map((h, i) => hitHtml(h, i, d.pagerank, false)).join('');
+  if (d.extra.length) {
+    html += `<details><summary>${d.extra.length} văn bản không khớp cụm chính xác nhưng có từ khoá riêng lẻ</summary>`
+          + d.extra.map((h, i) => hitHtml(h, i, false, true)).join('') + '</details>';
+  }
+  html += `<details><summary>Truy vấn Lucene</summary><p><code>${esc(d.parsed)}</code></p></details>`;
+  $('out').innerHTML = html;
+}
+
+$('f').addEventListener('submit', e => { e.preventDefault(); search($('q').value, true); });
+$('out').addEventListener('click', e => {
+  const a = e.target.closest('a[data-q]');
+  if (a) { e.preventDefault(); search(a.dataset.q, true); }
+});
+window.addEventListener('popstate', () => {
+  const q = new URLSearchParams(location.search).get('q');
+  if (q) search(q, false); else { $('q').value = ''; $('out').innerHTML = ''; }
+});
+const q0 = new URLSearchParams(location.search).get('q');
+if (q0) search(q0, false);
+</script>
+</body>
+</html>

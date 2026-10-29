@@ -112,12 +112,7 @@ public final class Searcher {
              DirectoryReader reader = DirectoryReader.open(dir);
              BufferedWriter out = Files.newBufferedWriter(outFile, StandardCharsets.UTF_8)) {
 
-            IndexSearcher searcher = new IndexSearcher(reader);
-            IndexSearcher tfidfSearcher = new IndexSearcher(reader);
-            tfidfSearcher.setSimilarity(new ClassicSimilarity());
-            StoredFields storedFields = searcher.storedFields();
-            QueryParser parser = newParser(analyzer);
-            Extras extras = new Extras(synonyms, spellSuggester(reader), dedup, pagerankWeight);
+            Ctx ctx = Ctx.open(reader, analyzer, synonyms, dedup, pagerankWeight);
             Consumer<String> sink = teeSink(out);
 
             sink.accept("# Ket qua tim kiem Lucene (che do batch)");
@@ -126,7 +121,7 @@ public final class Searcher {
             sink.accept("");
 
             for (QueryLoader.Query q : queries) {
-                executeAndFormat(searcher, tfidfSearcher, reader, storedFields, analyzer, parser, extras, q, topK, sink);
+                executeAndFormat(ctx, q, topK, sink);
             }
         }
         System.out.println();
@@ -149,7 +144,6 @@ public final class Searcher {
 
             DirectoryReader reader = DirectoryReader.open(dir);
             try {
-                QueryParser parser = newParser(analyzer);
                 Consumer<String> sink = teeSink(out);
 
                 sink.accept("# Ket qua tim kiem Lucene (che do interactive)");
@@ -176,14 +170,8 @@ public final class Searcher {
                         reader = newer;
                         sink.accept("# (chi muc vua duoc cap nhat: " + reader.numDocs() + " van ban)");
                     }
-                    IndexSearcher searcher = new IndexSearcher(reader);
-                    IndexSearcher tfidfSearcher = new IndexSearcher(reader);
-                    tfidfSearcher.setSimilarity(new ClassicSimilarity());
-                    Extras extras = new Extras(synonyms, spellSuggester(reader), dedup, pagerankWeight);
-
-                    QueryLoader.Query q = new QueryLoader.Query("Q" + (++n), line);
-                    executeAndFormat(searcher, tfidfSearcher, reader, searcher.storedFields(), analyzer, parser,
-                            extras, q, topK, sink);
+                    Ctx ctx = Ctx.open(reader, analyzer, synonyms, dedup, pagerankWeight);
+                    executeAndFormat(ctx, new QueryLoader.Query("Q" + (++n), line), topK, sink);
                 }
                 sink.accept("");
                 sink.accept("# Ket thuc phien: " + n + " truy van.");
@@ -205,7 +193,7 @@ public final class Searcher {
      * Cac bo sung quanh truy van: mo rong viet tat / dong nghia, goi y chinh ta (null neu chi muc
      * chua co field spell), nguong Jaccard de an ket qua gan trung (0 = tat), trong so PageRank (0 = tat).
      */
-    private record Extras(Synonyms synonyms, SpellSuggester spell, double dedup, float pagerankWeight) {}
+    record Extras(Synonyms synonyms, SpellSuggester spell, double dedup, float pagerankWeight) {}
 
     /** Chi muc co gia tri PageRank (doc values) khong - chi muc lap tu thu muc thi khong. */
     private static boolean hasPagerank(IndexReader reader) {
@@ -344,19 +332,53 @@ public final class Searcher {
         };
     }
 
-    /** Parse + tim kiem 1 truy van, xuat ket qua kem doan trich chua tu khoa. */
-    private static void executeAndFormat(IndexSearcher searcher, IndexSearcher tfidfSearcher, IndexReader reader,
-                                         StoredFields storedFields, Analyzer analyzer, QueryParser parser,
-                                         Extras extras, QueryLoader.Query q, int topK,
-                                         Consumer<String> sink) throws IOException {
-        sink.accept("==================================================");
-        sink.accept("Truy van " + q.id() + ": " + q.text());
+    /** Nhung gi can de chay 1 truy van tren 1 phien ban chi muc (doc lap voi cach hien thi). */
+    record Ctx(IndexReader reader, IndexSearcher searcher, IndexSearcher tfidfSearcher, StoredFields storedFields,
+               Analyzer analyzer, QueryParser parser, Extras extras) {
+        static Ctx open(IndexReader reader, Analyzer analyzer, Synonyms synonyms, double dedup,
+                        float pagerankWeight) throws IOException {
+            IndexSearcher searcher = new IndexSearcher(reader);
+            IndexSearcher tfidf = new IndexSearcher(reader);
+            tfidf.setSimilarity(new ClassicSimilarity());
+            return new Ctx(reader, searcher, tfidf, searcher.storedFields(), analyzer, newParser(analyzer),
+                    new Extras(synonyms, spellSuggester(reader), dedup, pagerankWeight));
+        }
+    }
+
+    /**
+     * 1 ket qua. snippet: doan trich, tu khop boc giua {@link #MARK_A} va {@link #MARK_B}
+     * (console doi thanh mau / « », web doi thanh the mark).
+     */
+    record Hit(float score, double tfidf, float pagerank, String id, String title, String source, String snippet) {}
+
+    /**
+     * Ket qua 1 truy van. error / noTerms: khong chay duoc. extra: tai lieu khong khop cum chinh xac
+     * nhung co tu khoa rieng le (chi co diem tf-idf).
+     */
+    record Outcome(String query, String error, boolean noTerms, boolean autoPhrase, List<String> expansions,
+                   String parsed, boolean usePagerank, long total, int hidden,
+                   SpellSuggester.Suggestion suggestion, List<Hit> hits, List<Hit> extra) {}
+
+    static String markOpen() {
+        return MARK_A;
+    }
+
+    static String markClose() {
+        return MARK_B;
+    }
+
+    /** Parse + tim kiem 1 truy van: dung truy van, mo rong, xep hang, an trung, goi y chinh ta, cat doan trich. */
+    static Outcome search(Ctx ctx, String text, int topK) throws IOException {
+        Analyzer analyzer = ctx.analyzer();
+        QueryParser parser = ctx.parser();
+        Extras extras = ctx.extras();
+        StoredFields storedFields = ctx.storedFields();
 
         // Voi analyzer tieng Viet: truy van "tron" (nhieu tu, khong co toan tu) duoc dung
         // thanh (cum dung thu tu)^2  HOAC  tung tu rieng le. Nho clause "tung tu" nen van
         // ra ket qua khi bo tach tu chia cum hoi khac giua truy van va tai lieu.
         // Muon dieu khien tay thi dung AND/OR/NOT/ngoac kep nhu binh thuong.
-        String raw = q.text().strip();
+        String raw = text.strip();
         boolean plain = !LUCENE_SYNTAX.matcher(raw).find();
         boolean autoPhrase = analyzer instanceof VietnameseAnalyzer
                 && raw.contains(" ")
@@ -365,26 +387,21 @@ public final class Searcher {
         Query luceneQuery;
         if (autoPhrase) {
             luceneQuery = buildVietnamesePhraseQuery(analyzer, raw);
-            sink.accept("  (tu hieu la cum tieng Viet; them AND/OR/\"\" de tuy chinh)");
         } else {
             try {
-                luceneQuery = parser.parse(q.text());
+                luceneQuery = parser.parse(raw);
             } catch (ParseException e) {
                 try {
-                    luceneQuery = parser.parse(QueryParser.escape(q.text()));
+                    luceneQuery = parser.parse(QueryParser.escape(raw));
                 } catch (ParseException e2) {
-                    sink.accept("  [loi] khong phan tich duoc truy van: " + e2.getMessage());
-                    sink.accept("");
-                    return;
+                    return new Outcome(raw, e2.getMessage(), false, autoPhrase, List.of(), "", false, 0, 0,
+                            null, List.of(), List.of());
                 }
             }
         }
 
-        String parsed = luceneQuery.toString();
-        if (parsed.isBlank() || luceneQuery instanceof MatchNoDocsQuery) {
-            sink.accept("  (khong con tu khoa nao sau khi loc tu dung / dau cau)");
-            sink.accept("");
-            return;
+        if (luceneQuery.toString().isBlank() || luceneQuery instanceof MatchNoDocsQuery) {
+            return new Outcome(raw, null, true, autoPhrase, List.of(), "", false, 0, 0, null, List.of(), List.of());
         }
 
         // Mo rong truy van "tron" bang tu dien viet tat / dong nghia: ktx -> + "ký túc xá"
@@ -397,30 +414,25 @@ public final class Searcher {
                 if (eq != null) b.add(new BoostQuery(eq, SYNONYM_BOOST), BooleanClause.Occur.SHOULD);
             }
             luceneQuery = b.build();
-            parsed = luceneQuery.toString();
-            sink.accept("  Mo rong truy van (viet tat / dong nghia): + " + String.join(" | ", expansions));
         }
+        String parsed = luceneQuery.toString();
 
         // Diem chat luong tinh: BM25 * (1 + w * g(d)), g = PageRank chuan hoa trong [0, 1]
-        boolean usePagerank = extras.pagerankWeight() > 0 && hasPagerank(reader);
+        boolean usePagerank = extras.pagerankWeight() > 0 && hasPagerank(ctx.reader());
         Query scoring = usePagerank
                 ? FunctionScoreQuery.boostByValue(luceneQuery, PageRank.boost(extras.pagerankWeight()))
                 : luceneQuery;
 
         // Lay du ung vien de con du topK sau khi an ket qua gan trung
-        TopDocs hits = searcher.search(scoring, extras.dedup() > 0 ? topK * 3 + 10 : topK);
-        long total = hits.totalHits.value;
-        sink.accept("  Query da parse: " + parsed
-                + (usePagerank ? "   x (1 + " + extras.pagerankWeight() + " * pagerank)" : ""));
-        sink.accept("  Tong so tai lieu khop: " + total
-                + (total > topK ? "  (hien thi " + topK + " ket qua dau)" : ""));
+        TopDocs top = ctx.searcher().search(scoring, extras.dedup() > 0 ? topK * 3 + 10 : topK);
+        long total = top.totalHits.value;
 
         Set<Integer> shown = new HashSet<>();
-        List<ScoreDoc> results = new ArrayList<>(List.of(hits.scoreDocs));
+        List<ScoreDoc> results = new ArrayList<>(List.of(top.scoreDocs));
+        int hidden = 0;
         if (extras.dedup() > 0 && results.size() > 1) {
             List<ScoreDoc> kept = new ArrayList<>();
             List<long[]> keptSketches = new ArrayList<>();
-            int hidden = 0;
             for (ScoreDoc sd : results) {
                 if (kept.size() == topK) break;
                 long[] sk = NearDuplicates.sketch(storedFields.document(sd.doc).get("content"));
@@ -440,68 +452,108 @@ public final class Searcher {
                 }
             }
             results = kept;
-            if (hidden > 0) {
-                sink.accept("  (da an " + hidden + " ket qua gan trung lap voi ket qua xep tren)");
-            }
         } else if (results.size() > topK) {
             results = results.subList(0, topK);
         }
 
+        SpellSuggester.Suggestion suggestion = null;
         if (extras.spell() != null && plain && total < SPELL_BELOW) {
-            SpellSuggester.Suggestion s = extras.spell().suggest(raw);
-            if (s != null) {
-                sink.accept("  >> Co phai ban muon tim: \"" + s.text() + "\"  (" + s.hits()
-                        + " van ban chua cum nay, so voi " + s.originalHits() + ")");
-            }
-        }
-
-        if (results.isEmpty()) {
-            sink.accept("  (khong co ket qua)");
-            sink.accept("");
-            return;
+            suggestion = extras.spell().suggest(raw);
         }
 
         // tf-idf: cong thuc mac dinh cua Lucene (ClassicSimilarity) tren CHINH cac tu
         // duoc tach ra tu truy van (OR, khong boost cum/tu ghep nhu luceneQuery dung de
         // xep hang) - khong can lap chi muc lai vi norm duoc luu chung cho moi similarity.
         Query plainQuery = buildPlainQuery(analyzer, raw);
-
-        Highlighter highlighter = buildHighlighter(luceneQuery, reader);
-        int rank = 0;
+        Highlighter highlighter = buildHighlighter(luceneQuery, ctx.reader());
+        List<Hit> hits = new ArrayList<>();
         for (ScoreDoc sd : results) {
-            Document d = storedFields.document(sd.doc);
-            rank++;
             shown.add(sd.doc);
-            double tfidf = tfidfSearcher.explain(plainQuery, sd.doc).getValue().doubleValue();
-            sink.accept(String.format("  %2d. score=%.4f  tf-idf=%.4f%s  id=%s", rank, sd.score, tfidf,
-                    usePagerank ? String.format("  pagerank=%.2f", PageRank.of(searcher, sd.doc)) : "", d.get("id")));
-            describe(d, sink);
-            sink.accept("      " + kwic(highlighter, analyzer, d.get("content")));
+            double tfidf = ctx.tfidfSearcher().explain(plainQuery, sd.doc).getValue().doubleValue();
+            hits.add(hit(ctx, highlighter, sd.doc, sd.score, tfidf,
+                    usePagerank ? PageRank.of(ctx.searcher(), sd.doc) : 0f));
         }
 
         // luceneQuery (cum/tu ghep, dung de xep hang o tren) chat hon plainQuery (OR tung
         // tu). Nen mot so tai lieu KHONG khop luceneQuery van co the chua rieng le vai tu
         // khoa -> van tinh duoc tf-idf > 0. Liet ke rieng de nguoi dung thay het, khong bi
         // "an" chi vi khong khop cum chinh xac.
-        if (!(plainQuery instanceof MatchNoDocsQuery)) {
+        List<Hit> extra = new ArrayList<>();
+        if (!hits.isEmpty() && !(plainQuery instanceof MatchNoDocsQuery)) {
             // shown co toi da topK tai lieu -> lay 2*topK la du topK tai lieu moi (khong duyet het chi muc)
-            TopDocs plainHits = tfidfSearcher.search(plainQuery, 2 * topK);
-            List<ScoreDoc> extra = new ArrayList<>();
-            for (ScoreDoc sd : plainHits.scoreDocs) {
+            for (ScoreDoc sd : ctx.tfidfSearcher().search(plainQuery, 2 * topK).scoreDocs) {
                 if (!shown.contains(sd.doc) && extra.size() < topK) {
-                    extra.add(sd);
+                    extra.add(hit(ctx, highlighter, sd.doc, 0f, sd.score, 0f));
                 }
             }
-            if (!extra.isEmpty()) {
-                sink.accept("  -- Khong khop cum/tu ghep chinh xac, nhung co tu khoa rieng le (chi co tf-idf) --");
-                int r2 = 0;
-                for (ScoreDoc sd : extra) {
-                    Document d = storedFields.document(sd.doc);
-                    r2++;
-                    sink.accept(String.format("  %2d. tf-idf=%.4f  id=%s", r2, sd.score, d.get("id")));
-                    describe(d, sink);
-                    sink.accept("      " + kwic(highlighter, analyzer, d.get("content")));
-                }
+        }
+        return new Outcome(raw, null, false, autoPhrase, expansions, parsed, usePagerank, total, hidden,
+                suggestion, hits, extra);
+    }
+
+    private static Hit hit(Ctx ctx, Highlighter highlighter, int doc, float score, double tfidf, float pagerank)
+            throws IOException {
+        Document d = ctx.storedFields().document(doc);
+        String title = d.get("title") == null ? "" : d.get("title").replaceAll("\\s+", " ").strip();
+        return new Hit(score, tfidf, pagerank, d.get("id"), title, d.get("path"),
+                kwic(highlighter, ctx.analyzer(), d.get("content")));
+    }
+
+    /** In ket qua 1 truy van ra console + file (dinh dang nhu truoc). */
+    private static void executeAndFormat(Ctx ctx, QueryLoader.Query q, int topK, Consumer<String> sink)
+            throws IOException {
+        sink.accept("==================================================");
+        sink.accept("Truy van " + q.id() + ": " + q.text());
+        Outcome o = search(ctx, q.text(), topK);
+        if (o.error() != null) {
+            sink.accept("  [loi] khong phan tich duoc truy van: " + o.error());
+            sink.accept("");
+            return;
+        }
+        if (o.autoPhrase()) {
+            sink.accept("  (tu hieu la cum tieng Viet; them AND/OR/\"\" de tuy chinh)");
+        }
+        if (o.noTerms()) {
+            sink.accept("  (khong con tu khoa nao sau khi loc tu dung / dau cau)");
+            sink.accept("");
+            return;
+        }
+        if (!o.expansions().isEmpty()) {
+            sink.accept("  Mo rong truy van (viet tat / dong nghia): + " + String.join(" | ", o.expansions()));
+        }
+        sink.accept("  Query da parse: " + o.parsed()
+                + (o.usePagerank() ? "   x (1 + " + ctx.extras().pagerankWeight() + " * pagerank)" : ""));
+        sink.accept("  Tong so tai lieu khop: " + o.total()
+                + (o.total() > topK ? "  (hien thi " + topK + " ket qua dau)" : ""));
+        if (o.hidden() > 0) {
+            sink.accept("  (da an " + o.hidden() + " ket qua gan trung lap voi ket qua xep tren)");
+        }
+        if (o.suggestion() != null) {
+            SpellSuggester.Suggestion s = o.suggestion();
+            sink.accept("  >> Co phai ban muon tim: \"" + s.text() + "\"  (" + s.hits()
+                    + " van ban chua cum nay, so voi " + s.originalHits() + ")");
+        }
+        if (o.hits().isEmpty()) {
+            sink.accept("  (khong co ket qua)");
+            sink.accept("");
+            return;
+        }
+        int rank = 0;
+        for (Hit h : o.hits()) {
+            rank++;
+            sink.accept(String.format("  %2d. score=%.4f  tf-idf=%.4f%s  id=%s", rank, h.score(), h.tfidf(),
+                    o.usePagerank() ? String.format("  pagerank=%.2f", h.pagerank()) : "", h.id()));
+            describe(h, sink);
+            sink.accept("      " + h.snippet());
+        }
+        if (!o.extra().isEmpty()) {
+            sink.accept("  -- Khong khop cum/tu ghep chinh xac, nhung co tu khoa rieng le (chi co tf-idf) --");
+            int r2 = 0;
+            for (Hit h : o.extra()) {
+                r2++;
+                sink.accept(String.format("  %2d. tf-idf=%.4f  id=%s", r2, h.tfidf(), h.id()));
+                describe(h, sink);
+                sink.accept("      " + h.snippet());
             }
         }
         sink.accept("");
@@ -521,12 +573,11 @@ public final class Searcher {
     }
 
     /** In tieu de (neu co) va nguon cua 1 ket qua. */
-    private static void describe(Document d, Consumer<String> sink) {
-        String title = d.get("title");
-        if (title != null && !title.isBlank()) {
-            sink.accept("      title: " + title.replaceAll("\\s+", " ").strip());
+    private static void describe(Hit h, Consumer<String> sink) {
+        if (!h.title().isBlank()) {
+            sink.accept("      title: " + h.title());
         }
-        sink.accept("      nguon: " + d.get("path"));
+        sink.accept("      nguon: " + h.source());
     }
 
     private static Highlighter buildHighlighter(Query query, IndexReader reader) throws IOException {

@@ -32,6 +32,7 @@ import java.util.Map;
  *   sync        : dong bo tang dan chi muc voi MongoDB (them / cap nhat / xoa theo updated_at);
  *                 --every N lap lai moi N giay, khong co thi chay 1 luot.
  *   pagerank    : tinh lai PageRank tu graph va ghi de vao chi muc (khong tach tu lai).
+ *   web         : giao dien web tim kiem tai http://localhost:--port (mac dinh 8080).
  *
  * Analyzer (--analyzer): mac dinh "vietnamese" (tach TU bang VnCoreNLP).
  *   Can chay 1 lan:  bash scripts/setup-vncorenlp.sh
@@ -51,6 +52,7 @@ import java.util.Map;
  *   java -jar target/lucene-search.jar --source mongo --index index-mongo --limit 5000
  *   java -jar target/lucene-search.jar --mode sync --index index-mongo --every 60
  *   java -jar target/lucene-search.jar --mode pagerank --index index-mongo
+ *   java -jar target/lucene-search.jar --mode web --index index-mongo --skip-index
  */
 public final class Main {
 
@@ -84,7 +86,8 @@ public final class Main {
         boolean batch       = !segment && (mode.startsWith("b") || opt.containsKey("batch"));
         boolean sync        = !segment && !batch && mode.startsWith("sy");
         boolean pagerank    = mode.startsWith("pa");
-        boolean interactive = !segment && !batch && !sync && !pagerank;
+        boolean web         = mode.startsWith("w");
+        boolean interactive = !segment && !batch && !sync && !pagerank && !web;
         boolean skipIndex   = opt.containsKey("skip-index");
         String source       = opt.getOrDefault("source", "files").toLowerCase(Locale.ROOT);
         boolean fromMongo   = source.equals("mongo");
@@ -117,7 +120,7 @@ public final class Main {
                     : analyzer instanceof EnglishAnalyzer ? "english" : "standard";
 
             System.out.println("== Cau hinh ==");
-            System.out.println("  mode     : " + (segment ? "segment" : sync ? "sync" : interactive ? "interactive" : "batch"));
+            System.out.println("  mode     : " + (segment ? "segment" : sync ? "sync" : web ? "web" : interactive ? "interactive" : "batch"));
             System.out.println("  analyzer : " + effective
                     + (effective.equals("vietnamese") ? " (vn-home: " + vnHome.toAbsolutePath() + ")" : "")
                     + (effective.equals(anName) ? "" : "  [yeu cau: " + anName + "]"));
@@ -143,7 +146,7 @@ public final class Main {
             } else {
                 System.out.println("  docs     : " + docsDir.toAbsolutePath());
             }
-            if (!interactive) {
+            if (batch) {
                 System.out.println("  queries  : " + queries.toAbsolutePath());
             }
             System.out.println("  index    : " + indexDir.toAbsolutePath());
@@ -208,7 +211,11 @@ public final class Main {
             // 3) Tim kiem
             System.out.println();
             System.out.println("== Tim kiem ==");
-            if (interactive) {
+            if (web) {
+                WebServer.run(indexDir, analyzer, synonyms, dedup, prWeight,
+                        Integer.parseInt(opt.getOrDefault("port", "8080")));
+                Thread.currentThread().join(); // may chu chay den khi Ctrl+C
+            } else if (interactive) {
                 Searcher.runInteractive(indexDir, analyzer, synonyms, dedup, prWeight, topK, outFile);
             } else {
                 List<QueryLoader.Query> qs = QueryLoader.load(queries);

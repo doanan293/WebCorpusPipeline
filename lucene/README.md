@@ -84,11 +84,28 @@ cau> trí tuệ nhân tạo
 
 Chỉ dùng được với `--analyzer vietnamese` (mặc định) — báo lỗi và không tách nếu chọn `standard`/`english`. Cần đã cài VnCoreNLP (`bash scripts/setup-vncorenlp.sh`), nếu không phần "Analyzer tiếng Việt" phía dưới sẽ tự lùi về `standard` và mode `segment` không hoạt động.
 
+### Kiểu 4 — web: giao diện tìm kiếm trên trình duyệt
+
+```bash
+java -jar target/lucene-search.jar --mode web --index index-mongo --skip-index
+# mở http://localhost:8080/   (đổi cổng: --port 9000; dừng: Ctrl+C)
+```
+
+Trang có ô nhập truy vấn, giống một trang tìm kiếm thông thường. Mỗi kết quả hiện URL, tiêu đề (bấm để mở trang gốc), đoạn trích tô vàng từ khoá, điểm BM25, tf-idf và PageRank. Trang cũng hiện "Có phải bạn muốn tìm …" (bấm để tìm lại), cụm mở rộng viết tắt / đồng nghĩa, số kết quả gần trùng đã ẩn và danh sách tài liệu chỉ khớp từ riêng lẻ. Mục "Truy vấn Lucene" ở cuối trang cho xem truy vấn đã dựng.
+
+Dùng `HttpServer` có sẵn trong JDK nên không thêm thư viện; trang nằm trong jar (`src/main/resources/web/index.html`). Máy chủ không cần MongoDB, chỉ đọc chỉ mục. Trước mỗi truy vấn chỉ mục được mở lại nếu đã đổi, nên khi `--mode sync` chạy song song thì dữ liệu mới hiện ngay trên trang. Có thể gọi thẳng API:
+
+```bash
+curl 'http://localhost:8080/api/search?q=ktx&limit=5'    # JSON: total, hits[], extra[], suggestion, expansions, ...
+curl 'http://localhost:8080/api/info'                    # {"docs": số văn bản trong chỉ mục}
+```
+
 ### Các tham số chung
 
 | Tham số | Mặc định | Ý nghĩa |
 |---|---|---|
-| `--mode` | `interactive` | `interactive` \| `batch` \| `segment` \| `sync` \| `pagerank` |
+| `--mode` | `interactive` | `interactive` \| `batch` \| `segment` \| `sync` \| `pagerank` \| `web` |
+| `--port` | `8080` | cổng của `--mode web` |
 | `--docs` | `data/docs` | thư mục văn bản đầu vào |
 | `--queries` | `data/queries.txt` | file truy vấn (chỉ dùng ở mode batch) |
 | `--index` | `index` | thư mục chứa chỉ mục Lucene |
@@ -451,6 +468,7 @@ Tải bản `lucene-9.12.3` từ trang Apache, chạy `luke.sh` / `luke.bat`, m�
 | Tạo chỉ mục | `Indexer` | `IndexWriter` + analyzer; field `content` (phân tích **và lưu** để highlighter cắt được đoạn trích), `title`, `intro` (chỉ phân tích), `id`/`path` |
 | Nạp truy vấn | `QueryLoader` | đọc `queries.txt` (mode batch) |
 | Tìm kiếm | `Searcher` | `runBatch` (từ file) / `runInteractive` (REPL ở console); `MultiFieldQueryParser` trên `title`/`intro`/`content` → `IndexSearcher.search` → top-K BM25; `Highlighter` cắt đoạn trích, `teeSink` tô nền ANSI (console) / bọc `«...»` (file) |
+| Giao diện web | `WebServer` | `--mode web`: trang `web/index.html` + `/api/search` trả JSON từ `Searcher.search` (cùng logic với console) |
 | Mở rộng truy vấn | `Synonyms` | đọc `synonyms.txt`, thêm cụm viết tắt / đồng nghĩa vào truy vấn |
 | Gợi ý chính tả | `SpellSuggester` | `DirectSpellChecker` trên field `spell` + đếm cụm trong field `content` |
 | Ẩn trùng lặp | `NearDuplicates` | chuỗi 4 từ + MinHash, ước lượng Jaccard giữa các kết quả |
@@ -466,3 +484,89 @@ Tải bản `lucene-9.12.3` từ trang Apache, chạy `luke.sh` / `luke.bat`, m�
 - `content` được lưu bản gốc (`Store.YES`) để `Highlighter` cắt đoạn trích. Nếu tập văn bản rất lớn và không cần snippet, đổi lại `Store.NO` trong `Indexer`.
 - VnCoreNLP dùng log4j 1.x nên khi khởi tạo có thể in dòng `INFO ... Loading Word Segmentation model` — bình thường.
 - Văn bản được chuẩn hoá Unicode NFC khi nạp (cả truy vấn) — văn bản web dạng NFD (dấu tách rời) vẫn khớp.
+
+## Kịch bản demo (khoảng 10–15 phút)
+
+Mọi lệnh chạy trong thư mục `lucene/`, Docker Desktop đang mở.
+
+### Chuẩn bị
+
+```bash
+docker compose up -d mongo          # MongoDB đóng vai crawler (cổng 27018)
+mvn -q -DskipTests package          # chỉ cần nếu có sửa code
+```
+
+Mở 3 terminal và đặt trình duyệt bên cạnh:
+
+- **T1** chạy máy chủ web.
+- **T2** đẩy dữ liệu mới vào MongoDB.
+- **T3** chạy đồng bộ.
+
+### Phần 1: Tìm kiếm trên web (khoảng 5 phút)
+
+```bash
+# T1
+java -jar target/lucene-search.jar --mode web --index index-mongo --skip-index
+```
+
+Mở http://localhost:8080. Đầu trang hiện số văn bản trong chỉ mục.
+
+| Truy vấn | Điểm cần chỉ ra |
+|---|---|
+| `điểm chuẩn đại học bách khoa` | Gõ cụm tiếng Việt không cần ngoặc kép, tách từ ra `điểm_chuẩn`, tô sáng cả cụm. Mở mục "Truy vấn Lucene" ở cuối trang để xem PhraseQuery ×2 + TermQuery ×0.4 và hệ số title/intro/content 3/1.5/1. |
+| `ktx` | Dòng "Đã mở rộng truy vấn: + ký túc xá" và "đã ẩn N kết quả gần trùng lặp" (MinHash). |
+| `ky tuc xa` | Gõ không dấu vẫn ra đúng trang (ASCIIFolding). |
+| `học bổng AND (thạc sĩ OR tiến sĩ)` | Toán tử Boolean. |
+| `title:tuyển sinh` | Chỉ tìm trong tiêu đề. |
+| `quy chế đào tạo` | Kết quả là tệp (ghi "· tệp") với intro lấy từ anchor text trong `graph`; cột PageRank; mục "không khớp cụm chính xác…" (chỉ có điểm tf-idf). |
+
+### Phần 2: Crawler thêm dữ liệu, kết quả cập nhật theo (khoảng 5 phút)
+
+Kịch bản: crawler liên tục ghi vào MongoDB, hệ thống tìm kiếm phải cập nhật mà không lập lại chỉ mục từ đầu.
+
+1. Trên web, tìm `đổ xô đến philippines học tiếng anh`. Trang "Đổ xô đến Philippines học tiếng Anh" chưa có trong kết quả.
+2. Giả lập crawler ghi batch 4:
+   ```bash
+   # T2
+   bash scripts/demo-upsert.sh 4
+   ```
+   Lệnh in số bản ghi được thêm hoặc cập nhật trong `html`/`other`, với `updated_at` là thời điểm hiện tại.
+3. Đồng bộ chỉ mục:
+   ```bash
+   # T3
+   java -jar target/lucene-search.jar --mode sync --index index-mongo
+   ```
+   Kết quả là một dòng `them X, cap nhat Y, xoa Z, khong doi W`. Lệnh chỉ đọc bản ghi có `updated_at` từ mốc lần trước, upsert theo `url`, và bỏ qua văn bản không đổi nhờ mã băm SHA-1.
+4. Bấm **Tìm** lại trên web (không cần khởi động lại máy chủ). Trang mới xuất hiện ở gần đầu, số văn bản ở đầu trang tăng lên.
+5. (Tuỳ chọn) Chạy lại `demo-upsert.sh 4` rồi sync: mọi bản ghi báo `khong doi`, chạy hết khoảng 0,1 giây.
+
+Chế độ liên tục, nếu còn thời gian:
+
+```bash
+# T3: đồng bộ mỗi 10 giây
+java -jar target/lucene-search.jar --mode sync --index index-mongo --every 10
+# T2: batch 5 đến 8, mỗi batch cách nhau 15 giây
+bash scripts/demo-upsert.sh 5 8 15
+```
+
+### Phần 3: PageRank từ `graph` (khoảng 2 phút, tuỳ chọn)
+
+```bash
+# T3
+java -jar target/lucene-search.jar --mode pagerank --index index-mongo
+```
+
+Lệnh in số đỉnh, số liên kết khác host, số vòng lặp đến khi hội tụ và 5 trang có PageRank cao nhất. Lệnh chỉ ghi đè giá trị `pagerank`, không tách từ lại. Điểm xếp hạng là BM25 × (1 + 0.5·g(d)); trên web, PageRank hiện ở dưới mỗi kết quả.
+
+### Kết thúc
+
+```bash
+# Ctrl+C ở T1 (web) và T3 (nếu đang chạy sync --every)
+docker compose stop mongo
+```
+
+### Lưu ý
+
+- Batch 1–3 đã được đẩy vào MongoDB. Để dành batch 4 cho buổi demo thật; muốn tập trước thì dùng batch 5 đến 100. Dữ liệu batch nằm trong `data/demo/` (không đưa lên git).
+- Gợi ý chính tả khó hiện trên dữ liệu đầy đủ, vì phần lớn truy vấn gõ sai vẫn ra từ 20 kết quả trở lên nhờ khớp từng từ riêng lẻ. Chỉ nên nhắc là hệ thống có tính năng này.
+- Cần có mạng nếu muốn bấm vào tiêu đề kết quả, vì đường dẫn mở trang gốc trên hust.edu.vn.
