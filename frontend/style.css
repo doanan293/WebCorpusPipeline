@@ -19,7 +19,9 @@ a { color: var(--link); }
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
 .tabs a { padding: 8px 14px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; }
 .tabs a.active { color: var(--fg); border-bottom-color: var(--link); font-weight: 600; }
-.subtabs { display: flex; gap: 8px; margin: 8px 0 12px; }
+.subtabs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 12px; }
+.subtabs .opts { margin: 0 0 0 8px; }
+.opts input[type=checkbox] { width: auto; }
 .subtabs button { background: var(--card); color: var(--fg); border: 1px solid var(--line); padding: 6px 14px; }
 .subtabs button.active { background: var(--link); color: #fff; border-color: var(--link); }
 

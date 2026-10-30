@@ -24,7 +24,7 @@
     </form>
     <div class="opts">
       Số trang tối đa
-      <input type="number" id="crawl-max" min="1" step="1" placeholder="không giới hạn">
+      <input type="number" id="crawl-max" form="crawl-form" min="1" step="1" placeholder="không giới hạn">
       · để trống thì lan hết các trang trong cùng host
     </div>
     <div id="crawl-out"></div>
@@ -36,6 +36,7 @@
       <button type="button" data-kind="html">Trang</button>
       <button type="button" data-kind="other">Tệp</button>
       <button type="button" data-kind="picture">Ảnh</button>
+      <label id="data-all" class="opts" hidden><input type="checkbox" id="data-all-box"> Cả ảnh chưa tải</label>
     </nav>
     <div id="data-out"></div>
     <div class="pager">

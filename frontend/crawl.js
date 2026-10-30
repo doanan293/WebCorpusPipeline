@@ -1,6 +1,23 @@
 const POLL_MS = 2000;
+const JOB_KEY = 'crawl-job';
 let crawlTimer = null;
 let crawlJob = null;
+
+// Nho job de tai lai trang van thay tien do va con nut Dung.
+function rememberJob(job) {
+  try {
+    if (job) sessionStorage.setItem(JOB_KEY, job);
+    else sessionStorage.removeItem(JOB_KEY);
+  } catch (e) { /* trinh duyet chan storage: chi mat tinh nang nay */ }
+}
+
+function followJob(job) {
+  crawlJob = job;
+  rememberJob(job);
+  $('crawl-start').disabled = true;
+  $('crawl-stop').disabled = false;
+  pollCrawl(job);
+}
 
 function showCrawl(s) {
   const of = s.max_pages ? ` / ${number(s.max_pages)}` : '';
@@ -9,7 +26,7 @@ function showCrawl(s) {
   if (s.done) {
     html += s.saved
       ? `<div class="note">${s.stopped ? 'Đã dừng.' : 'Đã xong.'} Chỉ mục cập nhật sau khoảng 10–20 giây.
-         ${s.saved < s.queued ? `Có ${number(s.queued - s.saved)} URL không lưu được (trang chặn hoặc tải lỗi).` : ''}</div>
+         ${!s.stopped && s.answered < s.queued ? `Có ${number(s.queued - s.answered)} URL không lưu được (trang chặn hoặc tải lỗi).` : ''}</div>
          <p><button type="button" id="crawl-try">Tìm thử</button></p>`
       : `<div class="note err">${s.stopped ? 'Đã dừng, chưa lưu được trang nào.' : 'Không tải được trang nào từ link này.'}</div>`;
   }
@@ -25,6 +42,7 @@ function endCrawl() {
   clearTimeout(crawlTimer);
   crawlTimer = null;
   crawlJob = null;
+  rememberJob(null);
   $('crawl-start').disabled = false;
   $('crawl-stop').disabled = true;
 }
@@ -43,7 +61,10 @@ async function pollCrawl(job) {
   }
   if (job !== crawlJob) return;  // da co lan crawl khac hoac da ket thuc
   if (r?.status === 404) return crawlError('Máy chủ đã khởi động lại nên mất lần crawl này.');
-  if (r?.ok) showCrawl(r.body);
+  if (r?.ok) {
+    $('crawl-url').value = r.body.url;
+    showCrawl(r.body);
+  }
   if (crawlJob === job) crawlTimer = setTimeout(() => pollCrawl(job), POLL_MS);
 }
 
@@ -71,11 +92,9 @@ $('crawl-form').addEventListener('submit', async e => {
   } catch (err) {
     return crawlError('Không kết nối được crawler.');
   }
-  if (!r.ok) return crawlError(r.body?.error || 'Crawler chưa sẵn sàng, thử lại sau ít phút.');
-  crawlJob = r.body.job;
-  $('crawl-stop').disabled = false;
-  showCrawl(r.body);
-  if (crawlJob) crawlTimer = setTimeout(() => pollCrawl(r.body.job), POLL_MS);
+  if (r.status === 400) return crawlError(`Link hoặc số trang không hợp lệ: ${body.url}`);
+  if (!r.ok) return crawlError('Crawler chưa sẵn sàng, thử lại sau ít phút.');
+  followJob(r.body.job);
 });
 
 $('crawl-stop').addEventListener('click', async () => {
@@ -83,3 +102,8 @@ $('crawl-stop').addEventListener('click', async () => {
   const r = await getJson(`/crawl/${encodeURIComponent(crawlJob)}/stop`, {method: 'POST'}).catch(() => null);
   if (r?.ok) showCrawl(r.body);
 });
+
+try {
+  const saved = sessionStorage.getItem(JOB_KEY);
+  if (saved) followJob(saved);
+} catch (e) { /* xem rememberJob */ }

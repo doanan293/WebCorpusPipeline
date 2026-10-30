@@ -1,5 +1,5 @@
 const PAGE_SIZE = {html: 20, other: 20, picture: 24};
-const dataState = {kind: 'html', page: 1, total: 0};
+const dataState = {kind: 'html', page: 1, total: 0, allPictures: false};
 const pictureUrl = url => '/api/picture?url=' + encodeURIComponent(url);
 
 async function loadStats() {
@@ -27,9 +27,12 @@ function otherTable(docs) {
 }
 
 function pictureGrid(docs) {
-  return '<div class="grid">' + docs.map(d =>
-    `<button type="button" class="tile" data-url="${esc(d.url)}" title="${esc(d.url)}">
-       <img loading="lazy" alt="" src="${esc(pictureUrl(d.url))}"></button>`).join('') + '</div>';
+  return '<div class="grid">' + docs.map(d => {
+    const inner = d.size == null
+      ? `<span class="none">${esc(d.error || 'chưa tải')}<br>${esc(d.url)}</span>`
+      : `<img loading="lazy" alt="" src="${esc(pictureUrl(d.url))}">`;
+    return `<button type="button" class="tile" data-url="${esc(d.url)}" title="${esc(d.url)}">${inner}</button>`;
+  }).join('') + '</div>';
 }
 
 async function loadData() {
@@ -38,7 +41,8 @@ async function loadData() {
   document.querySelectorAll('.subtabs button').forEach(b => b.classList.toggle('active', b.dataset.kind === kind));
   $('data-out').innerHTML = '<div class="info">Đang tải…</div>';
   // Tab Anh chi hien anh da tai: anh cua trang vua crawl chua co byte (tai rieng bang `crawler pictures fetch`).
-  const fetched = kind === 'picture' ? '&fetched=1' : '';
+  $('data-all').hidden = kind !== 'picture';
+  const fetched = kind === 'picture' && !dataState.allPictures ? '&fetched=1' : '';
   const r = await getJson(`/api/docs?kind=${kind}&page=${page}&size=${size}${fetched}`).catch(() => null);
   if (kind !== dataState.kind || page !== dataState.page) return;  // da bam sang tab / trang khac
   if (!r?.ok) {
@@ -96,6 +100,11 @@ document.querySelector('.subtabs').addEventListener('click', e => {
   dataState.page = 1;
   loadData();
 });
+$('data-all-box').addEventListener('change', e => {
+  dataState.allPictures = e.target.checked;
+  dataState.page = 1;
+  loadData();
+});
 $('data-prev').addEventListener('click', () => { dataState.page--; loadData(); });
 $('data-next').addEventListener('click', () => { dataState.page++; loadData(); });
 $('data-out').addEventListener('click', e => {
@@ -104,7 +113,9 @@ $('data-out').addEventListener('click', e => {
 });
 // Su kien error khong noi bot nen bat o pha capture: anh loi thanh o xam.
 $('data-out').addEventListener('error', e => {
-  if (e.target.tagName === 'IMG') e.target.outerHTML = '<span class="none">không hiện được</span>';
+  if (e.target.tagName !== 'IMG') return;
+  const url = e.target.closest('[data-url]')?.dataset.url;
+  e.target.outerHTML = `<span class="none">không hiện được<br>${esc(url)}</span>`;
 }, true);
 $('detail-out').addEventListener('error', e => {
   if (e.target.tagName === 'IMG') e.target.remove();
