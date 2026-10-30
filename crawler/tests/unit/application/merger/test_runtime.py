@@ -299,3 +299,25 @@ def test_start_crawl_rejects_bad_url(url: str) -> None:
     client = FakeServiceClient()
     assert isinstance(asyncio.run(_job_runtime(client).start_crawl(url, None)), str)
     assert client.sent == []
+
+
+def test_tick_retries_a_job_url_that_never_came_back() -> None:
+    client = FakeServiceClient()
+    clock = [0.0]
+    runtime = MergerRuntime(
+        MergerConfig(batch_size=500, batch_seconds=1.0, database=Path("unused")),
+        MemoryMergerState(),
+        MemoryOutbox(),
+        client,
+        Scope(frozenset()),
+        clock=lambda: clock[0],
+    )
+
+    async def scenario() -> None:
+        await runtime.start_crawl(JOB_ROOT, None)
+        await runtime.tick()
+        clock[0] = 15.0
+        await runtime.tick()
+
+    asyncio.run(scenario())
+    assert _sent_to_mediator(client) == [{"urls": [JOB_ROOT], "force": True}] * 2

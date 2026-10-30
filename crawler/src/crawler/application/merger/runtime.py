@@ -104,7 +104,8 @@ class MergerRuntime:
         """Queue the links of a job's page, even unchanged; a duplicate is a dead end, as in
         ``aggregate``."""
         url = record["url"]
-        job = self.jobs.job_of(record.get("requested_url") or url)
+        queued_url = record.get("requested_url") or url
+        job = self.jobs.job_of(queued_url)
         if job is None:
             return
         links: list[str] = []
@@ -116,7 +117,7 @@ class MergerRuntime:
                 allowed_hosts=frozenset({job.host}),
                 allowed_ports=self.scope.allowed_ports,
             )
-        if fresh := self.jobs.record(job, url, links, self.clock()):
+        if fresh := self.jobs.record(job, queued_url, url, links, self.clock()):
             await self.send("mediator", {"urls": fresh, "force": True})
 
     async def seed(self, urls: Sequence[str]) -> None:
@@ -155,6 +156,14 @@ class MergerRuntime:
             raise
         except Exception:
             log.exception("sending new urls failed")
+        try:
+            await self._retry_stalled_jobs()
+        except Exception:
+            log.exception("retrying stalled crawl jobs failed")
+
+    async def _retry_stalled_jobs(self) -> None:
+        for _, urls in self.jobs.stalled(self.clock()):
+            await self.send("mediator", {"urls": urls, "force": True})
 
     async def flush(self) -> None:
         try:
