@@ -71,3 +71,17 @@ def test_report_updates_schedule() -> None:
     assert asyncio.run(scenario()) == [(200, {"updated": 1}), (400, "error")]
     row = queue.get("https://hust.edu.vn/a")
     assert row is not None and row.interval_days == 14.0
+
+
+def test_add_force_must_be_boolean() -> None:
+    status, _ = _post(FakeUrlQueue(), '{"urls": ["https://hust.edu.vn/a"], "force": "yes"}')
+    assert status == 400
+
+
+def test_add_force_requeues_known_url() -> None:
+    queue = FakeUrlQueue()
+    _post(queue, '{"urls": ["https://hust.edu.vn/a"]}')
+    queue.mark_sent("https://hust.edu.vn/a", 0.0, 99.0)
+    status, _ = _post(queue, '{"urls": ["https://hust.edu.vn/a"], "force": true}')
+    assert status == 200
+    assert queue.rows["https://hust.edu.vn/a"].next_due_at == 0.0

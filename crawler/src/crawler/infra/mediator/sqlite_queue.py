@@ -58,6 +58,16 @@ class SqliteUrlQueue:
             )
         return self.db.total_changes - before
 
+    def make_due(self, urls: Sequence[str], now: float) -> int:
+        before = self.db.total_changes
+        with transaction(self.db):
+            self.db.executemany(
+                "UPDATE urls SET next_due_at = ?, attempts = 0, etag = NULL, last_modified = NULL "
+                "WHERE url = ?",
+                [(now, url) for url in urls],
+            )
+        return self.db.total_changes - before
+
     def next_due(self, now: float, exclude_hosts: Collection[str]) -> QueuedUrl | None:
         excluded = sorted(exclude_hosts)
         marks = ", ".join("?" * len(excluded))

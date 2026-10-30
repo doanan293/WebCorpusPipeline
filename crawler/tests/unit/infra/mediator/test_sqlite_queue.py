@@ -78,3 +78,17 @@ def test_old_queue_file_gains_the_new_columns(tmp_path: Path) -> None:
         "Mon",
     )
     assert SqliteUrlQueue(path).get("https://h/none") is None
+
+
+def test_make_due_requeues_known_url_without_validators(tmp_path: Path) -> None:
+    queue = SqliteUrlQueue(tmp_path / "q.sqlite3")
+    queue.add([("https://a/1", "a", "page")], 1.0)
+    queue.mark_sent("https://a/1", 2.0, 50.0)
+    queue.reschedule(
+        "https://a/1", next_due_at=50.0, interval_days=7.0, etag="e", last_modified="m"
+    )
+    assert queue.make_due(["https://a/1", "https://a/unknown"], 3.0) == 1
+    row = queue.get("https://a/1")
+    assert row is not None
+    # Without its validators the download answers in full, so the page's links can be followed.
+    assert (row.next_due_at, row.attempts, row.etag, row.last_modified) == (3.0, 0, None, None)

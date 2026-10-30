@@ -32,6 +32,14 @@ class FakeUrlQueue:
                 added += 1
         return added
 
+    def make_due(self, urls: Sequence[str], now: float) -> int:
+        known = [url for url in urls if url in self.rows]
+        for url in known:
+            self.rows[url] = replace(
+                self.rows[url], next_due_at=now, attempts=0, etag=None, last_modified=None
+            )
+        return len(known)
+
     def next_due(self, now: float, exclude_hosts: Collection[str]) -> QueuedUrl | None:
         due = [
             row

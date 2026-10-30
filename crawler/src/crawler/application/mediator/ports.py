@@ -21,6 +21,10 @@ class UrlQueue(Protocol):
         """Insert ``(url, host, kind)`` rows not yet known, due now; return how many were new."""
         ...
 
+    def make_due(self, urls: Sequence[str], now: float) -> int:
+        """Make known URLs due now, without validators; return how many changed."""
+        ...
+
     def next_due(self, now: float, exclude_hosts: Collection[str]) -> QueuedUrl | None:
         """The earliest due URL whose host is not in ``exclude_hosts``."""
         ...

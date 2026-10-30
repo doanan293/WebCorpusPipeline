@@ -31,7 +31,10 @@ def create_app(
         urls = body.get("urls")
         if not isinstance(urls, list) or not all(isinstance(url, str) for url in urls):
             return error(400, "urls must be a list of strings")
-        result = add_urls(queue, urls, clock)
+        force = body.get("force", False)
+        if not isinstance(force, bool):
+            return error(400, "force must be a boolean")
+        result = add_urls(queue, urls, clock, force=force)
         return json_response(
             {
                 "accepted": result.accepted,
