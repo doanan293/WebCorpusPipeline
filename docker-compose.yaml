@@ -1,0 +1,42 @@
+# Toan bo he thong demo: MongoDB, cac khoi crawler, lucene, frontend. Chay tu thu muc goc repo.
+#
+#   docker compose up -d --build                                     # bat tat ca
+#   DUMP=<ten-file>.archive.gz docker compose run --rm restore       # nap ban dump trong crawler/data/submission/
+name: webcorpus
+
+services:
+  mongo:
+    # 7.0 chu khong phai 8.0: mongo 8.0 tu thoat tren kernel Linux 6.19 - 7.0.13 (TCMalloc/rseq,
+    # SERVER-121912), ma Docker Desktop hien chay kernel 7.0.12.
+    image: mongo:7.0
+    restart: unless-stopped
+    # WiredTiger mac dinh lay ~1/2 RAM; 1 GB du cho demo.
+    command: ["--wiredTigerCacheSizeGB", "1"]
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # Chay mot lan: DUMP=<ten-file>.archive.gz docker compose run --rm restore
+  restore:
+    image: mongo:7.0
+    profiles: ["restore"]
+    depends_on:
+      mongo: {condition: service_healthy}
+    volumes:
+      - ./crawler/data/submission:/dump:ro
+    command:
+      - mongorestore
+      - --uri=mongodb://mongo:27017
+      - --gzip
+      - --archive=/dump/${DUMP:-}   # bo trong thi mongorestore bao loi, khong dung nham ban dump
+      - --drop
+
+volumes:
+  mongo_data:
+    name: lucene_mongo_data
