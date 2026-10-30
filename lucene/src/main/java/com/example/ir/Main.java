@@ -247,8 +247,9 @@ public final class Main {
     private static Map<String, Float> computePagerank(MongoDocLoader mongo) {
         long t0 = System.nanoTime();
         PageRank.Result r = PageRank.compute(mongo.database());
-        System.out.printf("  PageRank: %,d trang/tep, %,d lien ket khac host, %,d trang duoc tro toi tu site khac;"
-                + " hoi tu sau %d vong (%.1f s)%n", r.nodes(), r.edges(), r.linked(), r.iterations(), (System.nanoTime() - t0) / 1e9);
+        System.out.printf("  PageRank: %,d trang/tep; lien ket: %,d khac host, %,d cung host, bo %,d khuon mau;"
+                + " %,d trang duoc tro toi; hoi tu sau %d vong (%.1f s)%n", r.nodes(), r.crossEdges(), r.intraEdges(),
+                r.templateEdges(), r.linked(), r.iterations(), (System.nanoTime() - t0) / 1e9);
         r.top().forEach(t -> System.out.println("    " + t));
         return r.scores();
     }

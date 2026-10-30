@@ -550,7 +550,7 @@ public final class Searcher {
         for (Hit h : o.hits()) {
             rank++;
             sink.accept(String.format("  %2d. score=%.4f  tf-idf=%.4f%s  id=%s", rank, h.score(), h.tfidf(),
-                    o.usePagerank() ? String.format("  pagerank=%.2f", h.pagerank()) : "", h.id()));
+                    o.usePagerank() ? String.format("  pagerank=%.3f", h.pagerank()) : "", h.id()));
             describe(h, sink);
             sink.accept("      " + h.snippet());
         }

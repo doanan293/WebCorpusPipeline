@@ -231,12 +231,27 @@ hoặc dùng `--analyzer standard` nếu cần nhanh.
 
 Khi lập chỉ mục từ MongoDB, chương trình tính **PageRank** trên đồ thị liên kết (`PageRank`):
 
-- **Đỉnh**: mọi trang `html` và tệp `other`. **Cạnh**: liên kết trong `graph` **giữa hai host khác nhau**. Khoảng 85%
-  liên kết nằm trong cùng một site (menu, chân trang, phân trang); tính cả vào thì các trang điều hướng của thư viện
-  số `dlib.hust.edu.vn` chiếm hết top. Liên kết từ site khác mới là "lời giới thiệu": PageRank cao nhất rơi vào trang
-  chủ các site (thư viện, hust.edu.vn, svbk, ctsv…) và các thông báo tuyển sinh của ts.hust.
-- **Tính**: phương pháp luỹ thừa, bước nhảy α = 0.1, trang không có liên kết ra nhảy đều tới mọi trang.
-- **Chuẩn hoá** về g(d) ∈ [0, 1] theo thang log: 0 = không có liên kết nào từ site khác, 1 = cao nhất.
+- **Đỉnh**: mọi trang `html` và tệp `other`. **Cạnh**: liên kết trong `graph`, **bỏ liên kết khuôn mẫu**. Khoảng 96%
+  liên kết nằm trong cùng một site, phần lớn là menu, chân trang, phân trang; tính hết thì các trang điều hướng của
+  thư viện số `dlib.hust.edu.vn` chiếm hết top. Quy tắc:
+  - liên kết **khác host**: giữ hết, đó là "lời giới thiệu" từ site khác;
+  - liên kết **cùng host** tới một trang bị coi là khuôn mẫu khi trang đó được hơn min(20, max(5, 5% số trang nguồn của
+    host)) trang cùng host trỏ tới (menu, khối "tin mới", menu riêng của một chuyên mục), hoặc là trang phân trang /
+    danh sách (`page=`, `/page/N`, `/tag/`, `/author/`, `/category/`);
+  - liên kết cùng host còn lại (trong thân bài, tin liên quan) giữ, cùng trọng số với liên kết khác host.
+
+  Trên bộ dữ liệu nộp (116.132 tài liệu): giữ 174.368 liên kết khác host và 300.362 liên kết cùng host, bỏ 4.143.487
+  liên kết khuôn mẫu; 83.333 trang, tệp được trỏ tới (trước đây chỉ tính liên kết khác host thì chỉ 1.147).
+  PageRank cao nhất là trang chủ các site (thư viện, hust.edu.vn, svbk…), rồi các bài tin được nhiều bài khác trỏ tới.
+- **Tính**: phương pháp luỹ thừa có trọng số, bước nhảy α = 0.1, trang không có liên kết ra nhảy đều tới mọi trang.
+- **Chuẩn hoá** về g(d) ∈ [0, 1] theo thang log: 0 = không trang nào trỏ tới (sau khi bỏ khuôn mẫu), 1 = cao nhất.
+  Frontend hiện g với 3 chữ số, g = 0 hiện "—".
+- **Ảnh hưởng tới xếp hạng** (20 truy vấn H01–H20 trên bộ dữ liệu nộp, top 10): so với không dùng PageRank, cách mới
+  đổi thứ tự cả 20 truy vấn, trung bình 8,9/10 kết quả giữ nguyên; cách cũ chỉ đổi 6 truy vấn vì 186/200 kết quả có
+  g = 0. Trần 20 được chọn vì menu riêng của một chuyên mục chỉ có trên vài chục trang: không có trần, ~10 trang
+  "[CH2]/[BF1]… Học phí và học bổng" của scls chiếm hết top "học phí"; trần 50 thì nhóm trang Giới thiệu của thư viện
+  (Cơ cấu tổ chức, Lịch sử…, mỗi trang được 35 trang trỏ tới) trỏ vòng lẫn nhau và lên top. Điểm yếu còn lại: thông báo
+  hành chính được trang chủ hust.edu.vn giới thiệu cũng có g cao (thông báo mời báo giá phần mềm thi có g = 0,59).
 - **Xếp hạng**: `điểm = BM25 × (1 + w · g(d))`, `w` = `--pagerank-weight` (mặc định 0.5, tức trang có PageRank cao nhất
   được cộng tối đa 50%). Nhân thay vì cộng vì điểm BM25 dao động 10–200 tuỳ truy vấn; nhân thì tác động của PageRank
   theo tỉ lệ, như nhau ở mọi truy vấn. `--no-pagerank` để tắt. Mỗi kết quả in thêm `pagerank=…`.

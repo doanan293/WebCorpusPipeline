@@ -21,11 +21,17 @@ import java.util.Map;
  * PageRank tren do thi lien ket cua crawler (collection graph), dung lam diem chat luong tinh g(d).
  *
  *   Dinh   : moi trang html va moi tep other.
- *   Canh   : lien ket src -> dest giua 2 dinh, CHI KHI 2 dau khac host. ~85% lien ket la trong cung
- *            1 site (menu, chan trang, phan trang); tinh ca vao thi cac trang dieu huong cua thu vien so
- *            dlib.hust.edu.vn chiem het top. Lien ket tu site khac moi la "loi gioi thieu" thuc su.
- *   Tinh   : phuong phap luy thua, buoc nhay alpha = 0.1; trang khong co lien ket ra nhay deu toi moi trang.
- *   g(d)   : chuan hoa ve [0, 1] theo thang log: 0 = trang khong co lien ket nao tu site khac,
+ *   Canh   : lien ket src -> dest giua 2 dinh, bo lien ket "khuon mau". ~96% lien ket nam trong cung 1 site,
+ *            phan lon la menu, chan trang, phan trang; tinh het thi cac trang dieu huong (dlib.hust.edu.vn)
+ *            chiem het top. Nen:
+ *              - lien ket khac host: giu het (loi gioi thieu tu site khac);
+ *              - lien ket cung host toi 1 trang bi coi la khuon mau khi trang do duoc hon
+ *                min({@value #TEMPLATE_MAX}, max(5, {@value #TEMPLATE_SHARE} x so trang nguon cua host)) trang cung host
+ *                tro toi (menu, khoi "tin moi", menu rieng cua 1 chuyen muc), hoac la trang phan trang / danh sach
+ *                (page=, /page/N, /tag/, /author/, /category/);
+ *              - con lai (lien ket trong than bai, tin lien quan) giu, trong so {@value #INTRA_WEIGHT}.
+ *   Tinh   : phuong phap luy thua co trong so, buoc nhay alpha = 0.1; trang khong co lien ket ra nhay deu toi moi trang.
+ *   g(d)   : chuan hoa ve [0, 1] theo thang log: 0 = trang khong duoc trang nao tro toi (sau khi bo khuon mau),
  *            1 = trang co PageRank cao nhat.
  *
  * Luu trong chi muc thanh doc values {@value FIELD} (ghi de duoc tai cho, khong phai lap lai tai lieu).
@@ -34,15 +40,34 @@ final class PageRank {
 
     static final String FIELD = "pagerank";
     static final double ALPHA = 0.1;
+    /** Xem compute(db, templateShare, intraWeight). */
+    static final double TEMPLATE_SHARE = 0.05;
+    static final double INTRA_WEIGHT = 1.0;
+    static final int TEMPLATE_MAX = 20;
+    /** Duoi so trang nguon nay thi khong bao gio coi la khuon mau (site nho, lien ket that it). */
+    private static final int MIN_TEMPLATE_SOURCES = 5;
+    /** Trang phan trang / danh sach (theo tag, tac gia, chuyen muc): lien ket cung host toi chung la dieu huong. */
+    private static final java.util.regex.Pattern LISTING = java.util.regex.Pattern.compile(
+            "(?i)[?&](page|paged|p|start|offset)=\\d+|/page/\\d+/?$|/(tag|tags|author|category|cat)/");
     private static final int MAX_ITER = 200;
     private static final double TOL = 1e-10;
 
     /** g theo url, kem thong ke de in ra. */
-    record Result(Map<String, Float> scores, int nodes, int edges, int linked, int iterations, List<String> top) {}
+    record Result(Map<String, Float> scores, int nodes, int crossEdges, int intraEdges, int templateEdges, int linked,
+                  int iterations, List<String> top) {}
 
     private PageRank() {}
 
     static Result compute(MongoDatabase db) {
+        return compute(db, TEMPLATE_SHARE, TEMPLATE_MAX, INTRA_WEIGHT);
+    }
+
+    /**
+     * @param templateShare lien ket cung host toi 1 trang dich bi coi la khuon mau (menu, chan trang) khi so trang
+     *                      nguon cung host tro toi no vuot ty le nay cua so trang nguon cua host
+     * @param intraWeight   trong so cua lien ket cung host (lien ket khac host = 1)
+     */
+    static Result compute(MongoDatabase db, double templateShare, int templateMax, double intraWeight) {
         Map<String, Integer> id = new HashMap<>();
         List<String> urls = new ArrayList<>();
         for (String c : List.of("html", "other")) {
@@ -53,22 +78,54 @@ final class PageRank {
             }
         }
         int n = urls.size();
-        String[] hosts = urls.stream().map(PageRank::host).toArray(String[]::new);
+        Map<String, Integer> hostId = new HashMap<>();
+        int[] host = new int[n];
+        for (int i = 0; i < n; i++) host[i] = hostId.computeIfAbsent(host(urls.get(i)), k -> hostId.size());
         List<Long> pairs = new ArrayList<>();
         for (Document e : db.getCollection("graph").find()
                 .projection(Projections.fields(Projections.include("src", "dest"), Projections.excludeId())).batchSize(20_000)) {
             Integer s = id.get(e.getString("src"));
             Integer d = id.get(e.getString("dest"));
-            if (s != null && d != null && !hosts[s].equals(hosts[d])) pairs.add(((long) s << 32) | d);
+            if (s != null && d != null && !s.equals(d)) pairs.add(((long) s << 32) | d);
         }
-        long[] edges = pairs.stream().mapToLong(Long::longValue).distinct().sorted().toArray();
+        long[] all = pairs.stream().mapToLong(Long::longValue).distinct().sorted().toArray();
 
-        // phuong phap luy thua: x' = (alpha * S_mo + S_dong)/N + (1 - alpha) * sum_{i -> j} x_i / bacRa(i)
-        int[] deg = new int[n];
+        // Lien ket khuon mau: trang dich duoc qua nhieu trang cung host tro toi (menu, chan trang, "tin moi")
+        int[] intraIn = new int[n];
+        boolean[] intraOut = new boolean[n];
+        for (long e : all) {
+            int s = (int) (e >>> 32), d = (int) e;
+            if (host[s] == host[d]) {
+                intraIn[d]++;
+                intraOut[s] = true;
+            }
+        }
+        boolean[] listing = new boolean[n];                 // trang phan trang / danh sach: cung la dieu huong
+        for (int i = 0; i < n; i++) listing[i] = LISTING.matcher(urls.get(i)).find();
+        int[] sources = new int[hostId.size()];             // so trang co lien ket ra trong host
+        for (int i = 0; i < n; i++) if (intraOut[i]) sources[host[i]]++;
+        List<long[]> kept = new ArrayList<>();
+        int cross = 0, intra = 0, template = 0;
+        for (long e : all) {
+            int s = (int) (e >>> 32), d = (int) e;
+            if (host[s] != host[d]) {
+                cross++;
+                kept.add(new long[]{e, Double.doubleToRawLongBits(1.0)});
+            } else if (intraIn[d] > Math.min(templateMax, Math.max(MIN_TEMPLATE_SOURCES, templateShare * sources[host[d]]))
+                    || listing[d]) {
+                template++;
+            } else if (intraWeight > 0) {
+                intra++;
+                kept.add(new long[]{e, Double.doubleToRawLongBits(intraWeight)});
+            }
+        }
+
+        // phuong phap luy thua co trong so: x' = (alpha * S_mo + S_dong)/N + (1 - alpha) * sum_{i -> j} x_i * w_ij / W_i
+        double[] outW = new double[n];
         boolean[] linked = new boolean[n];
-        for (long e : edges) {
-            deg[(int) (e >>> 32)]++;
-            linked[(int) e] = true;
+        for (long[] e : kept) {
+            outW[(int) (e[0] >>> 32)] += Double.longBitsToDouble(e[1]);
+            linked[(int) e[0]] = true;
         }
         double[] x = new double[n];
         Arrays.fill(x, 1.0 / n);
@@ -78,12 +135,12 @@ final class PageRank {
             double[] next = new double[n];
             double open = 0, dangling = 0;
             for (int i = 0; i < n; i++) {
-                if (deg[i] == 0) dangling += x[i];
+                if (outW[i] == 0) dangling += x[i];
                 else open += x[i];
             }
-            for (long e : edges) {
-                int s = (int) (e >>> 32);
-                next[(int) e] += (1 - ALPHA) * x[s] / deg[s];
+            for (long[] e : kept) {
+                int s = (int) (e[0] >>> 32);
+                next[(int) e[0]] += (1 - ALPHA) * x[s] * Double.longBitsToDouble(e[1]) / outW[s];
             }
             double base = (ALPHA * open + dangling) / n;
             double diff = 0;
@@ -95,7 +152,7 @@ final class PageRank {
             if (diff < TOL) break;
         }
 
-        // chuan hoa log: trang khong duoc tro toi tu site khac co PageRank nho nhat (= muc nen) -> 0
+        // chuan hoa log: trang khong duoc tro toi (= muc nen) -> 0
         double floor = Double.MAX_VALUE, max = 0;
         int nLinked = 0;
         for (int i = 0; i < n; i++) {
@@ -114,7 +171,7 @@ final class PageRank {
         Arrays.sort(order, (a, b) -> Double.compare(pr[b], pr[a]));
         List<String> top = new ArrayList<>();
         for (int i = 0; i < Math.min(5, n); i++) top.add(String.format("%.3f  %s", g.get(urls.get(order[i])), urls.get(order[i])));
-        return new Result(g, n, edges.length, nLinked, it, top);
+        return new Result(g, n, cross, intra, template, nLinked, it, top);
     }
 
     static String host(String url) {

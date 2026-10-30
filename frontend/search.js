@@ -7,7 +7,7 @@ function hitHtml(h, i, pagerank, extra) {
     : `<span class="title">${esc(title)}</span>`;
   const meta = extra
     ? `tf-idf ${h.tfidf.toFixed(3)}`
-    : `#${i + 1} · điểm ${h.score.toFixed(3)} · tf-idf ${h.tfidf.toFixed(3)}` + (pagerank ? ` · PageRank ${h.pagerank.toFixed(2)}` : '');
+    : `#${i + 1} · điểm ${h.score.toFixed(3)} · tf-idf ${h.tfidf.toFixed(3)}` + (pagerank ? ` · PageRank ${h.pagerank > 0 ? h.pagerank.toFixed(3) : '—'}` : '');
   const where = link ? link + (h.source.startsWith('mongo:other') ? '  · tệp' : '') : h.source;
   return `<div class="hit"><div class="url">${esc(where)}</div>${head}
     <div class="snip">${h.snippet}</div><div class="meta">${meta}</div></div>`;
