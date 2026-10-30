@@ -32,7 +32,8 @@ import java.util.regex.Pattern;
  * Doc truc tiep du lieu crawler trong MongoDB cho man hinh "Du lieu" cua frontend.
  *
  *   GET /api/stats                                                    : so document moi loai
- *   GET /api/docs?kind=html|other|picture&page=&size=&since=&host=    : danh sach, moi nhat truoc
+ *   GET /api/docs?kind=html|other|picture&page=&size=&since=&host=&fetched=1 : danh sach, moi nhat truoc
+ *       (fetched=1: chi anh da tai, vi ban ghi anh moi chua co byte; tong so la so dem o nen)
  *   GET /api/doc?kind=...&url=...                                     : chi tiet mot ban ghi
  *   GET /api/picture?url=...                                          : byte cua anh
  */
@@ -133,10 +134,16 @@ final class DataApi {
         if (host != null && !host.isBlank()) {
             filters.add(Filters.regex("url", "^https?://" + Pattern.quote(host) + "(:\\d+)?(/|$)"));
         }
+        boolean fetchedOnly = kind.equals("picture") && "1".equals(q.get("fetched"));
+        if (fetchedOnly) refreshPictureFetched();
         MongoCollection<Document> c = db.getCollection(kind);
         long total;
         FindIterable<Document> found;
-        if (filters.isEmpty()) {
+        if (fetchedOnly && filters.isEmpty()) {
+            Long counted = pictureFetched;
+            total = counted != null ? counted : c.estimatedDocumentCount();
+            found = c.find(Filters.ne("size", null));
+        } else if (filters.isEmpty()) {
             total = c.estimatedDocumentCount();
             found = c.find();
         } else {
