@@ -1,0 +1,10 @@
+# merger (khối 4 trên slide): nhận POST /add từ reader,
+# gửi bản ghi sang storage và URL mới sang mediator.
+port: 3300
+seeds_file: config/domains/none.txt   # demo: no seeds, only what POST /crawl asks for
+initial_scope_file: config/domains/none.txt
+batch_size: 500
+batch_seconds: 1.0
+outbox_retry_seconds: 30
+database: data/state-demo/merger.sqlite3   # apart from the real crawl
+outbox: data/state-demo/outbox.jsonl

@@ -41,7 +41,7 @@ kê cùng `manifest.json`.
 mới. Máy mới lấy đúng bản đó mà không phải crawl lại:
 
 ```bash
-docker compose up -d mongoose
+docker compose up -d mongo            # ở thư mục gốc repo
 uv run crawler corpus pull            # tải vào data/corpus/pulled, nạp MongoDB, bung data/ còn thiếu
 uv run crawler corpus pull --no-data  # nạp MongoDB, không bung data/
 uv run crawler corpus pull --no-load  # chỉ tải

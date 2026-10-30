@@ -23,7 +23,7 @@ Giao diện từng khối, luồng dữ liệu và cách thay khối bằng kh�
 | Cách chạy | Lệnh | Khi nào dùng |
 |---|---|---|
 | **Một tiến trình** | `uv run crawler crawl run` | crawl thật: năm khối gọi hàm trực tiếp trong một tiến trình, không tốn HTTP nội bộ, 64 URL tải song song |
-| **Năm dịch vụ theo slide** | `docker compose up -d --build` | nộp bài, ghép với khối của nhóm khác qua HTTP; mỗi container chạy `crawler serve <khối>` |
+| **Năm dịch vụ theo slide** | `docker compose up -d --build` (ở thư mục gốc repo) | nộp bài, ghép với khối của nhóm khác qua HTTP; mỗi container chạy `crawler serve <khối>` |
 
 Hai cách chạy dùng chung **một code** (`src/crawler/`) và **một bộ dữ liệu**:
 
@@ -31,7 +31,7 @@ Hai cách chạy dùng chung **một code** (`src/crawler/`) và **một bộ d�
 |---|---|
 | Hàng đợi, lịch crawl lại, `ETag`/`Last-Modified` (mediator) | `data/state/mediator.sqlite3` |
 | URL đã biết, chủ nội dung, fingerprint thay đổi, host được phép lan (merger) | `data/state/merger.sqlite3`, `data/state/outbox.jsonl` |
-| Trang, ảnh, tài liệu, đồ thị liên kết | MongoDB (`html`, `picture`, `other`, `graph`), volume `data_pipeline_mongodb_data` |
+| Trang, ảnh, tài liệu, đồ thị liên kết | MongoDB (`html`, `picture`, `other`, `graph`), volume `lucene_mongo_data` |
 | Cache LlamaParse | `data/enrichment/cache/` |
 | HTML đã lưu (cho `reextract`), tệp gốc của tài liệu | `data/crawl/`, `data/enrichment/files/` |
 
@@ -45,7 +45,7 @@ Toàn bộ dữ liệu (Mongo và `data/`) nằm trên Kaggle, bản ghim trong 
 crawl lại ([docs/corpus.md](docs/corpus.md)):
 
 ```bash
-uv sync && docker compose up -d mongoose
+uv sync && docker compose up -d mongo   # lệnh compose chạy ở thư mục gốc repo
 uv run crawler corpus pull           # cần `KAGGLE_API_TOKEN` trong .env, khoảng 120 GB trống
 ```
 
@@ -57,7 +57,7 @@ không có trên Kaggle). Nạp vào Mongo khác bằng `mongorestore --archive=
 
 ```bash
 uv sync && uv run playwright install chromium
-docker compose up -d mongoose                        # chỉ Mongo
+docker compose up -d mongo                           # chỉ Mongo, chạy ở thư mục gốc repo
 uv run crawler crawl run                             # chạy tới khi hết URL đến hạn
 uv run crawler crawl run --forever                   # chạy mãi như dịch vụ (cả crawl lại định kỳ)
 uv run crawler crawl run --seeds my-seeds.txt        # mầm khác file mặc định
@@ -86,13 +86,17 @@ tiết: [docs/architecture.md](docs/architecture.md#4-crawl-lại-theo-thay-đ�
 
 ## Năm dịch vụ bằng Docker
 
+Chạy ở thư mục gốc repo:
+
 ```bash
-docker compose up -d --build        # 5 khối + MongoDB (compose project `services`, image `crawler:latest`)
+docker compose up -d --build storage reader downloader-1 downloader-2 mediator merger
 docker compose logs -f mediator     # theo dõi
-curl -X POST localhost:5200/add -d '{"urls": ["https://ctsv.hust.edu.vn/"]}'
+curl -X POST localhost:3300/crawl -H 'Content-Type: application/json' \
+     -d '{"url": "https://ctsv.hust.edu.vn/", "max_pages": 30}'
 ```
 
-Các container dùng chung `data/state/` và volume Mongo với `crawl run`, nên hai cách chạy nối tiếp nhau được.
+Các container chạy chế độ demo: không có mầm, chỉ crawl theo `POST /crawl`, trạng thái riêng trong `data/state-demo/`;
+volume Mongo dùng chung với `crawl run`.
 Cổng, biến môi trường, chạy từng khối không cần Docker (`uv run crawler serve <khối>`): [docs/services.md](docs/services.md#chạy).
 
 ## Tải ảnh
@@ -167,7 +171,7 @@ Dữ liệu các khối lưu lại (Mongo, SQLite của mediator và merger, gó
 
 ```bash
 uv run pytest -q                     # bỏ qua test cần Docker (marker `docker`)
-uv run pytest -q -m docker           # test với MongoDB thật (`docker compose up -d mongoose`)
+uv run pytest -q -m docker           # test với MongoDB thật (`docker compose up -d mongo` ở thư mục gốc repo)
 uv run ruff check . && uv run ruff format --check .
 uv run pyrefly check                 # kiểm tra kiểu (preset strict)
 uv run pre-commit install            # cài hook (ruff, pyrefly khi commit; pytest khi push)

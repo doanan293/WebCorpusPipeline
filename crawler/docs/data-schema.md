@@ -17,7 +17,7 @@ Nơi duy nhất mô tả dữ liệu mà các khối lưu lại. Bản ghi các 
 
 Cơ sở dữ liệu `information_retrieval` (đổi bằng `MONGODB_DATABASE`). Bốn collection theo format chung của slide
 ([system-design.md](system-design.md#mongo)); các trường in đậm là trường của format chung, còn lại là trường
-thêm của nhóm. Volume của Mongo trong compose là `mongoose_data`, tên thật `data_pipeline_mongodb_data`.
+thêm của nhóm. Volume của Mongo trong compose ở gốc repo là `mongo_data`, tên thật `lucene_mongo_data`.
 
 ### `html`
 
@@ -157,9 +157,9 @@ tra rồi dump, trong `crawler/`:
 
 ```bash
 uv run python data/submission/check_submission.py     # mã 1 nếu dữ liệu sai format
-docker exec services-mongoose-1 mongodump --db information_retrieval --archive=/tmp/ir.archive.gz --gzip
-docker cp services-mongoose-1:/tmp/ir.archive.gz data/submission/information_retrieval-$(date +%Y%m%d).archive.gz
-docker exec services-mongoose-1 rm /tmp/ir.archive.gz
+docker exec webcorpus-mongo-1 mongodump --db information_retrieval --archive=/tmp/ir.archive.gz --gzip
+docker cp webcorpus-mongo-1:/tmp/ir.archive.gz data/submission/information_retrieval-$(date +%Y%m%d).archive.gz
+docker exec webcorpus-mongo-1 rm /tmp/ir.archive.gz
 ```
 
 ## Dữ liệu thô giữ lại

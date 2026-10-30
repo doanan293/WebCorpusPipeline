@@ -30,7 +30,7 @@ flowchart LR
 | 3 | mediator | 5200 | `POST /add`, `POST /report` | `crawler serve mediator` |
 | 4 | merger | 3300 | `POST /add` | `crawler serve merger` |
 | 5 | storage | 2200 | `POST /add` | `crawler serve storage` |
-| 6 | mongoose | 27017 | | |
+| 6 | mongoose (service `mongo`) | 27017 | | |
 
 `POST /report` của mediator là endpoint thêm của nhóm (merger báo kết quả mỗi lần tải để chỉnh lịch crawl lại).
 Phục vụ demo còn có thêm cờ `force` của mediator `POST /add` (URL đã biết cũng được xếp tải lại ngay, bỏ
@@ -48,7 +48,8 @@ khác slide. Body sai định dạng luôn trả `400 {"error": "<lý do>"}`.
 Trạng thái: `{"job", "url", "host", "max_pages", "queued", "saved", "urls", "stopped", "done"}`; `urls` là tối đa
 50 URL vừa lưu, mới nhất trước. Job lan theo luật lọc link hiện tại nhưng chỉ trong host của `url`, không thêm host
 đó vào phạm vi lan của merger. Job nằm trong bộ nhớ, merger khởi động lại thì mất. `done` khi đã dừng, khi mọi URL
-đã xếp đều có bản ghi, hoặc sau 60 giây không có bản ghi mới (tải lỗi thì không có bản ghi trả về).
+đã xếp đều có bản ghi, hoặc sau 60 giây không có bản ghi mới. Tải lỗi thì không có bản ghi trả về, nên sau 15 giây
+không có gì mới, job xếp lại các URL còn thiếu (tối đa 2 lần).
 
 ## Giao diện
 
@@ -154,26 +155,29 @@ khối kia từ chối hẳn (`4xx`, ví dụ tài liệu lớn hơn 16 MB Mongo
 
 ## Chạy
 
-Trong `crawler/`:
+Trong thư mục gốc repo (một [`docker-compose.yaml`](../../docker-compose.yaml) cho toàn hệ thống):
 
 ```bash
-docker compose up -d --build        # 5 khối + MongoDB
+docker compose up -d --build storage reader downloader-1 downloader-2 mediator merger   # 5 khối + MongoDB
 docker compose logs -f mediator     # theo dõi
-curl -X POST localhost:5200/add -d '{"urls": ["https://ctsv.hust.edu.vn/"]}'
+curl -X POST localhost:3300/crawl -H 'Content-Type: application/json' \
+     -d '{"url": "https://ctsv.hust.edu.vn/", "max_pages": 30}'
 ```
 
-Compose project tên `services`; các service là `reader`, `downloader-1`, `downloader-2`, `mediator`, `merger`,
-`storage` (cùng image `crawler:latest`, lệnh `crawler serve <khối>`) và `mongoose` (`mongo:8.0`). Thứ tự khởi
+Compose project tên `webcorpus`; các service là `reader`, `downloader-1`, `downloader-2`, `mediator`, `merger`,
+`storage` (cùng image `crawler:latest`, lệnh `crawler serve <khối>`) và `mongo` (`mongo:7.0`). Thứ tự khởi
 động đi ngược chiều dữ liệu (storage, merger, reader, downloader, rồi mediator), để không khối nào gửi sang một
-khối chưa chạy; URL mầm của merger chờ trong outbox tới khi mediator lên.
+khối chưa chạy.
 
-**Dữ liệu dùng chung với một tiến trình.** Các container gắn `./config` (chỉ đọc), `./data/state` (hàng đợi,
-URL đã biết, fingerprint, outbox; cho mediator và merger), `./data/enrichment/cache` (cache LlamaParse; cho
-reader), và dùng volume Mongo `mongoose_data`, tên thật `data_pipeline_mongodb_data` (giữ từ trước khi đổi
-tên). Container chạy với user của máy (`UID`/`GID`, mặc định 1000; bash không export hai biến này, nên nếu user
-của bạn không phải 1000 thì chạy `export UID GID=$(id -g)` trước `docker compose up -d`). Vì vậy
-`docker compose up` tiếp tục đúng chỗ `crawler crawl run` dừng và ngược lại. Trong lúc các dịch vụ chạy,
-`crawl run` báo trạng thái đang được dùng và thoát (và ngược lại).
+**Chế độ demo.** Trong compose, mediator và merger chạy với `config/mediator.demo.yaml`, `config/merger.demo.yaml`:
+không có mầm và phạm vi lan (`config/domains/none.txt`), nên chỉ crawl những gì `POST /crawl` yêu cầu; trạng thái nằm
+riêng trong `data/state-demo/`, không đụng tới `data/state/` của crawl thật.
+
+**Dữ liệu dùng chung với một tiến trình.** Các container gắn `crawler/config` (chỉ đọc), `crawler/data/state-demo`
+(hàng đợi, URL đã biết, fingerprint, outbox; cho mediator và merger), `crawler/data/enrichment/cache` (cache
+LlamaParse; cho reader), và dùng volume Mongo tên `lucene_mongo_data`, chung với `crawler crawl run`. Container chạy
+với user của máy (`UID`/`GID`, mặc định 1000; bash không export hai biến này, nên nếu user của bạn không phải 1000
+thì chạy `export UID GID=$(id -g)` trước `docker compose up -d`).
 
 Không có Docker: chạy từng khối bằng `uv run crawler serve <khối>` trong `crawler/` (đường dẫn trong
 `config/*.yaml` tính từ `crawler/`, nên vẫn dùng chung `data/state`) với biến môi trường trỏ tới khối kề bên

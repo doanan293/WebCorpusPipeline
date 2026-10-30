@@ -7,7 +7,7 @@ và hai cách chạy chúng trên cùng một code và cùng một bộ dữ li�
 
 - **Một tiến trình** (`crawler crawl run`, phần `cli/pipeline/`): các khối gọi nhau bằng hàm.
   Tác dụng: chạy và gỡ lỗi cả hệ thống trên một máy bằng một lệnh, không cần Docker.
-- **Năm dịch vụ HTTP/JSON** (`crawler serve <khối>`, phần `api/`, dựng bằng `compose.yaml`): đúng endpoint và
+- **Năm dịch vụ HTTP/JSON** (`crawler serve <khối>`, phần `api/`, dựng bằng `docker-compose.yaml` ở gốc repo): đúng endpoint và
   cổng của slide, mỗi khối một container. Tác dụng: nhóm có bản demo đầy đủ từ đầu đến cuối mà không phải chờ các
   nhóm khác, và thay được từng khối bằng khối của nhóm khác khi ghép ([services.md](services.md)).
 
