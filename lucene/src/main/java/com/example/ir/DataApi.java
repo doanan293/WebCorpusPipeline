@@ -25,15 +25,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.regex.Pattern;
 
 /**
  * Doc truc tiep du lieu crawler trong MongoDB cho man hinh "Du lieu" cua frontend.
  *
  *   GET /api/stats                                                    : so document moi loai
- *   GET /api/docs?kind=html|other|picture&page=&size=&since=&host=&fetched=1 : danh sach, moi nhat truoc
- *       (fetched=1: chi anh da tai, vi ban ghi anh moi chua co byte; tong so la so dem o nen)
+ *   GET /api/docs?kind=html|other|picture&page=&size=&fetched=1 : danh sach, moi nhat truoc
+ *       (fetched=1: chi anh da tai, vi ban ghi anh moi chua co byte)
  *   GET /api/doc?kind=...&url=...                                     : chi tiet mot ban ghi
  *   GET /api/picture?url=...                                          : byte cua anh
  */
@@ -42,7 +40,8 @@ final class DataApi {
     private static final int MAX_SIZE = 100;
     private static final int MAX_CONTENT = 5000;
     private static final int MAX_OUTLINKS = 100;
-    private static final long FETCHED_TTL_MS = TimeUnit.MINUTES.toMillis(5);
+    /** Anh da tai: co size (trung voi co b64); index tren size nen dem nhanh. */
+    private static final Bson FETCHED = Filters.gt("size", 0);
 
     private static final Map<String, List<String>> ROW_FIELDS = Map.of(
             "html", List.of("url", "title", "updated_at", "duplicate_of"),
@@ -55,9 +54,6 @@ final class DataApi {
             "picture", List.of("url", "origin", "format", "size", "error", "updated_at"));
 
     private final MongoDatabase db;
-    private final AtomicBoolean counting = new AtomicBoolean();
-    private volatile Long pictureFetched;
-    private volatile long pictureFetchedAt;
 
     private DataApi(MongoDatabase db) {
         this.db = db;
@@ -72,6 +68,7 @@ final class DataApi {
         for (String c : ROW_FIELDS.keySet()) {
             db.getCollection(c).createIndex(Indexes.ascending("updated_at"));
         }
+        db.getCollection("picture").createIndex(Indexes.ascending("size"));
         return new DataApi(db);
     }
 
@@ -93,30 +90,10 @@ final class DataApi {
     }
 
     private Document stats() {
-        refreshPictureFetched();
         return new Document("html", db.getCollection("html").estimatedDocumentCount())
                 .append("other", db.getCollection("other").estimatedDocumentCount())
                 .append("picture", db.getCollection("picture").estimatedDocumentCount())
-                .append("pictureFetched", pictureFetched);
-    }
-
-    /** Dem anh da tai phai quet ca collection nen dem o luong nen; chua dem xong thi tra null. */
-    private void refreshPictureFetched() {
-        long now = System.currentTimeMillis();
-        if (now - pictureFetchedAt < FETCHED_TTL_MS || !counting.compareAndSet(false, true)) return;
-        Thread t = new Thread(() -> {
-            try {
-                pictureFetched = db.getCollection("picture")
-                        .countDocuments(Filters.and(Filters.exists("b64"), Filters.ne("b64", "")));
-                pictureFetchedAt = System.currentTimeMillis();
-            } catch (MongoException e) {
-                e.printStackTrace();
-            } finally {
-                counting.set(false);
-            }
-        }, "picture-count");
-        t.setDaemon(true);
-        t.start();
+                .append("pictureFetched", db.getCollection("picture").countDocuments(FETCHED));
     }
 
     private void docs(HttpExchange ex, Map<String, String> q) throws IOException {
@@ -127,30 +104,10 @@ final class DataApi {
         }
         int page = Math.max(1, intParam(q, "page", 1));
         int size = Math.max(1, Math.min(MAX_SIZE, intParam(q, "size", 20)));
-        List<Bson> filters = new ArrayList<>();
-        String since = q.get("since");
-        if (since != null && !since.isBlank()) filters.add(Filters.gte("updated_at", since));
-        String host = q.get("host");
-        if (host != null && !host.isBlank()) {
-            filters.add(Filters.regex("url", "^https?://" + Pattern.quote(host) + "(:\\d+)?(/|$)"));
-        }
-        boolean fetchedOnly = kind.equals("picture") && "1".equals(q.get("fetched"));
-        if (fetchedOnly) refreshPictureFetched();
         MongoCollection<Document> c = db.getCollection(kind);
-        long total;
-        FindIterable<Document> found;
-        if (fetchedOnly && filters.isEmpty()) {
-            Long counted = pictureFetched;
-            total = counted != null ? counted : c.estimatedDocumentCount();
-            found = c.find(Filters.ne("size", null));
-        } else if (filters.isEmpty()) {
-            total = c.estimatedDocumentCount();
-            found = c.find();
-        } else {
-            Bson filter = Filters.and(filters);
-            total = c.countDocuments(filter);
-            found = c.find(filter);
-        }
+        boolean fetchedOnly = kind.equals("picture") && "1".equals(q.get("fetched"));
+        long total = fetchedOnly ? c.countDocuments(FETCHED) : c.estimatedDocumentCount();
+        FindIterable<Document> found = fetchedOnly ? c.find(FETCHED) : c.find();
         List<Document> rows = found.sort(Sorts.descending("updated_at"))
                 .skip((page - 1) * size)
                 .limit(size)
@@ -218,6 +175,10 @@ final class DataApi {
             case "png" -> "image/png";
             case "gif" -> "image/gif";
             case "webp" -> "image/webp";
+            case "bmp" -> "image/bmp";
+            case "tiff" -> "image/tiff";
+            case "ico" -> "image/x-icon";
+            case "avif" -> "image/avif";
             case "svg" -> "image/svg+xml";
             default -> "application/octet-stream";
         };

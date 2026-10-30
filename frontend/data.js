@@ -6,9 +6,8 @@ async function loadStats() {
   const r = await getJson('/api/stats').catch(() => null);
   if (!r?.ok) return;
   const s = r.body;
-  const fetched = s.pictureFetched == null ? '' : ` (${number(s.pictureFetched)} đã tải)`;
   $('data-stats').textContent =
-    `${number(s.html)} trang · ${number(s.other)} tệp · ${number(s.picture)} ảnh${fetched}`;
+    `${number(s.html)} trang · ${number(s.other)} tệp · ${number(s.picture)} ảnh (${number(s.pictureFetched)} đã tải)`;
 }
 
 function htmlTable(docs) {
