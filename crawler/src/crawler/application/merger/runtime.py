@@ -16,9 +16,14 @@ from crawler.application.merger.ports import (
 )
 from crawler.domain.merger.batching import UrlBatcher
 from crawler.domain.merger.config import MergerConfig
+from crawler.domain.merger.content import content_key
+from crawler.domain.merger.jobs import CrawlJob, CrawlJobs
+from crawler.domain.merger.links import candidate_urls, canonical_url
 from crawler.domain.merger.seeds import Seeds
 
 log = logging.getLogger(__name__)
+
+MAX_STATUS_URLS = 50
 
 
 def _ignore(_: str) -> None:
@@ -51,6 +56,7 @@ class MergerRuntime:
         self.clock = clock
         self.count = count
         self.batcher = UrlBatcher(config.batch_size, config.batch_seconds)
+        self.jobs = CrawlJobs()
 
     async def send(self, target: Target, payload: dict[str, Any]) -> None:
         self.count(f"to_{target}")
@@ -67,6 +73,51 @@ class MergerRuntime:
             scope=self.scope,
             now=self.clock(),
         )
+        await self._advance_job(record)
+
+    async def start_crawl(self, url: str, max_pages: int | None) -> CrawlJob | str:
+        """Crawl from ``url`` within its host, up to ``max_pages``; a string says what is wrong.
+
+        The host stays out of the scope of the merger: only this job spreads over it.
+        """
+        canonical, host = canonical_url(url, self.scope.allowed_ports)
+        if canonical is None or host is None or not url.lower().startswith(("http://", "https://")):
+            return f"not an http(s) URL we can crawl: {url}"
+        job = self.jobs.start(canonical, host, max_pages, self.clock())
+        await self.send("mediator", {"urls": [canonical], "force": True})
+        return job
+
+    def crawl_status(self, job: CrawlJob) -> dict[str, Any]:
+        return {
+            "job": job.id,
+            "url": job.url,
+            "host": job.host,
+            "max_pages": job.max_pages,
+            "queued": len(job.queued),
+            "saved": len(job.saved),
+            "urls": job.saved[-MAX_STATUS_URLS:][::-1],
+            "stopped": job.stopped,
+            "done": self.jobs.done(job, self.clock()),
+        }
+
+    async def _advance_job(self, record: dict[str, Any]) -> None:
+        """Queue the links of a job's page, even unchanged; a duplicate is a dead end, as in
+        ``aggregate``."""
+        url = record["url"]
+        job = self.jobs.job_of(record.get("requested_url") or url)
+        if job is None:
+            return
+        links: list[str] = []
+        key = content_key(record.get("content") or "")
+        if key is None or self.state.claim(key, url) == url:
+            links = candidate_urls(
+                record.get("out-links", []),
+                source_url=url,
+                allowed_hosts=frozenset({job.host}),
+                allowed_ports=self.scope.allowed_ports,
+            )
+        if fresh := self.jobs.record(job, url, links, self.clock()):
+            await self.send("mediator", {"urls": fresh, "force": True})
 
     async def seed(self, urls: Sequence[str]) -> None:
         if urls:

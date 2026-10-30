@@ -32,8 +32,23 @@ flowchart LR
 | 5 | storage | 2200 | `POST /add` | `crawler serve storage` |
 | 6 | mongoose | 27017 | | |
 
-`POST /report` của mediator là endpoint thêm của nhóm (merger báo kết quả mỗi lần tải để chỉnh lịch crawl lại);
-ngoài nó không có endpoint nào khác slide. Body sai định dạng luôn trả `400 {"error": "<lý do>"}`.
+`POST /report` của mediator là endpoint thêm của nhóm (merger báo kết quả mỗi lần tải để chỉnh lịch crawl lại).
+Phục vụ demo còn có thêm cờ `force` của mediator `POST /add` (URL đã biết cũng được xếp tải lại ngay, bỏ
+`etag`/`last_modified`) và các endpoint `/crawl` của merger bên dưới. Ngoài những thứ này không có endpoint nào
+khác slide. Body sai định dạng luôn trả `400 {"error": "<lý do>"}`.
+
+### merger: `/crawl` (demo)
+
+| Endpoint | Body | Trả về |
+|---|---|---|
+| `POST /crawl` | `{"url": "...", "max_pages": 30}`; `max_pages` là số nguyên ≥ 1, `null` hoặc bỏ trống = không giới hạn | trạng thái job |
+| `GET /crawl/<job>` | | trạng thái job, `404` nếu không có |
+| `POST /crawl/<job>/stop` | | trạng thái job, `404` nếu không có |
+
+Trạng thái: `{"job", "url", "host", "max_pages", "queued", "saved", "urls", "stopped", "done"}`; `urls` là tối đa
+50 URL vừa lưu, mới nhất trước. Job lan theo luật lọc link hiện tại nhưng chỉ trong host của `url`, không thêm host
+đó vào phạm vi lan của merger. Job nằm trong bộ nhớ, merger khởi động lại thì mất. `done` khi đã dừng, khi mọi URL
+đã xếp đều có bản ghi, hoặc sau 60 giây không có bản ghi mới (tải lỗi thì không có bản ghi trả về).
 
 ## Giao diện
 

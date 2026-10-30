@@ -183,3 +183,119 @@ def test_batch_cancelled_mid_send_goes_to_outbox() -> None:
     assert [(e.target, e.payload) for e in outbox.entries] == [
         ("mediator", {"urls": [f"https://{HOST}/1"]})
     ]
+
+
+JOB_HOST = "b.hust.edu.vn"
+JOB_ROOT = f"https://{JOB_HOST}/"
+
+
+def _job_runtime(client: FakeServiceClient) -> MergerRuntime:
+    return MergerRuntime(
+        MergerConfig(batch_size=500, batch_seconds=1.0, database=Path("unused")),
+        MemoryMergerState(),
+        MemoryOutbox(),
+        client,
+        Scope(frozenset()),
+        clock=lambda: 0.0,
+    )
+
+
+def _sent_to_mediator(client: FakeServiceClient) -> list[dict[str, Any]]:
+    return [payload for target, payload in client.sent if target == "mediator"]
+
+
+def test_start_crawl_forces_the_url_without_widening_scope() -> None:
+    client = FakeServiceClient()
+    runtime = _job_runtime(client)
+    job = asyncio.run(runtime.start_crawl(JOB_ROOT, 10))
+    assert not isinstance(job, str)
+    assert job.host == JOB_HOST
+    assert _sent_to_mediator(client) == [{"urls": [JOB_ROOT], "force": True}]
+    assert runtime.scope.allowed_hosts == frozenset()
+
+
+def test_job_spreads_within_its_host_only() -> None:
+    client = FakeServiceClient()
+    runtime = _job_runtime(client)
+
+    async def scenario() -> None:
+        await runtime.start_crawl(JOB_ROOT, 10)
+        await runtime.handle(_record(JOB_ROOT, [f"{JOB_ROOT}p1", "https://c.hust.edu.vn/z"]))
+
+    asyncio.run(scenario())
+    assert _sent_to_mediator(client)[1:] == [{"urls": [f"{JOB_ROOT}p1"], "force": True}]
+    assert runtime.scope.allowed_hosts == frozenset()
+
+
+def test_job_stops_at_max_pages() -> None:
+    client = FakeServiceClient()
+    runtime = _job_runtime(client)
+
+    async def scenario() -> None:
+        await runtime.start_crawl(JOB_ROOT, 2)
+        await runtime.handle(_record(JOB_ROOT, [f"{JOB_ROOT}p1", f"{JOB_ROOT}p2"]))
+
+    asyncio.run(scenario())
+    assert _sent_to_mediator(client)[1:] == [{"urls": [f"{JOB_ROOT}p1"], "force": True}]
+
+
+def test_job_matches_redirected_record() -> None:
+    client = FakeServiceClient()
+    runtime = _job_runtime(client)
+
+    async def scenario() -> dict[str, Any]:
+        job = await runtime.start_crawl(f"http://{JOB_HOST}", None)
+        assert not isinstance(job, str)
+        record = {**_record(JOB_ROOT, []), "requested_url": job.url}
+        await runtime.handle(record)
+        return runtime.crawl_status(job)
+
+    status = asyncio.run(scenario())
+    assert status["saved"] == 1
+    assert status["urls"] == [JOB_ROOT]
+    assert status["done"] is True
+
+
+def test_unchanged_page_still_spreads_for_job() -> None:
+    client = FakeServiceClient()
+    runtime = _job_runtime(client)
+    page = {**_record(JOB_ROOT, [f"{JOB_ROOT}p1"]), "fingerprint": "same"}
+
+    async def scenario() -> None:
+        await runtime.start_crawl(JOB_ROOT, None)
+        await runtime.handle(page)
+        await runtime.start_crawl(JOB_ROOT, None)
+        await runtime.handle(page)
+
+    asyncio.run(scenario())
+    assert _sent_to_mediator(client)[-1] == {"urls": [f"{JOB_ROOT}p1"], "force": True}
+    assert sum(1 for p in _sent_to_mediator(client) if p["urls"] == [f"{JOB_ROOT}p1"]) == 2
+
+
+def test_duplicate_page_is_a_dead_end_for_job() -> None:
+    client = FakeServiceClient()
+    runtime = _job_runtime(client)
+    first = {**_record(JOB_ROOT, [f"{JOB_ROOT}?page=1"]), "content": "same text"}
+    echo = {**_record(f"{JOB_ROOT}?page=1", [f"{JOB_ROOT}?page=2"]), "content": "same text"}
+
+    async def scenario() -> None:
+        await runtime.start_crawl(JOB_ROOT, None)
+        await runtime.handle(first)
+        await runtime.handle(echo)
+
+    asyncio.run(scenario())
+    assert all(f"{JOB_ROOT}?page=2" not in p["urls"] for p in _sent_to_mediator(client))
+
+
+def test_record_outside_any_job_changes_nothing() -> None:
+    client = FakeServiceClient()
+    runtime = _job_runtime(client)
+    asyncio.run(runtime.handle(_record(JOB_ROOT, [f"{JOB_ROOT}p1"])))
+    assert _sent_to_mediator(client) == []
+
+
+@pytest.mark.parametrize("url", ["ftp://b.hust.edu.vn/x", "not a url", ""])
+def test_start_crawl_rejects_bad_url(url: str) -> None:
+    client = FakeServiceClient()
+    assert isinstance(asyncio.run(_job_runtime(client).start_crawl(url, None)), str)
+    assert client.sent == []

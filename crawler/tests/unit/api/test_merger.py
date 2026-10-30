@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
@@ -128,3 +129,70 @@ def test_add_accepts_a_not_modified_notice() -> None:
     status, seen = _post(notice)
     assert status == 200
     assert seen == [notice]
+
+
+def _crawl_service(tmp_path: Path) -> web.Application:
+    config = _config(tmp_path)
+    client = HttpServiceClient("http://127.0.0.1:9", "http://127.0.0.1:9")
+    return create_service(
+        config,
+        SqliteMergerState(config.database),
+        JsonlOutbox(config.outbox),
+        client,
+        seeds=parse_seeds([]),
+        closers=(client.close,),
+    )
+
+
+def _crawl(tmp_path: Path, body: object) -> tuple[int, dict[str, Any]]:
+    async def scenario() -> tuple[int, dict[str, Any]]:
+        async with TestClient(TestServer(_crawl_service(tmp_path))) as client:
+            response = await client.post("/crawl", json=body)
+            return response.status, await response.json()
+
+    return asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"url": "https://b.hust.edu.vn/", "max_pages": 0},
+        {"url": "https://b.hust.edu.vn/", "max_pages": -1},
+        {"url": "https://b.hust.edu.vn/", "max_pages": "5"},
+        {"url": "https://b.hust.edu.vn/", "max_pages": True},
+        {"url": "ftp://b.hust.edu.vn/"},
+        {"url": 5},
+        {},
+    ],
+)
+def test_crawl_bad_input_is_400(tmp_path: Path, body: dict[str, Any]) -> None:
+    status, answer = _crawl(tmp_path, body)
+    assert status == 400
+    assert answer["error"]
+
+
+def test_crawl_returns_status(tmp_path: Path) -> None:
+    status, answer = _crawl(tmp_path, {"url": "https://b.hust.edu.vn/", "max_pages": 3})
+    assert status == 200
+    assert answer["job"]
+    assert answer["host"] == "b.hust.edu.vn"
+    assert (answer["max_pages"], answer["queued"], answer["saved"]) == (3, 1, 0)
+    assert (answer["stopped"], answer["done"]) == (False, False)
+
+
+def test_crawl_status_and_stop(tmp_path: Path) -> None:
+    async def scenario() -> tuple[int, int, dict[str, Any], int]:
+        async with TestClient(TestServer(_crawl_service(tmp_path))) as client:
+            started = await (
+                await client.post("/crawl", json={"url": "https://b.hust.edu.vn/"})
+            ).json()
+            job = started["job"]
+            found = (await client.get(f"/crawl/{job}")).status
+            missing = (await client.get("/crawl/nope")).status
+            stopped = await (await client.post(f"/crawl/{job}/stop")).json()
+            stop_missing = (await client.post("/crawl/nope/stop")).status
+            return found, missing, stopped, stop_missing
+
+    found, missing, stopped, stop_missing = asyncio.run(scenario())
+    assert (found, missing, stop_missing) == (200, 404, 404)
+    assert (stopped["stopped"], stopped["done"]) == (True, True)
