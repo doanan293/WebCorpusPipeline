@@ -91,16 +91,25 @@ java -jar target/lucene-search.jar --mode web --index index-mongo --skip-index
 # API ở http://localhost:8080/api/info   (đổi cổng: --port 9000; dừng: Ctrl+C)
 ```
 
-Trang web nằm ở [`frontend/`](../frontend) (gốc repo), do nginx trong `docker-compose.yaml` phục vụ tại
-http://localhost:8080; khi đó lucene chạy trong container và chỉ mở API ở `127.0.0.1:8081`.
+Lệnh này chỉ mở API, không có trang web. Trang web nằm ở [`frontend/`](../frontend) (gốc repo), do nginx trong
+`docker-compose.yaml` phục vụ tại http://localhost:8080 và chuyển `/api/` sang lucene. Khi chạy bằng Docker
+(`docker compose up -d lucene frontend`), lucene nằm trong container: API mở ở `127.0.0.1:8081`, chỉ mục nằm trong
+volume `lucene_index` (không phải thư mục `index-mongo` trên máy), và container tự chạy `--mode sync --every 10`
+(xem `scripts/docker-entrypoint.sh`).
 
-Trang có ô nhập truy vấn, giống một trang tìm kiếm thông thường. Mỗi kết quả hiện URL, tiêu đề (bấm để mở trang gốc), đoạn trích tô vàng từ khoá, điểm BM25, tf-idf và PageRank. Trang cũng hiện "Có phải bạn muốn tìm …" (bấm để tìm lại), cụm mở rộng viết tắt / đồng nghĩa, số kết quả gần trùng đã ẩn và danh sách tài liệu chỉ khớp từ riêng lẻ. Mục "Truy vấn Lucene" ở cuối trang cho xem truy vấn đã dựng.
+Tab **Tìm kiếm** của frontend hiện mỗi kết quả với URL, tiêu đề (bấm để mở trang gốc), đoạn trích tô vàng từ khoá,
+điểm BM25, tf-idf và PageRank. Tab này cũng hiện "Có phải bạn muốn tìm …" (bấm để tìm lại), cụm mở rộng viết tắt /
+đồng nghĩa, số kết quả gần trùng đã ẩn và danh sách tài liệu chỉ khớp từ riêng lẻ. Mục "Truy vấn Lucene" ở cuối cho
+xem truy vấn đã dựng.
 
-Dùng `HttpServer` có sẵn trong JDK nên không thêm thư viện; trang nằm trong jar (`src/main/resources/web/index.html`). Máy chủ không cần MongoDB, chỉ đọc chỉ mục. Trước mỗi truy vấn chỉ mục được mở lại nếu đã đổi, nên khi `--mode sync` chạy song song thì dữ liệu mới hiện ngay trên trang. Có thể gọi thẳng API:
+Máy chủ dùng `HttpServer` có sẵn trong JDK nên không thêm thư viện. Nó **cần MongoDB** đang chạy, vì `DataApi` đọc
+dữ liệu thô cho tab **Dữ liệu**. Trước mỗi truy vấn, chỉ mục được mở lại nếu đã đổi, nên khi `--mode sync` chạy song
+song thì dữ liệu mới hiện ngay. Có thể gọi thẳng API (chạy tay thì cổng 8080, trong Docker thì 8081):
 
 ```bash
-curl 'http://localhost:8080/api/search?q=ktx&limit=5'    # JSON: total, hits[], extra[], suggestion, expansions, ...
-curl 'http://localhost:8080/api/info'                    # {"docs": số văn bản trong chỉ mục}
+curl 'http://localhost:8081/api/search?q=ktx&limit=5'    # JSON: total, hits[], extra[], suggestion, expansions, ...
+curl 'http://localhost:8081/api/info'                    # {"docs": số văn bản trong chỉ mục}
+curl 'http://localhost:8081/api/stats'                   # số trang, tệp, ảnh trong MongoDB
 ```
 
 ### Các tham số chung
@@ -157,8 +166,17 @@ Truy van Q1: sử lý ngôn ngữ
 Chỉ mục lập trước khi có field `spell` thì không gợi ý (lập lại chỉ mục để bật).
 
 **Ẩn kết quả gần trùng lặp** — nhiều trang khoa/viện đăng lại cùng một nội dung. Mỗi kết quả được biểu diễn
-bằng tập chuỗi 4 từ liên tiếp; độ giống nhau (hệ số Jaccard) ước lượng bằng MinHash 128 hàm băm. Kết quả giống
-một kết quả xếp trên với Jaccard ≥ 0.9 bị ẩn, chương trình lấy thêm ứng viên để vẫn đủ top-K:
+bằng tập chuỗi 4 từ liên tiếp; độ giống nhau (hệ số Jaccard) ước lượng bằng MinHash 128 hàm băm. Một kết quả bị
+ẩn nếu nó trùng với một kết quả xếp trên, tức là:
+
+- Jaccard ≥ 0.9 (`--dedup`), hoặc
+- cùng tiêu đề, và thêm một trong hai điều kiện: cùng khoá URL, hoặc Jaccard ≥ 0.6. Khoá URL là đoạn cuối đường dẫn,
+  bỏ `.html` và mã số bài ở cuối. Ví dụ `ts.hust.edu.vn/tin-tuc/thong-bao-x`, `ts.hust.edu.vn/en/news/thong-bao-x`
+  và `hust.edu.vn/vi/news/savefile/.../thong-bao-x-651867.html` có cùng khoá `thong-bao-x`.
+
+Chỉ dùng Jaccard thì không đủ. Nội dung lưu cả khung trang (menu, ngày tháng, tin liên quan), nên cùng một bài đăng ở
+`/tin-tuc/`, `/en/news/`, `/savefile/` chỉ giống nhau 0.3–0.86. Trong khi đó hai bài khác nhau trên cùng site có thể
+giống tới 0.8. Chương trình lấy thêm ứng viên để sau khi ẩn vẫn đủ top-K:
 
 ```
   (da an 1 ket qua gan trung lap voi ket qua xep tren)
@@ -474,7 +492,7 @@ Tải bản `lucene-9.12.3` từ trang Apache, chạy `luke.sh` / `luke.bat`, m�
 | Giao diện web | `WebServer` | `--mode web`: API `/api/search` trả JSON từ `Searcher.search` (cùng logic với console); `DataApi` đọc dữ liệu thô từ MongoDB (`/api/stats`, `/api/docs`, `/api/doc`, `/api/picture`) |
 | Mở rộng truy vấn | `Synonyms` | đọc `synonyms.txt`, thêm cụm viết tắt / đồng nghĩa vào truy vấn |
 | Gợi ý chính tả | `SpellSuggester` | `DirectSpellChecker` trên field `spell` + đếm cụm trong field `content` |
-| Ẩn trùng lặp | `NearDuplicates` | chuỗi 4 từ + MinHash, ước lượng Jaccard giữa các kết quả |
+| Ẩn trùng lặp | `NearDuplicates` | chuỗi 4 từ + MinHash ước lượng Jaccard, kèm tiêu đề và khoá URL giữa các kết quả |
 | Tách từ tiếng Việt | `VnSegmenter` + `VietnameseAnalyzer` + `CompoundSplitFilter` | nạp động VnCoreNLP từ `lib/`; token là **từ** (`trí_tuệ_nhân_tạo`) + âm tiết cùng vị trí; kèm bỏ dấu + lọc từ dừng |
 | Xem chỉ mục | `IndexDump` | tiện ích riêng: in field, từ điển term, postings (`java -cp ... com.example.ir.IndexDump`) |
 
@@ -492,27 +510,25 @@ Tải bản `lucene-9.12.3` từ trang Apache, chạy `luke.sh` / `luke.bat`, m�
 
 Mọi lệnh chạy trong thư mục `lucene/`, Docker Desktop đang mở.
 
-> Kịch bản này tập trung vào phần tìm kiếm. Demo cả hệ thống (crawl → dữ liệu → tìm kiếm): xem [README gốc](../README.md#demo). Các bước `sync` chạy tay bên dưới chỉ cần khi chạy lucene ngoài Docker.
+> Kịch bản này tập trung vào phần tìm kiếm. Demo cả hệ thống (crawl → dữ liệu → tìm kiếm): xem
+> [`frontend/demo.md`](../frontend/demo.md) và [README gốc](../README.md#demo).
 
 ### Chuẩn bị
 
 ```bash
-docker compose up -d mongo          # MongoDB (cổng 27017)
-mvn -q -DskipTests package          # chỉ cần nếu có sửa code
+docker compose up -d --build mongo lucene frontend   # --build để container dùng code lucene mới nhất
+docker compose ps                                    # chờ mongo "healthy", lucene "Up"
 ```
 
-Mở 3 terminal và đặt trình duyệt bên cạnh:
+Lần đầu, container `lucene` lập chỉ mục toàn bộ (khoảng 10 phút). Chờ tới khi `docker compose logs lucene` có dòng
+`API: http://...`.
 
-- **T1** chạy máy chủ web.
+Mở 2 terminal và đặt trình duyệt bên cạnh:
+
+- **T1** xem log đồng bộ của lucene: `docker compose logs -f lucene`.
 - **T2** đẩy dữ liệu mới vào MongoDB.
-- **T3** chạy đồng bộ.
 
 ### Phần 1: Tìm kiếm trên web (khoảng 5 phút)
-
-```bash
-# T1
-docker compose up -d lucene frontend   # API và trang web; lucene trong container đã tự chạy sync mỗi 10 giây
-```
 
 Mở http://localhost:8080, tab Tìm kiếm. Đầu trang hiện số văn bản trong chỉ mục.
 
@@ -536,38 +552,34 @@ Kịch bản: crawler liên tục ghi vào MongoDB, hệ thống tìm kiếm ph�
    bash scripts/demo-upsert.sh 4
    ```
    Lệnh in số bản ghi được thêm hoặc cập nhật trong `html`/`other`, với `updated_at` là thời điểm hiện tại.
-3. Đồng bộ chỉ mục:
-   ```bash
-   # T3
-   java -jar target/lucene-search.jar --mode sync --index index-mongo
-   ```
-   Kết quả là một dòng `them X, cap nhat Y, xoa Z, khong doi W`. Lệnh chỉ đọc bản ghi có `updated_at` từ mốc lần trước, upsert theo `url`, và bỏ qua văn bản không đổi nhờ mã băm SHA-1.
-4. Bấm **Tìm** lại trên web (không cần khởi động lại máy chủ). Trang mới xuất hiện ở gần đầu, số văn bản ở đầu trang tăng lên.
-5. (Tuỳ chọn) Chạy lại `demo-upsert.sh 4` rồi sync: mọi bản ghi báo `khong doi`, chạy hết khoảng 0,1 giây.
+3. Không cần chạy gì thêm: container `lucene` tự đồng bộ mỗi 10 giây. Trong vòng 10 giây, log ở T1 hiện một dòng
+   `them X, cap nhat Y, xoa Z, khong doi W`. Mỗi lượt chỉ đọc bản ghi có `updated_at` từ mốc lần trước, upsert theo
+   `url`, và bỏ qua văn bản không đổi nhờ mã băm SHA-1.
+4. Bấm **Tìm** lại trên web (không cần khởi động lại gì). Trang mới xuất hiện ở gần đầu, số văn bản ở đầu trang tăng lên.
+5. (Tuỳ chọn) Chạy lại `demo-upsert.sh 4`: lượt đồng bộ sau báo mọi bản ghi `khong doi`, chạy hết khoảng 0,1 giây.
 
 Chế độ liên tục, nếu còn thời gian:
 
 ```bash
-# T3: đồng bộ mỗi 10 giây
-java -jar target/lucene-search.jar --mode sync --index index-mongo --every 10
-# T2: batch 5 đến 8, mỗi batch cách nhau 15 giây
+# T2: batch 5 đến 8, mỗi batch cách nhau 15 giây; xem log ở T1 và tìm lại trên web
 bash scripts/demo-upsert.sh 5 8 15
 ```
 
 ### Phần 3: PageRank từ `graph` (khoảng 2 phút, tuỳ chọn)
 
 ```bash
-# T3
-java -jar target/lucene-search.jar --mode pagerank --index index-mongo
+# T2
+docker compose exec lucene java -jar lucene-search.jar --mongo-uri mongodb://mongo:27017 --index /data/index --mode pagerank
 ```
 
+Nếu lệnh báo lỗi khoá chỉ mục (`LockObtainFailedException`) vì trùng lúc với một lượt đồng bộ, chạy lại là được.
 Lệnh in số đỉnh, số liên kết khác host, số vòng lặp đến khi hội tụ và 5 trang có PageRank cao nhất. Lệnh chỉ ghi đè giá trị `pagerank`, không tách từ lại. Điểm xếp hạng là BM25 × (1 + 0.5·g(d)); trên web, PageRank hiện ở dưới mỗi kết quả.
 
 ### Kết thúc
 
 ```bash
-# Ctrl+C ở T1 (web) và T3 (nếu đang chạy sync --every)
-docker compose stop mongo
+# Ctrl+C ở T1 (chỉ dừng xem log)
+docker compose stop frontend lucene mongo
 ```
 
 ### Lưu ý
