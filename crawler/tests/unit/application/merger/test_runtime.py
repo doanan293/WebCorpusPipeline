@@ -321,3 +321,50 @@ def test_tick_retries_a_job_url_that_never_came_back() -> None:
 
     asyncio.run(scenario())
     assert _sent_to_mediator(client) == [{"urls": [JOB_ROOT], "force": True}] * 2
+
+
+def test_stop_crawl_cancels_urls_still_out() -> None:
+    client = FakeServiceClient()
+    runtime = _job_runtime(client)
+
+    async def scenario() -> None:
+        job = await runtime.start_crawl(JOB_ROOT, None)
+        assert not isinstance(job, str)
+        await runtime.handle(_record(JOB_ROOT, [f"{JOB_ROOT}p1"]))
+        assert await runtime.stop_crawl(job.id) is job
+        assert await runtime.stop_crawl("nope") is None
+
+    asyncio.run(scenario())
+    assert _sent_to_mediator(client)[-1] == {"urls": [f"{JOB_ROOT}p1"], "cancel": True}
+
+
+def test_start_link_redirecting_to_another_host_moves_the_job() -> None:
+    client = FakeServiceClient()
+    runtime = _job_runtime(client)
+    www = "https://www.b.hust.edu.vn/"
+
+    async def scenario() -> str:
+        job = await runtime.start_crawl(JOB_ROOT, 10)
+        assert not isinstance(job, str)
+        await runtime.handle(
+            {**_record(www, [f"{www}p1", f"{JOB_ROOT}old"]), "requested_url": job.url}
+        )
+        return job.host
+
+    assert asyncio.run(scenario()) == "www.b.hust.edu.vn"
+    assert _sent_to_mediator(client)[-1] == {"urls": [f"{www}p1"], "force": True}
+    assert runtime.scope.allowed_hosts == frozenset()
+
+
+def test_status_reports_answered_urls() -> None:
+    client = FakeServiceClient()
+    runtime = _job_runtime(client)
+
+    async def scenario() -> dict[str, Any]:
+        job = await runtime.start_crawl(JOB_ROOT, None)
+        assert not isinstance(job, str)
+        await runtime.handle(_record(JOB_ROOT, [f"{JOB_ROOT}p1"]))
+        return runtime.crawl_status(job)
+
+    status = asyncio.run(scenario())
+    assert (status["queued"], status["answered"], status["saved"]) == (2, 1, 1)

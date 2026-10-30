@@ -45,7 +45,8 @@ def report_outcomes(
             etag, last_modified = etag or item.etag, last_modified or item.last_modified
         queue.reschedule(
             report["url"],
-            next_due_at=now + interval * DAY_SECONDS,
+            # No period (0 = no recrawl): off the schedule, or it would be due again at once.
+            next_due_at=now + interval * DAY_SECONDS if interval > 0 else None,
             interval_days=interval,
             etag=etag,
             last_modified=last_modified,

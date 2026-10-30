@@ -14,5 +14,5 @@ load_timeout_seconds: 10
 node_cooldown_seconds: 30          # node lỗi thì tạm bỏ qua chừng này giây
 max_attempts: 5
 tick_seconds: 0.5
-recrawl_days: {hub: 1, page: 7, document: 30}   # 0 = không crawl lại
+recrawl_days: {hub: 0, page: 0, document: 0}   # demo: only what POST /crawl asks for
 database: data/state-demo/mediator.sqlite3   # apart from the real crawl

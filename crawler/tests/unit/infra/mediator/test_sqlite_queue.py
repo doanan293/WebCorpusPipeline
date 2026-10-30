@@ -87,8 +87,22 @@ def test_make_due_requeues_known_url_without_validators(tmp_path: Path) -> None:
     queue.reschedule(
         "https://a/1", next_due_at=50.0, interval_days=7.0, etag="e", last_modified="m"
     )
-    assert queue.make_due(["https://a/1", "https://a/unknown"], 3.0) == 1
+    assert queue.make_due(["https://a/1", "https://a/unknown"]) == 1
     row = queue.get("https://a/1")
     assert row is not None
     # Without its validators the download answers in full, so the page's links can be followed.
-    assert (row.next_due_at, row.attempts, row.etag, row.last_modified) == (3.0, 0, None, None)
+    assert (row.next_due_at, row.attempts, row.etag, row.last_modified) == (0.0, 0, None, None)
+
+
+def test_forced_url_comes_before_the_backlog_and_cancel_removes_it(tmp_path: Path) -> None:
+    queue = SqliteUrlQueue(tmp_path / "q.sqlite3")
+    queue.add([("https://a/old", "a", "page")], 1.0)
+    queue.add([("https://a/new", "a", "page")], 2.0)
+    queue.make_due(["https://a/new"])
+    row = queue.next_due(3.0, ())
+    assert row is not None
+    assert row.url == "https://a/new"
+    assert queue.cancel(["https://a/new", "https://a/unknown"]) == 1
+    row = queue.next_due(3.0, ())
+    assert row is not None
+    assert row.url == "https://a/old"

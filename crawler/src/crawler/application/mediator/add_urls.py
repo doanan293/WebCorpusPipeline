@@ -18,10 +18,8 @@ class AddResult:
     rejected: int
 
 
-def add_urls(
-    queue: UrlQueue, urls: Sequence[str], clock: Clock, *, force: bool = False
-) -> AddResult:
-    """Queue the URLs of one ``POST /add``; a known URL keeps its schedule unless ``force``."""
+def _queue_items(urls: Sequence[str]) -> tuple[dict[str, tuple[str, str, UrlKind]], int]:
+    """The rows for ``urls`` by canonical URL, and how many could not be read as a URL."""
     items: dict[str, tuple[str, str, UrlKind]] = {}
     rejected = 0
     for raw in urls:
@@ -34,7 +32,22 @@ def add_urls(
             rejected += 1
             continue
         items.setdefault(url, (url, host, url_kind(url)))
+    return items, rejected
+
+
+def add_urls(
+    queue: UrlQueue, urls: Sequence[str], clock: Clock, *, force: bool = False
+) -> AddResult:
+    """Queue the URLs of one ``POST /add``; a known URL keeps its schedule unless ``force``,
+    which puts it ahead of everything due."""
+    items, rejected = _queue_items(urls)
     accepted = queue.add(list(items.values()), clock.now())
     if force:
-        queue.make_due(list(items), clock.now())
+        queue.make_due(list(items))
     return AddResult(accepted, len(urls) - rejected - accepted, rejected)
+
+
+def cancel_urls(queue: UrlQueue, urls: Sequence[str]) -> int:
+    """Take the URLs of one ``POST /add`` with ``cancel`` off the schedule."""
+    items, _ = _queue_items(urls)
+    return queue.cancel(list(items))

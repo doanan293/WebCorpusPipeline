@@ -58,13 +58,21 @@ class SqliteUrlQueue:
             )
         return self.db.total_changes - before
 
-    def make_due(self, urls: Sequence[str], now: float) -> int:
+    def make_due(self, urls: Sequence[str]) -> int:
         before = self.db.total_changes
         with transaction(self.db):
             self.db.executemany(
-                "UPDATE urls SET next_due_at = ?, attempts = 0, etag = NULL, last_modified = NULL "
+                "UPDATE urls SET next_due_at = 0, attempts = 0, etag = NULL, last_modified = NULL "
                 "WHERE url = ?",
-                [(now, url) for url in urls],
+                [(url,) for url in urls],
+            )
+        return self.db.total_changes - before
+
+    def cancel(self, urls: Sequence[str]) -> int:
+        before = self.db.total_changes
+        with transaction(self.db):
+            self.db.executemany(
+                "UPDATE urls SET next_due_at = NULL WHERE url = ?", [(url,) for url in urls]
             )
         return self.db.total_changes - before
 
@@ -116,7 +124,7 @@ class SqliteUrlQueue:
         self,
         url: str,
         *,
-        next_due_at: float,
+        next_due_at: float | None,
         interval_days: float,
         etag: str | None,
         last_modified: str | None,

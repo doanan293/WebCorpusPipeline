@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator, Mapping
 from aiohttp import web
 
 from crawler.api.common import error, json_object, json_response
-from crawler.application.mediator.add_urls import add_urls
+from crawler.application.mediator.add_urls import add_urls, cancel_urls
 from crawler.application.mediator.dispatch import Dispatcher, run_dispatch
 from crawler.application.mediator.ports import Clock, Downloader, UrlQueue
 from crawler.application.mediator.report import report_outcomes, valid_report
@@ -31,9 +31,11 @@ def create_app(
         urls = body.get("urls")
         if not isinstance(urls, list) or not all(isinstance(url, str) for url in urls):
             return error(400, "urls must be a list of strings")
-        force = body.get("force", False)
-        if not isinstance(force, bool):
-            return error(400, "force must be a boolean")
+        force, cancel = body.get("force", False), body.get("cancel", False)
+        if not isinstance(force, bool) or not isinstance(cancel, bool):
+            return error(400, "force and cancel must be booleans")
+        if cancel:
+            return json_response({"cancelled": cancel_urls(queue, urls)})
         result = add_urls(queue, urls, clock, force=force)
         return json_response(
             {

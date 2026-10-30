@@ -87,6 +87,13 @@ class MergerRuntime:
         await self.send("mediator", {"urls": [canonical], "force": True})
         return job
 
+    async def stop_crawl(self, job_id: str) -> CrawlJob | None:
+        """Stop the job and take its URLs still out off the mediator's queue."""
+        job = self.jobs.stop(job_id)
+        if job is not None and (urls := self.jobs.unanswered(job)):
+            await self.send("mediator", {"urls": urls, "cancel": True})
+        return job
+
     def crawl_status(self, job: CrawlJob) -> dict[str, Any]:
         return {
             "job": job.id,
@@ -94,6 +101,7 @@ class MergerRuntime:
             "host": job.host,
             "max_pages": job.max_pages,
             "queued": len(job.queued),
+            "answered": len(job.answered),
             "saved": len(job.saved),
             "urls": job.saved[-MAX_STATUS_URLS:][::-1],
             "stopped": job.stopped,
@@ -108,6 +116,9 @@ class MergerRuntime:
         job = self.jobs.job_of(queued_url)
         if job is None:
             return
+        if queued_url == job.url:
+            # The start link may redirect to another host (www.): the crawl goes on from there.
+            job.host = canonical_url(url, self.scope.allowed_ports)[1] or job.host
         links: list[str] = []
         key = content_key(record.get("content") or "")
         if key is None or self.state.claim(key, url) == url:

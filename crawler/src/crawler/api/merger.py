@@ -75,7 +75,7 @@ def _add_crawl_routes(app: web.Application, crawls: MergerRuntime) -> None:
         return json_response(crawls.crawl_status(job))
 
     async def stop(request: web.Request) -> web.Response:
-        job = crawls.jobs.stop(request.match_info["job"])
+        job = await crawls.stop_crawl(request.match_info["job"])
         if job is None:
             return error(404, "unknown job")
         return json_response(crawls.crawl_status(job))

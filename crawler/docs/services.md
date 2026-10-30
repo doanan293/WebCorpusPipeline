@@ -33,8 +33,9 @@ flowchart LR
 | 6 | mongoose (service `mongo`) | 27017 | | |
 
 `POST /report` của mediator là endpoint thêm của nhóm (merger báo kết quả mỗi lần tải để chỉnh lịch crawl lại).
-Phục vụ demo còn có thêm cờ `force` của mediator `POST /add` (URL đã biết cũng được xếp tải lại ngay, bỏ
-`etag`/`last_modified`) và các endpoint `/crawl` của merger bên dưới. Ngoài những thứ này không có endpoint nào
+Phục vụ demo còn có thêm hai cờ của mediator `POST /add`: `force` (URL đã biết cũng được xếp tải lại, đứng trước mọi
+URL đang đến hạn, bỏ `etag`/`last_modified`), `cancel` (gỡ URL khỏi lịch, trả `{"cancelled": n}`), và các endpoint
+`/crawl` của merger bên dưới. Ngoài những thứ này không có endpoint nào
 khác slide. Body sai định dạng luôn trả `400 {"error": "<lý do>"}`.
 
 ### merger: `/crawl` (demo)
@@ -45,9 +46,9 @@ khác slide. Body sai định dạng luôn trả `400 {"error": "<lý do>"}`.
 | `GET /crawl/<job>` | | trạng thái job, `404` nếu không có |
 | `POST /crawl/<job>/stop` | | trạng thái job, `404` nếu không có |
 
-Trạng thái: `{"job", "url", "host", "max_pages", "queued", "saved", "urls", "stopped", "done"}`; `urls` là tối đa
-50 URL vừa lưu, mới nhất trước. Job lan theo luật lọc link hiện tại nhưng chỉ trong host của `url`, không thêm host
-đó vào phạm vi lan của merger. Job nằm trong bộ nhớ, merger khởi động lại thì mất. `done` khi đã dừng, khi mọi URL
+Trạng thái: `{"job", "url", "host", "max_pages", "queued", "answered", "saved", "urls", "stopped", "done"}`; `urls` là tối đa
+50 URL vừa lưu, mới nhất trước. Job lan theo luật lọc link hiện tại nhưng chỉ trong host của `url` (hoặc host mà nó chuyển hướng tới), không thêm
+host đó vào phạm vi lan của merger. Dừng thì các URL chưa tải được gỡ khỏi hàng đợi. Job nằm trong bộ nhớ, merger khởi động lại thì mất. `done` khi đã dừng, khi mọi URL
 đã xếp đều có bản ghi, hoặc hết thời gian chờ. Tải lỗi hay trang bị chặn thì không có bản ghi trả về: sau 15 giây không
 có gì mới, job xếp lại các URL còn thiếu (tối đa 2 lần), rồi kết thúc sau 30 giây nữa.
 

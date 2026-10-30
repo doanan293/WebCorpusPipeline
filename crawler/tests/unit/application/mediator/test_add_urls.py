@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from crawler.application.mediator.add_urls import AddResult, add_urls
+from crawler.application.mediator.add_urls import AddResult, add_urls, cancel_urls
 from tests.fakes.mediator import FakeClock, FakeUrlQueue
 
 
@@ -35,4 +35,24 @@ def test_force_makes_known_url_due_again() -> None:
     queue.mark_sent("https://hust.edu.vn/a", 0.0, 99.0)
     clock.t = 10.0
     assert add_urls(queue, ["https://hust.edu.vn/a"], clock, force=True) == AddResult(0, 1, 0)
-    assert queue.rows["https://hust.edu.vn/a"].next_due_at == 10.0
+    assert queue.rows["https://hust.edu.vn/a"].next_due_at == 0.0
+
+
+def test_forced_url_goes_ahead_of_the_backlog() -> None:
+    queue, clock = FakeUrlQueue(), FakeClock(5.0)
+    add_urls(queue, ["https://hust.edu.vn/old"], clock)
+    clock.t = 10.0
+    add_urls(queue, ["https://hust.edu.vn/new"], clock, force=True)
+    row = queue.next_due(10.0, ())
+    assert row is not None
+    assert row.url == "https://hust.edu.vn/new"
+
+
+def test_cancel_takes_urls_off_the_schedule() -> None:
+    queue, clock = FakeUrlQueue(), FakeClock(0.0)
+    add_urls(queue, ["https://hust.edu.vn/a", "https://hust.edu.vn/b"], clock)
+    assert cancel_urls(queue, ["https://hust.edu.vn/a#x", "mailto:x"]) == 1
+    assert queue.rows["https://hust.edu.vn/a"].next_due_at is None
+    assert queue.rows["https://hust.edu.vn/b"].next_due_at == 0.0
+    add_urls(queue, ["https://hust.edu.vn/a"], clock, force=True)
+    assert queue.rows["https://hust.edu.vn/a"].next_due_at is not None

@@ -85,3 +85,16 @@ def test_add_force_requeues_known_url() -> None:
     status, _ = _post(queue, '{"urls": ["https://hust.edu.vn/a"], "force": true}')
     assert status == 200
     assert queue.rows["https://hust.edu.vn/a"].next_due_at == 0.0
+
+
+def test_add_cancel_takes_url_off_the_schedule() -> None:
+    queue = FakeUrlQueue()
+    _post(queue, '{"urls": ["https://hust.edu.vn/a"]}')
+    status, answer = _post(queue, '{"urls": ["https://hust.edu.vn/a"], "cancel": true}')
+    assert (status, answer) == (200, {"cancelled": 1})
+    assert queue.rows["https://hust.edu.vn/a"].next_due_at is None
+
+
+def test_add_cancel_must_be_boolean() -> None:
+    status, _ = _post(FakeUrlQueue(), '{"urls": [], "cancel": "yes"}')
+    assert status == 400

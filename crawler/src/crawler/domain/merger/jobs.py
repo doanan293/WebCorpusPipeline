@@ -19,6 +19,7 @@ class CrawlJob:
     answered: set[str] = field(default_factory=set)  # queued URLs that came back
     saved: list[str] = field(default_factory=list)  # where they ended up, after redirects
     stopped: bool = False
+    finished: bool = False  # once done, late records no longer spread: nobody is watching
     retries: int = 0
 
 
@@ -55,13 +56,14 @@ class CrawlJobs:
         self, job: CrawlJob, queued_url: str, saved_url: str, links: Sequence[str], now: float
     ) -> list[str]:
         """Note a page of the job as saved; return its links to queue, within the budget."""
+        finished = self.done(job, now)  # before this answer, which may be the last one out
         job.last_activity = now
         job.answered.add(queued_url)
         if saved_url not in job.saved:
             job.saved.append(saved_url)
-        if job.stopped:
+        if finished:
             return []
-        known = set(job.queued)
+        known = {*job.queued, *job.saved}  # a redirect's target may be linked back to
         fresh = [link for link in dict.fromkeys(links) if link not in known]
         if job.max_pages is not None:
             fresh = fresh[: max(0, job.max_pages - len(job.queued))]
@@ -69,6 +71,9 @@ class CrawlJobs:
         for link in fresh:
             self.owners[link] = job
         return fresh
+
+    def unanswered(self, job: CrawlJob) -> list[str]:
+        return [url for url in job.queued if url not in job.answered]
 
     def stop(self, job_id: str) -> CrawlJob | None:
         job = self.jobs.get(job_id)
@@ -88,12 +93,13 @@ class CrawlJobs:
                 continue
             job.retries += 1
             job.last_activity = now
-            found.append((job, [url for url in job.queued if url not in job.answered]))
+            found.append((job, self.unanswered(job)))
         return found
 
     def done(self, job: CrawlJob, now: float) -> bool:
-        return (
+        job.finished = job.finished or (
             job.stopped
             or len(job.answered) >= len(job.queued)
             or now - job.last_activity >= self.idle_seconds
         )
+        return job.finished

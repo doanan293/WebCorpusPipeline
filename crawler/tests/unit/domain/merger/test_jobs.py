@@ -116,3 +116,27 @@ def test_stalled_skips_finished_and_stopped_jobs() -> None:
     stopped = jobs.start(L1, "a.hust.edu.vn", None, 0.0)
     jobs.stop(stopped.id)
     assert jobs.stalled(50.0) == []
+
+
+def test_link_back_to_a_redirected_page_is_not_queued_again() -> None:
+    jobs = CrawlJobs()
+    job = jobs.start("http://a.hust.edu.vn/", "a.hust.edu.vn", 2, 0.0)
+    fresh = jobs.record(job, "http://a.hust.edu.vn/", ROOT, [ROOT, L1], 1.0)
+    assert fresh == [L1]
+
+
+def test_done_is_final_even_if_a_record_comes_late() -> None:
+    jobs = CrawlJobs(idle_seconds=30.0)
+    job = jobs.start(ROOT, "a.hust.edu.vn", None, 0.0)
+    assert jobs.done(job, 30.0) is True
+    assert jobs.record(job, ROOT, ROOT, [L1], 31.0) == []
+    assert job.saved == [ROOT]
+    assert jobs.done(job, 31.0) is True
+
+
+def test_unanswered_lists_urls_still_out() -> None:
+    jobs = CrawlJobs()
+    job = jobs.start(ROOT, "a.hust.edu.vn", None, 0.0)
+    jobs.record(job, ROOT, ROOT, [L1, L2], 1.0)
+    jobs.record(job, L1, L1, [], 2.0)
+    assert jobs.unanswered(job) == [L2]
