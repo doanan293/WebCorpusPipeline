@@ -63,7 +63,7 @@ public final class Searcher {
     private static final String[] FIELDS = {"title", "intro", "content"};
 
     // Cac dau hieu cu phap QueryParser: co bat ky cai nao -> KHONG tu dong coi la cum.
-    private static final java.util.regex.Pattern LUCENE_SYNTAX = java.util.regex.Pattern.compile(
+    static final java.util.regex.Pattern LUCENE_SYNTAX = java.util.regex.Pattern.compile(
             "[\"()\\[\\]{}:^~*?\\\\]|\\bAND\\b|\\bOR\\b|\\bNOT\\b");
 
     private static final int FRAGMENT_CHARS = 100;   // do rong doan trich quanh tu khoa
@@ -227,6 +227,12 @@ public final class Searcher {
      * Nhieu khai niem roi thi go co toan tu: Lucene AND "tieng Viet".
      */
     private static Query buildVietnamesePhraseQuery(Analyzer analyzer, String text) throws IOException {
+        return buildVietnamesePhraseQuery(analyzer, text, FIELDS, FIELD_BOOSTS);
+    }
+
+    /** Nhu tren, tren cac field va trong so cho truoc (vd. chi muc anh). */
+    static Query buildVietnamesePhraseQuery(Analyzer analyzer, String text, String[] fields,
+                                            Map<String, Float> boosts) throws IOException {
         List<String> words = analyzeToTokens(analyzer, text);
         if (words.isEmpty()) {
             return new MatchNoDocsQuery("khong con tu khoa");
@@ -244,7 +250,7 @@ public final class Searcher {
                 sylls.add(w);
             }
         }
-        return acrossFields(field -> {
+        return acrossFields(fields, boosts, field -> {
             if (sylls.size() == 1) {
                 return new TermQuery(new Term(field, sylls.get(0)));
             }
@@ -267,10 +273,11 @@ public final class Searcher {
     }
 
     /** Dung cung 1 truy van tren moi field trong FIELDS, nhan trong so cua field, ghep bang OR. */
-    private static Query acrossFields(java.util.function.Function<String, Query> perField) {
+    private static Query acrossFields(String[] fields, Map<String, Float> boosts,
+                                      java.util.function.Function<String, Query> perField) {
         BooleanQuery.Builder bb = new BooleanQuery.Builder();
-        for (String field : FIELDS) {
-            bb.add(new BoostQuery(perField.apply(field), FIELD_BOOSTS.get(field)), BooleanClause.Occur.SHOULD);
+        for (String field : fields) {
+            bb.add(new BoostQuery(perField.apply(field), boosts.get(field)), BooleanClause.Occur.SHOULD);
         }
         return bb.build();
     }

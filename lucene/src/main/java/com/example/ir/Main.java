@@ -32,6 +32,7 @@ import java.util.Map;
  *   sync        : dong bo tang dan chi muc voi MongoDB (them / cap nhat / xoa theo updated_at);
  *                 --every N lap lai moi N giay, khong co thi chay 1 luot.
  *   pagerank    : tinh lai PageRank tu graph va ghi de vao chi muc (khong tach tu lai).
+ *   pictures    : lap lai chi muc anh (thu muc con pictures/ cua --index) tu MongoDB.
  *   web         : giao dien web tim kiem tai http://localhost:--port (mac dinh 8080).
  *
  * Analyzer (--analyzer): mac dinh "vietnamese" (tach TU bang VnCoreNLP).
@@ -86,8 +87,9 @@ public final class Main {
         boolean batch       = !segment && (mode.startsWith("b") || opt.containsKey("batch"));
         boolean sync        = !segment && !batch && mode.startsWith("sy");
         boolean pagerank    = mode.startsWith("pa");
+        boolean pictures    = mode.startsWith("pi");
         boolean web         = mode.startsWith("w");
-        boolean interactive = !segment && !batch && !sync && !pagerank && !web;
+        boolean interactive = !segment && !batch && !sync && !pagerank && !web && !pictures;
         boolean skipIndex   = opt.containsKey("skip-index");
         String source       = opt.getOrDefault("source", "files").toLowerCase(Locale.ROOT);
         boolean fromMongo   = source.equals("mongo");
@@ -120,7 +122,7 @@ public final class Main {
                     : analyzer instanceof EnglishAnalyzer ? "english" : "standard";
 
             System.out.println("== Cau hinh ==");
-            System.out.println("  mode     : " + (segment ? "segment" : sync ? "sync" : web ? "web" : interactive ? "interactive" : "batch"));
+            System.out.println("  mode     : " + (segment ? "segment" : sync ? "sync" : pictures ? "pictures" : web ? "web" : interactive ? "interactive" : "batch"));
             System.out.println("  analyzer : " + effective
                     + (effective.equals("vietnamese") ? " (vn-home: " + vnHome.toAbsolutePath() + ")" : "")
                     + (effective.equals(anName) ? "" : "  [yeu cau: " + anName + "]"));
@@ -129,6 +131,18 @@ public final class Main {
                 System.out.println();
                 System.out.println("== Tach tu ==");
                 SegmentRunner.run(analyzer);
+                return;
+            }
+
+            if (pictures) {
+                System.out.println("  source   : mongo " + mongoUri + " / " + mongoDb);
+                System.out.println("  index    : " + PictureIndex.dir(indexDir).toAbsolutePath());
+                System.out.println();
+                System.out.println("== Lap chi muc anh ==");
+                String since = MongoDocLoader.timestamp(Instant.now().minusSeconds(SYNC_OVERLAP_SECONDS));
+                try (MongoDocLoader mongo = MongoDocLoader.open(mongoUri, mongoDb, 0)) {
+                    PictureIndex.build(indexDir, mongo.database(), analyzer, since);
+                }
                 return;
             }
 
@@ -178,6 +192,11 @@ public final class Main {
                         Files.createDirectories(indexDir);
                         n = Indexer.build(indexDir, docs, analyzer, limit > 0 ? null : since, g,
                                 MongoDocLoader.timestamp(started));
+                        if (limit == 0) {
+                            System.out.println();
+                            System.out.println("== Lap chi muc anh ==");
+                            PictureIndex.build(indexDir, docs.database(), analyzer, since);
+                        }
                     } catch (IOException e) {
                         System.err.println("!! " + e.getMessage());
                         System.exit(1);
@@ -248,6 +267,7 @@ public final class Main {
         }
         try (MongoDocLoader mongo = MongoDocLoader.open(mongoUri, mongoDb, 0)) {
             mongo.ensureUpdatedAtIndex();
+            if (PictureIndex.exists(indexDir)) PictureIndex.ensureMongoIndexes(mongo.database());
             System.out.println("== Dong bo" + (every > 0 ? " moi " + every + " giay (Ctrl+C de dung)" : "") + " ==");
             while (true) {
                 long t0 = System.nanoTime();
@@ -257,6 +277,15 @@ public final class Main {
                 System.out.printf("  [%s] updated_at >= %s: them %d, cap nhat %d, xoa %d, khong doi %d  (%.1f s)%n",
                         LocalTime.now().withNano(0), since, s.added(), s.updated(), s.deleted(), s.unchanged(),
                         (System.nanoTime() - t0) / 1e9);
+                if (PictureIndex.exists(indexDir)) {
+                    long t1 = System.nanoTime();
+                    Indexer.SyncStats p = PictureIndex.sync(indexDir, mongo.database(), analyzer, next);
+                    if (p.added() + p.updated() + p.deleted() + p.unchanged() > 0) {
+                        System.out.printf("  [%s] anh: them %d, cap nhat %d, xoa %d, khong doi %d  (%.1f s)%n",
+                                LocalTime.now().withNano(0), p.added(), p.updated(), p.deleted(), p.unchanged(),
+                                (System.nanoTime() - t1) / 1e9);
+                    }
+                }
                 since = next;
                 if (every <= 0) break;
                 Thread.sleep(every * 1000L);

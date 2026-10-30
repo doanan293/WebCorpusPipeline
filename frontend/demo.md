@@ -69,6 +69,7 @@ Sang tab **Tìm kiếm**, gõ lần lượt:
 | `tuyển sinhh` | 0 kết quả, hiện "Có phải bạn muốn tìm: tuyển sinh". Bấm vào gợi ý để tìm lại |
 | `học bổng AND (thạc sĩ OR tiến sĩ)` | Toán tử Boolean |
 | `title:học bổng` | Chỉ tìm trong tiêu đề |
+| `lễ tốt nghiệp`, bấm nút **Ảnh** | Lưới ảnh lễ tốt nghiệp. Ảnh tìm theo tiêu đề, tên tệp và nội dung trang chứa ảnh (crawler không lưu chú thích ảnh); logo, banner dùng chung bị bỏ. Bấm một ảnh để xem trang chứa nó |
 
 ## Nếu có thời gian: nút Dừng (30 giây)
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lan dau: lap chi muc toan bo tu MongoDB va tinh PageRank (lau, chi mot lan: co moc .ready).
+# Lan dau: lap chi muc toan bo tu MongoDB (kem chi muc anh) va tinh PageRank (lau, chi mot lan: co moc .ready).
 # Sau do: dong bo moi 10 giay o nen, API o tien trinh chinh.
 set -euo pipefail
 
@@ -13,6 +13,11 @@ if [[ ! -e "$INDEX/.ready" ]]; then
   run --source mongo --mode batch --queries /tmp/queries.txt --out /tmp/results.txt
   run --mode pagerank
   touch "$INDEX/.ready"
+fi
+
+# Chi muc anh (thu muc con pictures/): lap toan bo da tao kem; chi muc cu chua co thi lap rieng mot lan.
+if ! ls "$INDEX/pictures"/segments_* >/dev/null 2>&1; then
+  run --mode pictures
 fi
 
 # Khoi dong lai khi loi (vd MongoDB tam mat ket noi), API van chay.

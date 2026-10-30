@@ -116,7 +116,7 @@ curl 'http://localhost:8081/api/stats'                   # số trang, tệp, �
 
 | Tham số | Mặc định | Ý nghĩa |
 |---|---|---|
-| `--mode` | `interactive` | `interactive` \| `batch` \| `segment` \| `sync` \| `pagerank` \| `web` |
+| `--mode` | `interactive` | `interactive` \| `batch` \| `segment` \| `sync` \| `pagerank` \| `pictures` \| `web` |
 | `--port` | `8080` | cổng của `--mode web` |
 | `--docs` | `data/docs` | thư mục văn bản đầu vào |
 | `--queries` | `data/queries.txt` | file truy vấn (chỉ dùng ở mode batch) |
@@ -294,6 +294,45 @@ bash scripts/demo-upsert.sh 1 100 30
 
 Chạy lại một batch đã đổ (`bash scripts/demo-upsert.sh 1`) thì MongoDB báo "cập nhật", còn `sync` báo "không đổi"
 vì nội dung y hệt. Muốn quay về dữ liệu đầy đủ: `DUMP=<tên-file>.archive.gz docker compose run --rm restore` rồi lập lại chỉ mục.
+
+## Tìm ảnh (`--mode pictures`, `/api/pictures`)
+
+Crawler không lưu chú thích (`alt`) của ảnh, nên hệ thống tìm ảnh bằng chữ đi kèm ảnh. Mỗi ảnh trong `html.images`
+thành một văn bản trong chỉ mục riêng `<--index>/pictures/`:
+
+| Field | Lấy từ | Trọng số |
+|---|---|---|
+| `title` | tiêu đề các trang chứa ảnh (tối đa 5) | 2 |
+| `name` | tên tệp trong URL: `le-tot-nghiep-2024.jpg` → "le tot nghiep 2024" (bỏ kích thước `-150x150`, chuỗi hex, số dài) | 1.5 |
+| `context` | 300 ký tự đầu nội dung các trang đó | 1 |
+
+Truy vấn dùng cùng analyzer và cách dựng truy vấn với tìm trang (cụm tiếng Việt, AND/OR, `title:...`). Ảnh trang trí
+bị bỏ: ảnh nằm trên hơn 20 trang (logo, banner chung của site), tên có `logo`/`icon`/`avatar`/`banner`…, định dạng
+`svg`/`ico`, ảnh đã tải nhỏ hơn 3 KB, URL dài hơn 2000 ký tự. Điểm BM25 nhân 1 / (1 + ln số trang chứa ảnh), nên ảnh
+riêng của một bài xếp trên ảnh dùng chung. Mặc định chỉ trả ảnh đã tải (`picture.size > 0`, hiện được); một trang
+kết quả có tối đa 4 ảnh của cùng một trang, và các bản của cùng một ảnh (`abc.jpg`, `abc-150x150.jpg`, `/mobile/abc.jpg`)
+chỉ hiện một lần.
+
+```bash
+java -jar target/lucene-search.jar --mode pictures --index index-mongo     # lập lại chỉ mục ảnh (khoảng 40 giây)
+curl 'http://localhost:8081/api/pictures?q=lễ+tốt+nghiệp&limit=24'         # all=1: cả ảnh chưa tải
+```
+
+- Lập toàn bộ (`--source mongo`) tạo luôn chỉ mục ảnh; `--mode sync` cũng đồng bộ ảnh nếu đã có chỉ mục ảnh. Chỉ mục ảnh có
+  mốc riêng: mỗi lượt lấy ảnh của các trang `html` và các bản ghi `picture` có `updated_at` từ mốc, rồi dựng lại từng
+  ảnh đó (số trang chứa nó, tiêu đề, đã tải hay chưa).
+- Lần đầu chạy, lucene tạo trong MongoDB một index trên `html.images` và một index `(size, url, format)` trên `picture`, để
+  đọc trạng thái ảnh mà không phải đọc byte ảnh (`b64`).
+- Container Docker tự lập chỉ mục ảnh khi khởi động nếu volume chưa có (`scripts/docker-entrypoint.sh`).
+- Trên frontend: tab **Tìm kiếm**, nút **Ảnh**; bấm một ảnh để xem ảnh lớn và trang chứa ảnh.
+
+Cần collection `picture` có byte ảnh. Bản dump nạp trước đây bỏ `picture`; nạp riêng nó (không đụng các collection khác):
+
+```bash
+# ở gốc repo
+docker compose run --rm -v "$PWD/lucene/data:/dump2:ro" restore mongorestore --uri=mongodb://mongo:27017 --gzip \
+  --archive=/dump2/information_retrieval-20261025.archive.gz --nsInclude='information_retrieval.picture' --drop
+```
 
 ## Đoạn trích chứa từ khoá (KWIC)
 
@@ -490,6 +529,7 @@ Tải bản `lucene-9.12.3` từ trang Apache, chạy `luke.sh` / `luke.bat`, m�
 | Nạp truy vấn | `QueryLoader` | đọc `queries.txt` (mode batch) |
 | Tìm kiếm | `Searcher` | `runBatch` (từ file) / `runInteractive` (REPL ở console); `MultiFieldQueryParser` trên `title`/`intro`/`content` → `IndexSearcher.search` → top-K BM25; `Highlighter` cắt đoạn trích, `teeSink` tô nền ANSI (console) / bọc `«...»` (file) |
 | Giao diện web | `WebServer` | `--mode web`: API `/api/search` trả JSON từ `Searcher.search` (cùng logic với console); `DataApi` đọc dữ liệu thô từ MongoDB (`/api/stats`, `/api/docs`, `/api/doc`, `/api/picture`) |
+| Tìm ảnh | `PictureIndex` | chỉ mục ảnh trong `pictures/`: lập từ `html.images` + `picture`, đồng bộ tăng dần, tìm theo tiêu đề / tên tệp / nội dung trang chứa ảnh |
 | Mở rộng truy vấn | `Synonyms` | đọc `synonyms.txt`, thêm cụm viết tắt / đồng nghĩa vào truy vấn |
 | Gợi ý chính tả | `SpellSuggester` | `DirectSpellChecker` trên field `spell` + đếm cụm trong field `content` |
 | Ẩn trùng lặp | `NearDuplicates` | chuỗi 4 từ + MinHash ước lượng Jaccard, kèm tiêu đề và khoá URL giữa các kết quả |

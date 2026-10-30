@@ -11,7 +11,9 @@ function route() {
     loadFeatured();
     loadData();
   } else if (tab === 'search') {
-    const q = new URLSearchParams(query || '').get('q');
+    const params = new URLSearchParams(query || '');
+    setSearchType(params.get('type'));
+    const q = params.get('q');
     if (q) search(q);
     else { $('q').value = ''; $('out').innerHTML = ''; $('q').focus(); }
   }

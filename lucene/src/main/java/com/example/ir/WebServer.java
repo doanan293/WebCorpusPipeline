@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 
@@ -23,6 +24,7 @@ import java.util.concurrent.Executors;
  *
  *   GET /api/search?q=...&limit=10 : ket qua dang JSON
  *   GET /api/info                  : so van ban trong chi muc
+ *   GET /api/pictures?q=...&limit=24&all=0 : tim anh (chi muc anh, xem PictureIndex)
  *   GET /api/stats, /api/docs, /api/doc, /api/picture : du lieu trong MongoDB (xem DataApi)
  *
  * Truoc moi truy van mo lai chi muc neu --mode sync vua ghi (openIfChanged), nen du lieu moi hien
@@ -31,6 +33,7 @@ import java.util.concurrent.Executors;
 final class WebServer {
 
     private static final int MAX_LIMIT = 50;
+    private static final int MAX_PICTURES = 96;
 
     private final Directory dir;
     private final Analyzer analyzer;
@@ -39,11 +42,15 @@ final class WebServer {
     private final float pagerankWeight;
     private final DataApi data;
     private DirectoryReader reader;
+    private final Path indexDir;
+    /** Chi muc anh: mo khi lan dau co truy van (chua co thi --mode pictures / sync se tao). */
+    private DirectoryReader pictureReader;
 
     private WebServer(Path indexDir, Analyzer analyzer, Synonyms synonyms, double dedup, float pagerankWeight,
                       DataApi data) throws IOException {
         this.dir = FSDirectory.open(indexDir);
         this.reader = DirectoryReader.open(dir);
+        this.indexDir = indexDir;
         this.analyzer = analyzer;
         this.synonyms = synonyms;
         this.dedup = dedup;
@@ -81,6 +88,18 @@ final class WebServer {
                 }
                 String body = text.isEmpty() ? "{\"error\":\"truy van rong\"}" : search(text, limit);
                 send(ex, 200, "application/json", body.getBytes(StandardCharsets.UTF_8));
+            } else if (path.equals("/api/pictures")) {
+                Map<String, String> q = query(ex.getRequestURI().getRawQuery());
+                String text = q.getOrDefault("q", "").strip();
+                int limit = 24;
+                try {
+                    limit = Math.max(1, Math.min(MAX_PICTURES, Integer.parseInt(q.getOrDefault("limit", "24"))));
+                } catch (NumberFormatException ignored) {
+                    // giu mac dinh
+                }
+                String body = text.isEmpty() ? "{\"error\":\"truy van rong\"}"
+                        : searchPictures(text, limit, "1".equals(q.get("all")));
+                send(ex, 200, "application/json", body.getBytes(StandardCharsets.UTF_8));
             } else if (path.equals("/api/info")) {
                 int n;
                 synchronized (this) {
@@ -104,6 +123,44 @@ final class WebServer {
         double ms = (System.nanoTime() - t0) / 1e6;
         System.out.printf("[web] %s -> %d ket qua (%.0f ms)%n", text, o.total(), ms);
         return toJson(o, ms, reader.numDocs());
+    }
+
+    private synchronized String searchPictures(String text, int limit, boolean all) throws IOException {
+        if (pictureReader == null) {
+            if (!PictureIndex.exists(indexDir)) {
+                return "{\"error\":\"chua co chi muc anh (chay --mode pictures)\"}";
+            }
+            pictureReader = DirectoryReader.open(FSDirectory.open(PictureIndex.dir(indexDir)));
+        } else {
+            DirectoryReader newer = DirectoryReader.openIfChanged(pictureReader);
+            if (newer != null) {
+                pictureReader.close();
+                pictureReader = newer;
+            }
+        }
+        long t0 = System.nanoTime();
+        PictureIndex.Result r = PictureIndex.search(new IndexSearcher(pictureReader), analyzer, text, limit, all);
+        double ms = (System.nanoTime() - t0) / 1e6;
+        System.out.printf("[web] anh: %s -> %d ket qua (%.0f ms)%n", text, r.total(), ms);
+        StringBuilder sb = new StringBuilder("{");
+        field(sb, "query", r.query()).append(',');
+        if (r.error() != null) field(sb, "error", r.error()).append(',');
+        field(sb, "parsed", r.parsed()).append(',');
+        sb.append("\"total\":").append(r.total()).append(',');
+        sb.append("\"images\":").append(pictureReader.numDocs()).append(',');
+        sb.append("\"ms\":").append(Math.round(ms)).append(",\"hits\":[");
+        for (int i = 0; i < r.hits().size(); i++) {
+            PictureIndex.Hit h = r.hits().get(i);
+            if (i > 0) sb.append(',');
+            sb.append('{');
+            field(sb, "url", h.url()).append(',');
+            field(sb, "page", h.page()).append(',');
+            field(sb, "title", h.title()).append(',');
+            field(sb, "name", h.name()).append(',');
+            sb.append("\"pages\":").append(h.pages()).append(',');
+            sb.append("\"score\":").append(round(h.score())).append('}');
+        }
+        return sb.append("]}").toString();
     }
 
     /** Mo lai chi muc neu --mode sync / --mode pagerank vua commit. */
