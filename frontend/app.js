@@ -8,6 +8,7 @@ function route() {
   document.title = 'WebCorpus Demo';
   if (tab === 'data') {
     loadStats();
+    loadFeatured();
     loadData();
   } else if (tab === 'search') {
     const q = new URLSearchParams(query || '').get('q');

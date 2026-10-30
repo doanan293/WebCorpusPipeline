@@ -38,8 +38,8 @@ import java.util.concurrent.TimeUnit;
 final class DataApi {
 
     private static final int MAX_SIZE = 100;
-    private static final int MAX_CONTENT = 5000;
-    private static final int MAX_OUTLINKS = 100;
+    private static final int MAX_OUTLINKS = 2000;
+    private static final int MAX_FILES = 50;
     /** Anh da tai: co size (trung voi co b64); index tren size nen dem nhanh. */
     private static final Bson FETCHED = Filters.gt("size", 0);
 
@@ -131,7 +131,7 @@ final class DataApi {
             return;
         }
         String content = d.getString("content");
-        if (content != null && content.length() > MAX_CONTENT) d.put("content", content.substring(0, MAX_CONTENT));
+        if (content != null) d.put("contentLength", content.length());
         if (kind.equals("html")) {
             List<String> out = new ArrayList<>();
             for (Document e : db.getCollection("graph").find(Filters.eq("src", url))
@@ -139,8 +139,24 @@ final class DataApi {
                 out.add(e.getString("dest"));
             }
             d.put("outlinks", out);
+            d.put("files", linkedFiles(url));
         }
         json(ex, 200, d);
+    }
+
+    /** Cac tep (other) ma trang tro toi, moi tep kem do dai van ban boc tach duoc. */
+    private List<Document> linkedFiles(String page) {
+        List<String> dests = db.getCollection("graph").distinct("dest", Filters.eq("src", page), String.class)
+                .into(new ArrayList<>());
+        List<Document> files = new ArrayList<>();
+        for (Document f : db.getCollection("other").find(Filters.in("url", dests))
+                .projection(Projections.include("url", "format", "content")).limit(MAX_FILES)) {
+            String text = f.getString("content");
+            files.add(new Document("url", f.getString("url"))
+                    .append("format", f.getString("format"))
+                    .append("contentLength", text == null ? 0 : text.length()));
+        }
+        return files;
     }
 
     private void picture(HttpExchange ex, Map<String, String> q) throws IOException {
