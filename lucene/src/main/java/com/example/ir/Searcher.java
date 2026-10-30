@@ -432,13 +432,14 @@ public final class Searcher {
         int hidden = 0;
         if (extras.dedup() > 0 && results.size() > 1) {
             List<ScoreDoc> kept = new ArrayList<>();
-            List<long[]> keptSketches = new ArrayList<>();
+            List<NearDuplicates.Item> keptItems = new ArrayList<>();
             for (ScoreDoc sd : results) {
                 if (kept.size() == topK) break;
-                long[] sk = NearDuplicates.sketch(storedFields.document(sd.doc).get("content"));
+                Document d = storedFields.document(sd.doc);
+                NearDuplicates.Item it = NearDuplicates.Item.of(d.get("id"), d.get("title"), d.get("content"));
                 boolean dup = false;
-                for (long[] other : keptSketches) {
-                    if (NearDuplicates.estimate(sk, other) >= extras.dedup()) {
+                for (NearDuplicates.Item other : keptItems) {
+                    if (NearDuplicates.duplicate(it, other, extras.dedup())) {
                         dup = true;
                         break;
                     }
@@ -448,7 +449,7 @@ public final class Searcher {
                     shown.add(sd.doc); // khong hien lai o phan tf-idf ben duoi
                 } else {
                     kept.add(sd);
-                    keptSketches.add(sk);
+                    keptItems.add(it);
                 }
             }
             results = kept;
