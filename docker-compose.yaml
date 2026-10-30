@@ -13,6 +13,10 @@ x-crawler: &crawler
   restart: unless-stopped
   # User cua may, de trang thai dung chung van ghi duoc bang `crawler crawl run` tren may.
   user: "${UID:-1000}:${GID:-1000}"
+  # DNS cong cong: DNS cua may (Tailscale, WSL) lam lan phan giai dau cua moi host cham 3-5 s va hay loi.
+  dns: [8.8.8.8, 1.1.1.1]
+  # Du thoi gian tra khoa trang thai khi dang crawl; bi kill thi khoa con 60 giay nua moi het han.
+  stop_grace_period: 30s
   volumes:
     - ./crawler/config:/app/config:ro
 

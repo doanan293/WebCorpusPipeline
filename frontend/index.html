@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebCorpus Demo</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Thu thập và tìm kiếm web</h1>
+  <div class="sub" id="sub">Crawler · MongoDB · Lucene</div>
+  <nav class="tabs">
+    <a href="#crawl" data-tab="crawl">Crawl</a>
+    <a href="#data" data-tab="data">Dữ liệu</a>
+    <a href="#search" data-tab="search">Tìm kiếm</a>
+  </nav>
+
+  <section id="tab-crawl" hidden>
+    <form id="crawl-form" class="row">
+      <input type="url" id="crawl-url" placeholder="https://soict.hust.edu.vn/" required>
+      <button type="submit" id="crawl-start">Crawl</button>
+      <button type="button" id="crawl-stop" class="secondary" disabled>Dừng</button>
+    </form>
+    <div class="opts">
+      Số trang tối đa
+      <input type="number" id="crawl-max" min="1" step="1" placeholder="không giới hạn">
+      · để trống thì lan hết các trang trong cùng host
+    </div>
+    <div id="crawl-out"></div>
+  </section>
+
+  <section id="tab-data" hidden>
+    <div class="info" id="data-stats"></div>
+    <nav class="subtabs">
+      <button type="button" data-kind="html">Trang</button>
+      <button type="button" data-kind="other">Tệp</button>
+      <button type="button" data-kind="picture">Ảnh</button>
+    </nav>
+    <div id="data-out"></div>
+    <div class="pager">
+      <button type="button" id="data-prev" class="secondary">Trước</button>
+      <span id="data-page" class="info"></span>
+      <button type="button" id="data-next" class="secondary">Sau</button>
+    </div>
+  </section>
+
+  <section id="tab-search" hidden>
+    <form id="f" class="row">
+      <input type="search" id="q" placeholder="Nhập truy vấn, ví dụ: điểm chuẩn đại học bách khoa">
+      <button type="submit">Tìm</button>
+    </form>
+    <div class="opts">
+      Số kết quả
+      <select id="limit"><option>10</option><option>20</option><option>50</option></select>
+      · hỗ trợ AND, OR, NOT, "cụm từ", title:..., ký tự đại diện *
+    </div>
+    <div id="out"></div>
+  </section>
+</main>
+
+<dialog id="detail">
+  <button type="button" id="detail-close" class="secondary">Đóng</button>
+  <div id="detail-out"></div>
+</dialog>
+
+<script src="common.js"></script>
+<script src="search.js"></script>
+<script src="crawl.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
