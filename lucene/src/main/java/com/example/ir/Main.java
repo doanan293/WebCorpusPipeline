@@ -40,7 +40,7 @@ import java.util.Map;
  *
  * Nguon van ban (--source):
  *   files : thu muc --docs (mac dinh data/docs).
- *   mongo : database --mongo-db tai --mongo-uri (MongoDB cua compose.yaml, cong 27018);
+ *   mongo : database --mongo-db tai --mongo-uri (MongoDB cua docker-compose.yaml o goc repo, cong 27017);
  *           --limit N de thu tren N tai lieu dau.
  *
  * Vi du:
@@ -213,7 +213,7 @@ public final class Main {
             System.out.println("== Tim kiem ==");
             if (web) {
                 WebServer.run(indexDir, analyzer, synonyms, dedup, prWeight,
-                        Integer.parseInt(opt.getOrDefault("port", "8080")));
+                        Integer.parseInt(opt.getOrDefault("port", "8080")), mongoUri, mongoDb);
                 Thread.currentThread().join(); // may chu chay den khi Ctrl+C
             } else if (interactive) {
                 Searcher.runInteractive(indexDir, analyzer, synonyms, dedup, prWeight, topK, outFile);

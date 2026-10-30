@@ -42,7 +42,7 @@ import java.util.concurrent.TimeUnit;
  */
 final class MongoDocLoader implements Iterable<DocLoader.Doc>, AutoCloseable {
 
-    static final String DEFAULT_URI = "mongodb://localhost:27018";
+    static final String DEFAULT_URI = "mongodb://localhost:27017";
     static final String DEFAULT_DB = "information_retrieval";
 
     private static final List<String> COLLECTIONS = List.of("html", "other");
@@ -75,13 +75,13 @@ final class MongoDocLoader implements Iterable<DocLoader.Doc>, AutoCloseable {
             db.runCommand(new Document("ping", 1));
             if (!db.listCollectionNames().into(new java.util.ArrayList<>()).contains("html")) {
                 throw new IOException("database '" + dbName + "' chua co collection html."
-                        + "\n  Nap ban dump:  docker compose run --rm restore");
+                        + "\n  Nap ban dump (o goc repo):  DUMP=<ten-file>.archive.gz docker compose run --rm restore");
             }
             return new MongoDocLoader(client, db, limit);
         } catch (MongoException e) {
             client.close();
             throw new IOException("khong ket noi duoc MongoDB tai " + uri + ": " + e.getMessage()
-                    + "\n  Bat MongoDB:  docker compose up -d mongo", e);
+                    + "\n  Bat MongoDB (o goc repo):  docker compose up -d mongo", e);
         } catch (IOException e) {
             client.close();
             throw e;

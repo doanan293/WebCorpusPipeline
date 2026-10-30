@@ -6,7 +6,7 @@
 #   bash scripts/demo-upsert.sh 1 10         # batch 1..10
 #   bash scripts/demo-upsert.sh 1 100 30     # batch 1..100, cach nhau 30 giay (mo phong crawler chay lien tuc)
 #
-# Chay trong thu muc lucene/, MongoDB cua compose.yaml dang bat (docker compose up -d mongo).
+# Chay trong thu muc lucene/, MongoDB cua docker-compose.yaml o goc repo dang bat (docker compose up -d mongo).
 # Upsert theo url ($merge): url chua co -> them, da co -> ghi de cac truong. Chay lai 1 batch -> chi cap nhat.
 set -euo pipefail
 

@@ -8,7 +8,6 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
@@ -20,11 +19,11 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 
 /**
- * Giao dien web don gian cho tim kiem (HttpServer co san trong JDK, khong them thu vien).
+ * API cho frontend (HttpServer co san trong JDK, khong them thu vien); trang web nam o frontend/.
  *
- *   GET /                          : trang tim kiem (src/main/resources/web/index.html)
  *   GET /api/search?q=...&limit=10 : ket qua dang JSON
  *   GET /api/info                  : so van ban trong chi muc
+ *   GET /api/stats, /api/docs, /api/doc, /api/picture : du lieu trong MongoDB (xem DataApi)
  *
  * Truoc moi truy van mo lai chi muc neu --mode sync vua ghi (openIfChanged), nen du lieu moi hien
  * ngay tren trang. Cac truy van chay noi tiep nhau (bo tach tu VnCoreNLP dung chung 1 the hien).
@@ -38,32 +37,30 @@ final class WebServer {
     private final Synonyms synonyms;
     private final double dedup;
     private final float pagerankWeight;
-    private final byte[] page;
+    private final DataApi data;
     private DirectoryReader reader;
 
-    private WebServer(Path indexDir, Analyzer analyzer, Synonyms synonyms, double dedup, float pagerankWeight)
-            throws IOException {
+    private WebServer(Path indexDir, Analyzer analyzer, Synonyms synonyms, double dedup, float pagerankWeight,
+                      DataApi data) throws IOException {
         this.dir = FSDirectory.open(indexDir);
         this.reader = DirectoryReader.open(dir);
         this.analyzer = analyzer;
         this.synonyms = synonyms;
         this.dedup = dedup;
         this.pagerankWeight = pagerankWeight;
-        try (InputStream in = WebServer.class.getResourceAsStream("/web/index.html")) {
-            if (in == null) throw new IOException("thieu tai nguyen /web/index.html");
-            this.page = in.readAllBytes();
-        }
+        this.data = data;
     }
 
     static void run(Path indexDir, Analyzer analyzer, Synonyms synonyms, double dedup, float pagerankWeight,
-                    int port) throws IOException {
-        WebServer app = new WebServer(indexDir, analyzer, synonyms, dedup, pagerankWeight);
+                    int port, String mongoUri, String mongoDb) throws IOException {
+        WebServer app = new WebServer(indexDir, analyzer, synonyms, dedup, pagerankWeight,
+                DataApi.open(mongoUri, mongoDb));
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.createContext("/", app::handle);
         server.setExecutor(Executors.newFixedThreadPool(4));
         server.start();
         System.out.println("Chi muc: " + app.reader.numDocs() + " van ban");
-        System.out.println("Mo trinh duyet: http://localhost:" + port + "/   (Ctrl+C de dung)");
+        System.out.println("API: http://localhost:" + port + "/api/info   (Ctrl+C de dung)");
     }
 
     private void handle(HttpExchange ex) throws IOException {
@@ -71,8 +68,8 @@ final class WebServer {
             String path = ex.getRequestURI().getPath();
             if (!ex.getRequestMethod().equals("GET")) {
                 send(ex, 405, "text/plain", "method not allowed".getBytes(StandardCharsets.UTF_8));
-            } else if (path.equals("/") || path.equals("/index.html")) {
-                send(ex, 200, "text/html", page);
+            } else if (data.handle(ex, path, query(ex.getRequestURI().getRawQuery()))) {
+                return;
             } else if (path.equals("/api/search")) {
                 Map<String, String> q = query(ex.getRequestURI().getRawQuery());
                 String text = q.getOrDefault("q", "").strip();
@@ -216,7 +213,7 @@ final class WebServer {
         return m;
     }
 
-    private static void send(HttpExchange ex, int status, String type, byte[] body) throws IOException {
+    static void send(HttpExchange ex, int status, String type, byte[] body) throws IOException {
         ex.getResponseHeaders().set("Content-Type", type + "; charset=utf-8");
         ex.sendResponseHeaders(status, body.length);
         try (OutputStream os = ex.getResponseBody()) {

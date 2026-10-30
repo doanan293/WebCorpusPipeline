@@ -1,0 +1,6 @@
+# Chi can ma nguon de build; bo chi muc, ket qua build va du lieu.
+*
+!pom.xml
+!synonyms.txt
+!src
+!scripts

@@ -84,12 +84,15 @@ cau> trí tuệ nhân tạo
 
 Chỉ dùng được với `--analyzer vietnamese` (mặc định) — báo lỗi và không tách nếu chọn `standard`/`english`. Cần đã cài VnCoreNLP (`bash scripts/setup-vncorenlp.sh`), nếu không phần "Analyzer tiếng Việt" phía dưới sẽ tự lùi về `standard` và mode `segment` không hoạt động.
 
-### Kiểu 4 — web: giao diện tìm kiếm trên trình duyệt
+### Kiểu 4 — web: API tìm kiếm cho frontend
 
 ```bash
 java -jar target/lucene-search.jar --mode web --index index-mongo --skip-index
-# mở http://localhost:8080/   (đổi cổng: --port 9000; dừng: Ctrl+C)
+# API ở http://localhost:8080/api/info   (đổi cổng: --port 9000; dừng: Ctrl+C)
 ```
+
+Trang web nằm ở [`frontend/`](../frontend) (gốc repo), do nginx trong `docker-compose.yaml` phục vụ tại
+http://localhost:8080; khi đó lucene chạy trong container và chỉ mở API ở `127.0.0.1:8081`.
 
 Trang có ô nhập truy vấn, giống một trang tìm kiếm thông thường. Mỗi kết quả hiện URL, tiêu đề (bấm để mở trang gốc), đoạn trích tô vàng từ khoá, điểm BM25, tf-idf và PageRank. Trang cũng hiện "Có phải bạn muốn tìm …" (bấm để tìm lại), cụm mở rộng viết tắt / đồng nghĩa, số kết quả gần trùng đã ẩn và danh sách tài liệu chỉ khớp từ riêng lẻ. Mục "Truy vấn Lucene" ở cuối trang cho xem truy vấn đã dựng.
 
@@ -116,7 +119,7 @@ curl 'http://localhost:8080/api/info'                    # {"docs": số văn b�
 | `--vn-home` | `.` | thư mục chứa `lib/VnCoreNLP-1.2.jar` và `models/` (cho `--analyzer vietnamese`) |
 | `--skip-index` | (tắt) | bỏ qua lập chỉ mục nếu `index/` đã có sẵn |
 | `--source` | `files` | `files` (đọc `--docs`) \| `mongo` (đọc corpus của crawler trong MongoDB) |
-| `--mongo-uri` | `mongodb://localhost:27018` | MongoDB của `compose.yaml` (cho `--source mongo`) |
+| `--mongo-uri` | `mongodb://localhost:27017` | MongoDB của `docker-compose.yaml` ở gốc repo |
 | `--mongo-db` | `information_retrieval` | database chứa `html`, `other` |
 | `--limit` | `0` (tất cả) | chỉ lập chỉ mục N tài liệu đầu (để thử nhanh với `--source mongo`) |
 | `--synonyms` | `synonyms.txt` | từ điển viết tắt / đồng nghĩa để mở rộng truy vấn; `--no-synonyms` để tắt |
@@ -164,13 +167,13 @@ một kết quả xếp trên với Jaccard ≥ 0.9 bị ẩn, chương trình l
 ## Tìm kiếm trên corpus của crawler (MongoDB)
 
 Crawler (`../crawler`) lưu kết quả vào MongoDB, bản dump `information_retrieval-<ngày>.archive.gz` đặt trong
-`data/` (không commit, `lucene/data` nằm trong `.gitignore`). `compose.yaml` ở thư mục này dựng **một MongoDB riêng
-cho lucene** — volume `lucene_mongo_data`, cổng `127.0.0.1:27018` — tách hẳn khỏi `crawler/compose.yaml`, nên sửa bên
-crawler không ảnh hưởng tới đây.
+`crawler/data/submission/` (không commit). `docker-compose.yaml` ở gốc repo dựng **một MongoDB chung** cho crawler và
+lucene — volume `lucene_mongo_data`, cổng `127.0.0.1:27017`. Các lệnh `docker compose` chạy được từ gốc repo hoặc thư
+mục con.
 
 ```bash
 docker compose up -d mongo                                  # 1. bật MongoDB
-docker compose run --rm restore                             # 2. nạp bản dump (một lần, bỏ collection picture)
+DUMP=<tên-file>.archive.gz docker compose run --rm restore  # 2. nạp bản dump (một lần, đủ mọi collection)
 mvn -q package
 java -Xmx4g -jar target/lucene-search.jar --source mongo --index index-mongo --limit 5000 --mode batch \
      --queries data/queries-vi.txt                          # 3. thử trên 5000 tài liệu
@@ -178,7 +181,7 @@ java -Xmx4g -jar target/lucene-search.jar --source mongo --index index-mongo   #
 java -jar target/lucene-search.jar --index index-mongo --skip-index            # 5. các lần sau: chỉ tìm kiếm
 ```
 
-- Bản dump khác tên: `DUMP=<tên-file>.archive.gz docker compose run --rm restore`. `restore` chạy `--drop` nên nạp lại
+- `restore` chạy `--drop` nên nạp lại
   sẽ thay dữ liệu cũ.
 - Dùng `mongo:7.0` chứ không phải `8.0`: MongoDB 8.0 tự thoát trên kernel Linux 6.19–7.0.13
   ([SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912)), mà Docker Desktop đang chạy kernel 7.0.12.
@@ -272,7 +275,7 @@ bash scripts/demo-upsert.sh 1 100 30
 ```
 
 Chạy lại một batch đã đổ (`bash scripts/demo-upsert.sh 1`) thì MongoDB báo "cập nhật", còn `sync` báo "không đổi"
-vì nội dung y hệt. Muốn quay về dữ liệu đầy đủ: `docker compose run --rm restore` rồi lập lại chỉ mục.
+vì nội dung y hệt. Muốn quay về dữ liệu đầy đủ: `DUMP=<tên-file>.archive.gz docker compose run --rm restore` rồi lập lại chỉ mục.
 
 ## Đoạn trích chứa từ khoá (KWIC)
 
@@ -468,7 +471,7 @@ Tải bản `lucene-9.12.3` từ trang Apache, chạy `luke.sh` / `luke.bat`, m�
 | Tạo chỉ mục | `Indexer` | `IndexWriter` + analyzer; field `content` (phân tích **và lưu** để highlighter cắt được đoạn trích), `title`, `intro` (chỉ phân tích), `id`/`path` |
 | Nạp truy vấn | `QueryLoader` | đọc `queries.txt` (mode batch) |
 | Tìm kiếm | `Searcher` | `runBatch` (từ file) / `runInteractive` (REPL ở console); `MultiFieldQueryParser` trên `title`/`intro`/`content` → `IndexSearcher.search` → top-K BM25; `Highlighter` cắt đoạn trích, `teeSink` tô nền ANSI (console) / bọc `«...»` (file) |
-| Giao diện web | `WebServer` | `--mode web`: trang `web/index.html` + `/api/search` trả JSON từ `Searcher.search` (cùng logic với console) |
+| Giao diện web | `WebServer` | `--mode web`: API `/api/search` trả JSON từ `Searcher.search` (cùng logic với console); `DataApi` đọc dữ liệu thô từ MongoDB (`/api/stats`, `/api/docs`, `/api/doc`, `/api/picture`) |
 | Mở rộng truy vấn | `Synonyms` | đọc `synonyms.txt`, thêm cụm viết tắt / đồng nghĩa vào truy vấn |
 | Gợi ý chính tả | `SpellSuggester` | `DirectSpellChecker` trên field `spell` + đếm cụm trong field `content` |
 | Ẩn trùng lặp | `NearDuplicates` | chuỗi 4 từ + MinHash, ước lượng Jaccard giữa các kết quả |
@@ -489,10 +492,12 @@ Tải bản `lucene-9.12.3` từ trang Apache, chạy `luke.sh` / `luke.bat`, m�
 
 Mọi lệnh chạy trong thư mục `lucene/`, Docker Desktop đang mở.
 
+> Kịch bản này tập trung vào phần tìm kiếm. Demo cả hệ thống (crawl → dữ liệu → tìm kiếm): xem [README gốc](../README.md#demo). Các bước `sync` chạy tay bên dưới chỉ cần khi chạy lucene ngoài Docker.
+
 ### Chuẩn bị
 
 ```bash
-docker compose up -d mongo          # MongoDB đóng vai crawler (cổng 27018)
+docker compose up -d mongo          # MongoDB (cổng 27017)
 mvn -q -DskipTests package          # chỉ cần nếu có sửa code
 ```
 
@@ -506,10 +511,10 @@ Mở 3 terminal và đặt trình duyệt bên cạnh:
 
 ```bash
 # T1
-java -jar target/lucene-search.jar --mode web --index index-mongo --skip-index
+docker compose up -d lucene frontend   # API và trang web; lucene trong container đã tự chạy sync mỗi 10 giây
 ```
 
-Mở http://localhost:8080. Đầu trang hiện số văn bản trong chỉ mục.
+Mở http://localhost:8080, tab Tìm kiếm. Đầu trang hiện số văn bản trong chỉ mục.
 
 | Truy vấn | Điểm cần chỉ ra |
 |---|---|
