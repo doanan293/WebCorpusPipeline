@@ -78,6 +78,16 @@ def test_job_of_finds_newest_job_for_url() -> None:
     assert jobs.get(second.id) is second
 
 
+def test_job_with_retries_spent_is_done_a_minute_after_its_last_page() -> None:
+    jobs = CrawlJobs()
+    job = jobs.start(ROOT, "a.hust.edu.vn", None, 0.0)
+    jobs.record(job, ROOT, ROOT, [L1], 0.0)  # L1 never comes back (the site blocks it)
+    assert [urls for _, urls in jobs.stalled(15.0)] == [[L1]]
+    assert [urls for _, urls in jobs.stalled(30.0)] == [[L1]]
+    assert jobs.done(job, 59.0) is False
+    assert jobs.done(job, 60.0) is True
+
+
 def test_redirected_pages_count_as_answered() -> None:
     jobs = CrawlJobs()
     job = jobs.start(ROOT, "a.hust.edu.vn", None, 0.0)

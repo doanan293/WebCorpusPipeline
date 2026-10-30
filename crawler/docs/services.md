@@ -48,8 +48,8 @@ khác slide. Body sai định dạng luôn trả `400 {"error": "<lý do>"}`.
 Trạng thái: `{"job", "url", "host", "max_pages", "queued", "saved", "urls", "stopped", "done"}`; `urls` là tối đa
 50 URL vừa lưu, mới nhất trước. Job lan theo luật lọc link hiện tại nhưng chỉ trong host của `url`, không thêm host
 đó vào phạm vi lan của merger. Job nằm trong bộ nhớ, merger khởi động lại thì mất. `done` khi đã dừng, khi mọi URL
-đã xếp đều có bản ghi, hoặc sau 60 giây không có bản ghi mới. Tải lỗi thì không có bản ghi trả về, nên sau 15 giây
-không có gì mới, job xếp lại các URL còn thiếu (tối đa 2 lần).
+đã xếp đều có bản ghi, hoặc hết thời gian chờ. Tải lỗi hay trang bị chặn thì không có bản ghi trả về: sau 15 giây không
+có gì mới, job xếp lại các URL còn thiếu (tối đa 2 lần), rồi kết thúc sau 30 giây nữa.
 
 ## Giao diện
 

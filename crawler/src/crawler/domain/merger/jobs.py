@@ -31,7 +31,7 @@ class CrawlJobs:
     """
 
     def __init__(
-        self, idle_seconds: float = 60.0, retry_seconds: float = 15.0, max_retries: int = 2
+        self, idle_seconds: float = 30.0, retry_seconds: float = 15.0, max_retries: int = 2
     ) -> None:
         self.idle_seconds = idle_seconds
         self.retry_seconds = retry_seconds
