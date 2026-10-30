@@ -81,7 +81,12 @@ class MergerRuntime:
         The host stays out of the scope of the merger: only this job spreads over it.
         """
         canonical, host = canonical_url(url, self.scope.allowed_ports)
-        if canonical is None or host is None or not url.lower().startswith(("http://", "https://")):
+        if (
+            canonical is None
+            or host is None
+            or not url.lower().startswith(("http://", "https://"))
+            or any(char.isspace() for char in url)
+        ):
             return f"not an http(s) URL we can crawl: {url}"
         job = self.jobs.start(canonical, host, max_pages, self.clock())
         await self.send("mediator", {"urls": [canonical], "force": True})

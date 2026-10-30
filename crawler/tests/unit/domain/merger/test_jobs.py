@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from crawler.domain.merger.jobs import CrawlJobs
+from crawler.domain.merger.jobs import CrawlJob, CrawlJobs
 
 ROOT = "https://a.hust.edu.vn/"
 L1, L2, L3, L4 = (f"https://a.hust.edu.vn/{n}" for n in range(1, 5))
@@ -140,3 +140,51 @@ def test_unanswered_lists_urls_still_out() -> None:
     jobs.record(job, ROOT, ROOT, [L1, L2], 1.0)
     jobs.record(job, L1, L1, [], 2.0)
     assert jobs.unanswered(job) == [L2]
+
+
+def _job_with_failed_link(jobs: CrawlJobs) -> CrawlJob:
+    """Budget 2: the start page, then L1 which never comes back, with L2 and L3 waiting."""
+    job = jobs.start(ROOT, "a.hust.edu.vn", 2, 0.0)
+    assert jobs.record(job, ROOT, ROOT, [L1, L2, L3], 0.0) == [L1]
+    return job
+
+
+def test_given_up_url_frees_its_place_for_a_waiting_link() -> None:
+    jobs = CrawlJobs()
+    job = _job_with_failed_link(jobs)
+    assert jobs.stalled(15.0) == [(job, [L1])]
+    assert jobs.stalled(30.0) == [(job, [L1])]
+    assert jobs.stalled(45.0) == [(job, [L2])]
+    assert jobs.done(job, 45.0) is False
+    assert jobs.record(job, L2, L2, [], 46.0) == []
+    assert job.saved == [ROOT, L2]
+    assert jobs.done(job, 46.0) is True
+
+
+def test_budget_is_full_once_enough_pages_are_saved() -> None:
+    jobs = CrawlJobs()
+    job = _job_with_failed_link(jobs)
+    jobs.record(job, L1, L1, [], 1.0)
+    assert jobs.done(job, 1.0) is True
+    assert jobs.stalled(50.0) == []
+
+
+def test_refills_are_limited_so_a_blocking_site_ends() -> None:
+    jobs = CrawlJobs(idle_seconds=30.0, retry_seconds=15.0, max_retries=0, max_refills=2)
+    job = jobs.start(ROOT, "a.hust.edu.vn", 2, 0.0)
+    links = [f"https://a.hust.edu.vn/{n}" for n in range(1, 10)]
+    jobs.record(job, ROOT, ROOT, links, 0.0)
+    assert jobs.stalled(15.0) == [(job, [links[1]])]
+    assert jobs.stalled(30.0) == [(job, [links[2]])]
+    assert jobs.stalled(45.0) == []
+    assert jobs.done(job, 60.0) is True
+
+
+def test_no_links_waiting_means_nothing_to_refill() -> None:
+    jobs = CrawlJobs()
+    job = jobs.start(ROOT, "a.hust.edu.vn", 5, 0.0)
+    jobs.record(job, ROOT, ROOT, [L1], 0.0)
+    jobs.stalled(15.0)
+    jobs.stalled(30.0)
+    assert jobs.stalled(45.0) == []
+    assert jobs.unanswered(job) == [L1]

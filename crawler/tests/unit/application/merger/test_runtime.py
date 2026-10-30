@@ -294,7 +294,9 @@ def test_record_outside_any_job_changes_nothing() -> None:
     assert _sent_to_mediator(client) == []
 
 
-@pytest.mark.parametrize("url", ["ftp://b.hust.edu.vn/x", "not a url", ""])
+@pytest.mark.parametrize(
+    "url", ["ftp://b.hust.edu.vn/x", "not a url", "", "https://a b/", " https://b.hust.edu.vn/"]
+)
 def test_start_crawl_rejects_bad_url(url: str) -> None:
     client = FakeServiceClient()
     assert isinstance(asyncio.run(_job_runtime(client).start_crawl(url, None)), str)
@@ -368,3 +370,26 @@ def test_status_reports_answered_urls() -> None:
 
     status = asyncio.run(scenario())
     assert (status["queued"], status["answered"], status["saved"]) == (2, 1, 1)
+
+
+def test_failed_urls_give_their_place_to_links_waiting_over_budget() -> None:
+    client = FakeServiceClient()
+    clock = [0.0]
+    runtime = MergerRuntime(
+        MergerConfig(batch_size=500, batch_seconds=1.0, database=Path("unused")),
+        MemoryMergerState(),
+        MemoryOutbox(),
+        client,
+        Scope(frozenset()),
+        clock=lambda: clock[0],
+    )
+
+    async def scenario() -> None:
+        await runtime.start_crawl(JOB_ROOT, 2)
+        await runtime.handle(_record(JOB_ROOT, [f"{JOB_ROOT}bad", f"{JOB_ROOT}good"]))
+        for now in (15.0, 30.0, 45.0):
+            clock[0] = now
+            await runtime.tick()
+
+    asyncio.run(scenario())
+    assert _sent_to_mediator(client)[-1] == {"urls": [f"{JOB_ROOT}good"], "force": True}

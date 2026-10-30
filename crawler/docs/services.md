@@ -50,7 +50,8 @@ Trạng thái: `{"job", "url", "host", "max_pages", "queued", "answered", "saved
 50 URL vừa lưu, mới nhất trước. Job lan theo luật lọc link hiện tại nhưng chỉ trong host của `url` (hoặc host mà nó chuyển hướng tới), không thêm
 host đó vào phạm vi lan của merger. Dừng thì các URL chưa tải được gỡ khỏi hàng đợi. Job nằm trong bộ nhớ, merger khởi động lại thì mất. `done` khi đã dừng, khi mọi URL
 đã xếp đều có bản ghi, hoặc hết thời gian chờ. Tải lỗi hay trang bị chặn thì không có bản ghi trả về: sau 15 giây không
-có gì mới, job xếp lại các URL còn thiếu (tối đa 2 lần), rồi kết thúc sau 30 giây nữa.
+có gì mới, job xếp lại các URL còn thiếu (tối đa 2 lần). Vẫn không về thì các URL đó nhường chỗ trong `max_pages` cho
+link đang chờ (tối đa 3 đợt), để đủ số trang lưu được; hết link hoặc hết đợt thì kết thúc sau 30 giây không có gì mới.
 
 ## Giao diện
 
