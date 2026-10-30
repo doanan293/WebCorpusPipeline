@@ -9,7 +9,7 @@ Báo cáo biên soạn và chỉnh sửa trên Word (`.docx`). File này chỉ g
 
 | Phần | Nội dung |
 | --- | --- |
-| Bìa | Tên trường, logo, loại báo cáo, tên và mã học phần, giảng viên hướng dẫn, bảng thành viên (STT, họ tên, mã số sinh viên), địa điểm và thời gian. Có viền trang. |
+| Bìa | Tên trường, logo, loại báo cáo, tên và mã học phần, giảng viên hướng dẫn, bảng thành viên (họ tên, mã số sinh viên), địa điểm và thời gian. Có viền trang. |
 | Phần đầu | Mục lục, danh mục bảng, danh mục hình. |
 | Nội dung | Các chương đánh số (1, 2, 3…); mục con đánh số theo chương (1.1, 1.2…). |
 
