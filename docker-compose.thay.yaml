@@ -1,0 +1,15 @@
+# Tap van ban thay giao (database "thay", nap bang lucene/scripts/import_json_corpus.py), mo cho ca mang LAN:
+#   docker compose -f docker-compose.yaml -f docker-compose.thay.yaml up -d --build lucene frontend
+# May khac cung wifi vao http://<IP may nay> (xem IP: ipconfig getifaddr en0).
+services:
+  lucene:
+    environment:
+      MONGO_DB: thay
+    volumes: !override
+      - lucene_index_thay:/data/index
+
+  frontend:
+    ports: ["0.0.0.0:80:80"]
+
+volumes:
+  lucene_index_thay:

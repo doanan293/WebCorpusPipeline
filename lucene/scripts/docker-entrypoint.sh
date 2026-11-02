@@ -5,8 +5,9 @@ set -euo pipefail
 
 INDEX=${INDEX:-/data/index}
 MONGO_URI=${MONGO_URI:-mongodb://mongo:27017}
+MONGO_DB=${MONGO_DB:-information_retrieval}
 JAVA_OPTS=${JAVA_OPTS:--Xmx3g}
-run() { java $JAVA_OPTS -jar lucene-search.jar --mongo-uri "$MONGO_URI" --index "$INDEX" "$@"; }
+run() { java $JAVA_OPTS -jar lucene-search.jar --mongo-uri "$MONGO_URI" --mongo-db "$MONGO_DB" --index "$INDEX" "$@"; }
 
 if [[ ! -e "$INDEX/.ready" ]]; then
   echo "bach khoa" > /tmp/queries.txt   # --mode batch can mot file truy van; chi de lap chi muc roi thoat
@@ -22,5 +23,5 @@ fi
 
 # Khoi dong lai khi loi (vd MongoDB tam mat ket noi), API van chay.
 ( while true; do run --mode sync --every 10 || true; sleep 10; done ) &
-exec java $JAVA_OPTS -jar lucene-search.jar --mongo-uri "$MONGO_URI" --index "$INDEX" \
+exec java $JAVA_OPTS -jar lucene-search.jar --mongo-uri "$MONGO_URI" --mongo-db "$MONGO_DB" --index "$INDEX" \
      --mode web --skip-index --port 8080
