@@ -220,6 +220,7 @@ public final class Searcher {
      * Truy van cho 1 cum tieng Viet "tron":
      *   PhraseQuery tren CHUOI AM TIET (slop {@value VN_SLOP})^2   SHOULD  - clause chinh, chinh xac
      *   + moi TU GHEP la 1 TermQuery ^0.4                          SHOULD  - phu, giup xep hang
+     *   + moi cap am tiet don lien ke la 1 PhraseQuery ^0.4        SHOULD  - nhu tren, cho truy van khong dau
      *
      * Vi am tiet phai nam GAN NHAU dung thu tu nen "dai hoc" chi khop noi co "dai"
      * ngay truoc "hoc", KHONG khop "sinh hoc" / "khoa hoc". Neu tap van ban that su
@@ -266,6 +267,14 @@ public final class Searcher {
                 if (w.indexOf('_') > 0) { // chi tu ghep (du dac trung) moi lam clause phu
                     bb.add(new BoostQuery(new TermQuery(new Term(field, w)), 0.4f),
                             BooleanClause.Occur.SHOULD);
+                }
+            }
+            // Go khong dau thi VnCoreNLP khong ghep duoc tu ("bach khoa" thay vi "bach_khoa"): moi cap am tiet
+            // don lien ke la 1 PhraseQuery ^0.4, dong vai tro clause tu ghep o tren (am tiet duoc lap chi muc lien tiep).
+            for (int i = 0; i + 1 < words.size(); i++) {
+                String a = words.get(i), b = words.get(i + 1);
+                if (a.indexOf('_') < 0 && b.indexOf('_') < 0) {
+                    bb.add(new BoostQuery(new PhraseQuery(field, a, b), 0.4f), BooleanClause.Occur.SHOULD);
                 }
             }
             return bb.build();
